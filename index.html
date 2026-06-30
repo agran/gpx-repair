@@ -1,0 +1,837 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>GPX Jammer Fix</title>
+    <style>
+      *,
+      *::before,
+      *::after {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+      body {
+        font-family: system-ui, sans-serif;
+        background: #1a1a2e;
+        color: #e0e0e0;
+        min-height: 100vh;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        padding: 24px 16px;
+      }
+      h1 {
+        font-size: 1.6rem;
+        font-weight: 700;
+        margin-bottom: 4px;
+        color: #7eb8f7;
+      }
+      .subtitle {
+        font-size: 0.85rem;
+        color: #888;
+        margin-bottom: 24px;
+      }
+      .card {
+        background: #16213e;
+        border: 1px solid #0f3460;
+        border-radius: 12px;
+        padding: 24px;
+        width: 100%;
+        max-width: 720px;
+        margin-bottom: 20px;
+      }
+      .card h2 {
+        font-size: 1rem;
+        font-weight: 600;
+        margin-bottom: 16px;
+        color: #a8c8f0;
+        border-bottom: 1px solid #0f3460;
+        padding-bottom: 8px;
+      }
+
+      /* Drop zone */
+      #dropzone {
+        border: 2px dashed #0f3460;
+        border-radius: 8px;
+        padding: 36px 20px;
+        text-align: center;
+        cursor: pointer;
+        transition:
+          border-color 0.2s,
+          background 0.2s;
+        background: #0d1b35;
+      }
+      #dropzone.drag-over {
+        border-color: #7eb8f7;
+        background: #112040;
+      }
+      #dropzone svg {
+        width: 40px;
+        height: 40px;
+        margin-bottom: 10px;
+        opacity: 0.6;
+      }
+      #dropzone p {
+        font-size: 0.9rem;
+        color: #888;
+        margin-top: 6px;
+      }
+      #dropzone strong {
+        color: #a8c8f0;
+      }
+      #file-input {
+        display: none;
+      }
+
+      /* Parameters */
+      .params-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 14px;
+      }
+      @media (max-width: 480px) {
+        .params-grid {
+          grid-template-columns: 1fr;
+        }
+      }
+      .param-row {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+      }
+      .param-row label {
+        font-size: 0.8rem;
+        color: #888;
+      }
+      .param-row input[type="number"] {
+        background: #0d1b35;
+        border: 1px solid #0f3460;
+        color: #e0e0e0;
+        border-radius: 6px;
+        padding: 7px 10px;
+        font-size: 0.9rem;
+        width: 100%;
+      }
+      .param-row input:focus {
+        outline: none;
+        border-color: #7eb8f7;
+      }
+      .param-row .hint {
+        font-size: 0.73rem;
+        color: #555;
+      }
+
+      /* Buttons */
+      #btn-fix {
+        width: 100%;
+        padding: 12px;
+        border: none;
+        border-radius: 8px;
+        background: #2563eb;
+        color: #fff;
+        font-size: 1rem;
+        font-weight: 600;
+        cursor: pointer;
+        transition: background 0.2s;
+        margin-top: 8px;
+      }
+      #btn-fix:hover {
+        background: #1d4ed8;
+      }
+      #btn-fix:disabled {
+        background: #1e3a6e;
+        color: #555;
+        cursor: not-allowed;
+      }
+
+      /* Log */
+      #log {
+        background: #0a0f1e;
+        border: 1px solid #0f3460;
+        border-radius: 8px;
+        padding: 14px;
+        font-family: "Fira Mono", "Courier New", monospace;
+        font-size: 0.8rem;
+        max-height: 280px;
+        overflow-y: auto;
+        white-space: pre-wrap;
+        word-break: break-all;
+        display: none;
+      }
+      .log-ok {
+        color: #4ade80;
+      }
+      .log-warn {
+        color: #facc15;
+      }
+      .log-err {
+        color: #f87171;
+      }
+      .log-info {
+        color: #93c5fd;
+      }
+
+      /* Download */
+      #btn-download {
+        display: none;
+        width: 100%;
+        padding: 12px;
+        border: none;
+        border-radius: 8px;
+        background: #16a34a;
+        color: #fff;
+        font-size: 1rem;
+        font-weight: 600;
+        cursor: pointer;
+        transition: background 0.2s;
+        text-align: center;
+        text-decoration: none;
+      }
+      #btn-download:hover {
+        background: #15803d;
+      }
+
+      .file-name {
+        font-size: 0.85rem;
+        color: #7eb8f7;
+        margin-top: 8px;
+        text-align: center;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>GPX Jammer Fix</h1>
+    <p class="subtitle">
+      Удаление артефактов GPS-глушилки. Всё обрабатывается локально в браузере —
+      файл никуда не отправляется.
+    </p>
+
+    <div class="card">
+      <h2>1. Выберите GPX-файл</h2>
+      <div
+        id="dropzone"
+        onclick="document.getElementById('file-input').click()"
+      >
+        <svg
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.5"
+        >
+          <path
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5"
+          />
+        </svg>
+        <p><strong>Нажмите или перетащите .gpx файл</strong></p>
+        <p>Треки с часов Amazfit, Garmin, Suunto и других</p>
+      </div>
+      <input
+        type="file"
+        id="file-input"
+        accept=".gpx,application/gpx+xml,text/xml"
+      />
+      <div class="file-name" id="file-name"></div>
+    </div>
+
+    <div class="card">
+      <h2>2. Параметры</h2>
+      <div class="params-grid">
+        <div class="param-row">
+          <label>Макс. горизонт. скорость (м/с)</label>
+          <input
+            type="number"
+            id="p-maxspeed"
+            value="20"
+            min="1"
+            max="500"
+            step="1"
+          />
+          <span class="hint"
+            >Пеший поход: 10–15 &nbsp;|&nbsp; Велосипед: 25–40 &nbsp;|&nbsp;
+            Авто: 80–120</span
+          >
+        </div>
+        <div class="param-row">
+          <label>Макс. верт. скорость высоты (м/с)</label>
+          <input
+            type="number"
+            id="p-vertspeed"
+            value="5"
+            min="0.5"
+            max="100"
+            step="0.5"
+          />
+          <span class="hint"
+            >Убирает крэш высоты от глушилки. Норма: 2–5 м/с</span
+          >
+        </div>
+        <div class="param-row">
+          <label>Мин. расстояние до кластера глушилки (м)</label>
+          <input
+            type="number"
+            id="p-mindist"
+            value="1000"
+            min="100"
+            max="100000"
+            step="100"
+          />
+          <span class="hint">Меньше — чувствительнее к близким аномалиям</span>
+        </div>
+        <div class="param-row">
+          <label>Порог раннего дрейфа (м)</label>
+          <input
+            type="number"
+            id="p-prejitter"
+            value="200"
+            min="0"
+            max="5000"
+            step="50"
+          />
+          <span class="hint">0 — не искать ранний дрейф перед глушилкой</span>
+        </div>
+        <div class="param-row">
+          <label>Шаг интерполяции (с)</label>
+          <input
+            type="number"
+            id="p-interval"
+            value="1"
+            min="0.5"
+            max="60"
+            step="0.5"
+          />
+          <span class="hint">Соответствует частоте записи вашего трека</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>3. Обработка</h2>
+      <button id="btn-fix" disabled>Исправить трек</button>
+      <pre id="log"></pre>
+      <a id="btn-download" download>⬇ Скачать исправленный GPX</a>
+    </div>
+
+    <script>
+      // ─── Утилиты ────────────────────────────────────────────────────────────────
+
+      function haversine(lat1, lon1, lat2, lon2) {
+        const R = 6_371_000,
+          p = Math.PI / 180;
+        const dlat = (lat2 - lat1) * p,
+          dlon = (lon2 - lon1) * p;
+        const a =
+          Math.sin(dlat / 2) ** 2 +
+          Math.cos(lat1 * p) * Math.cos(lat2 * p) * Math.sin(dlon / 2) ** 2;
+        return 2 * R * Math.asin(Math.sqrt(Math.max(0, Math.min(1, a))));
+      }
+
+      function parseTime(s) {
+        return new Date(s).getTime() / 1000;
+      } // Unix seconds
+
+      function formatTime(unixS) {
+        return new Date(unixS * 1000).toISOString().replace(".000Z", "Z");
+      }
+
+      // ─── Лог ────────────────────────────────────────────────────────────────────
+
+      const logEl = document.getElementById("log");
+      let logLines = [];
+      function log(msg, cls = "") {
+        logLines.push(
+          cls ? `<span class="${cls}">${esc(msg)}</span>` : esc(msg),
+        );
+        logEl.innerHTML = logLines.join("\n");
+        logEl.scrollTop = logEl.scrollHeight;
+      }
+      function esc(s) {
+        return s.replace(/&/g, "&amp;").replace(/</g, "&lt;");
+      }
+
+      // ─── Обнаружение эпизодов глушения ──────────────────────────────────────────
+
+      function findJammerEpisodes(
+        lats,
+        lons,
+        times,
+        maxSpeedMps,
+        minClusterDist,
+      ) {
+        const n = lats.length;
+        const teleports = [];
+        for (let i = 0; i < n - 1; i++) {
+          const dt = Math.max(1, times[i + 1] - times[i]);
+          const d = haversine(lats[i], lons[i], lats[i + 1], lons[i + 1]);
+          if (d / dt > maxSpeedMps) teleports.push(i);
+        }
+        if (!teleports.length) return [];
+
+        const episodes = [];
+        let k = 0;
+        while (k < teleports.length) {
+          const tOut = teleports[k];
+          const firstBad = tOut + 1;
+          if (firstBad >= n) break;
+
+          const dJump = haversine(
+            lats[tOut],
+            lons[tOut],
+            lats[firstBad],
+            lons[firstBad],
+          );
+          if (dJump < minClusterDist) {
+            k++;
+            continue;
+          }
+
+          const refLat = lats[tOut],
+            refLon = lons[tOut];
+          let found = false;
+          for (let m = k + 1; m < teleports.length; m++) {
+            const tBack = teleports[m];
+            const afterIdx = tBack + 1;
+            if (afterIdx >= n) continue;
+            const distBack = haversine(
+              lats[afterIdx],
+              lons[afterIdx],
+              refLat,
+              refLon,
+            );
+            if (distBack < minClusterDist) {
+              episodes.push({ firstBad, lastBad: tBack, afterIdx });
+              k = m + 1;
+              found = true;
+              break;
+            }
+          }
+          if (!found) k++;
+        }
+        return episodes;
+      }
+
+      // ─── Расширение назад: координаты + высота + "плато после крэша" ─────────────
+
+      function extendEpisodeBackward(
+        lats,
+        lons,
+        eles,
+        times,
+        firstBad,
+        afterIdx,
+        displacedM,
+        maxVertSpeed,
+      ) {
+        const refLat = lats[afterIdx],
+          refLon = lons[afterIdx];
+        let newFirst = firstBad;
+        let i = firstBad - 1;
+
+        while (i >= 0) {
+          const dtFwd = Math.abs(times[i + 1] - times[i]);
+          if (dtFwd > 3600) break;
+
+          const coordBad =
+            haversine(lats[i], lons[i], refLat, refLon) >= displacedM;
+
+          let altFwd = false;
+          if (dtFwd > 0 && dtFwd <= 30)
+            altFwd = Math.abs(eles[i + 1] - eles[i]) / dtFwd > maxVertSpeed;
+
+          let altBack = false;
+          if (i > 0) {
+            const dtBack = Math.abs(times[i] - times[i - 1]);
+            if (dtBack > 0 && dtBack <= 30)
+              altBack = Math.abs(eles[i] - eles[i - 1]) / dtBack > maxVertSpeed;
+          }
+
+          if (!coordBad && !altFwd && !altBack) break;
+          newFirst = i;
+          i--;
+        }
+        return newFirst;
+      }
+
+      function extendAltitudeBackward(eles, times, epStart, maxVertSpeed) {
+        let newStart = epStart;
+        let i = epStart - 1;
+
+        while (i >= 0) {
+          if (i === 0) break;
+          const dtIn = Math.abs(times[i] - times[i - 1]);
+          if (dtIn > 30) break;
+
+          const dhIn = Math.abs(eles[i] - eles[i - 1]);
+          const inAnomaly = dtIn > 0 && dhIn / dtIn > maxVertSpeed;
+
+          if (inAnomaly) {
+            newStart = i;
+            i--;
+            continue;
+          }
+          // Проверяем шаг до — "плато после крэша"
+          if (i - 1 > 0) {
+            const dtPrev = Math.abs(times[i - 1] - times[i - 2]);
+            if (dtPrev > 0 && dtPrev <= 30) {
+              const dhPrev = Math.abs(eles[i - 1] - eles[i - 2]);
+              if (dhPrev / dtPrev > maxVertSpeed) {
+                newStart = i;
+                i--;
+                continue;
+              }
+            }
+          }
+          break;
+        }
+        return newStart;
+      }
+
+      // ─── Стабильная высота ДО эпизода ───────────────────────────────────────────
+
+      function getPreEpisodeEle(
+        eles,
+        times,
+        beforeIdx,
+        lookbackMin = 30,
+        lookbackMax = 300,
+      ) {
+        const refT = times[beforeIdx];
+        const window = [];
+        for (let i = beforeIdx - 1; i >= 0; i--) {
+          const dt = refT - times[i];
+          if (dt > lookbackMax) break;
+          if (dt >= lookbackMin) window.push(eles[i]);
+        }
+        if (!window.length) return eles[beforeIdx];
+        window.sort((a, b) => a - b);
+        return window[Math.floor(window.length / 2)];
+      }
+
+      // ─── Интерполяция ───────────────────────────────────────────────────────────
+
+      function buildInterpolated(
+        lat0,
+        lon0,
+        ele0,
+        t0,
+        lat1,
+        lon1,
+        ele1,
+        t1,
+        intervalS,
+      ) {
+        const totalS = t1 - t0;
+        if (totalS <= intervalS) return [];
+        const pts = [];
+        for (let t = intervalS; t < totalS - 1e-6; t += intervalS) {
+          const a = t / totalS;
+          pts.push({
+            lat: lat0 + a * (lat1 - lat0),
+            lon: lon0 + a * (lon1 - lon0),
+            ele: ele0 + a * (ele1 - ele0),
+            time: t0 + t,
+          });
+        }
+        return pts;
+      }
+
+      // ─── Генерация XML ───────────────────────────────────────────────────────────
+
+      function fmtN(n, d = 8) {
+        return n.toFixed(d);
+      }
+
+      function makeTrkptXml(lat, lon, ele, time, nsExt) {
+        return `\t\t\t<trkpt lat="${fmtN(lat)}" lon="${fmtN(lon)}">
+\t\t\t\t<ele>${ele.toFixed(2)}</ele>
+\t\t\t\t<time>${formatTime(time)}</time>
+\t\t\t\t<extensions>
+\t\t\t\t\t<${nsExt}:TrackPointExtension>
+\t\t\t\t\t\t<${nsExt}:speed>0.0</${nsExt}:speed>
+\t\t\t\t\t\t<${nsExt}:cad>0.0</${nsExt}:cad>
+\t\t\t\t\t</${nsExt}:TrackPointExtension>
+\t\t\t\t</extensions>
+\t\t\t</trkpt>`;
+      }
+
+      // ─── Основная функция обработки ──────────────────────────────────────────────
+
+      function fixGpx(xmlText, params) {
+        const { maxSpeed, minDist, preJitter, maxVert, interval } = params;
+
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(xmlText, "application/xml");
+
+        const parseErr = doc.querySelector("parsererror");
+        if (parseErr)
+          throw new Error(
+            "Ошибка разбора XML: " + parseErr.textContent.slice(0, 200),
+          );
+
+        // Определяем namespace
+        const root = doc.documentElement;
+        const NS = root.namespaceURI || "http://www.topografix.com/GPX/1/1";
+
+        // Находим все trkpt
+        const allPts = Array.from(doc.querySelectorAll("trkpt"));
+        if (!allPts.length) throw new Error("Точки трека (trkpt) не найдены");
+
+        const n = allPts.length;
+        const lats = allPts.map((p) => parseFloat(p.getAttribute("lat")));
+        const lons = allPts.map((p) => parseFloat(p.getAttribute("lon")));
+        const eles = allPts.map((p) => {
+          const e = p.querySelector("ele");
+          return e ? parseFloat(e.textContent) : 0;
+        });
+        const timeEls = allPts.map((p) => p.querySelector("time"));
+        const times = timeEls.map((e) => (e ? parseTime(e.textContent) : 0));
+
+        log(`Загружено точек: ${n}`, "log-info");
+
+        // Обнаружение эпизодов
+        const episodes = findJammerEpisodes(
+          lats,
+          lons,
+          times,
+          maxSpeed,
+          minDist,
+        );
+
+        if (!episodes.length) {
+          log("Аномальных эпизодов не обнаружено.", "log-warn");
+          return xmlText;
+        }
+
+        let totalRemoved = 0,
+          totalInserted = 0;
+        const removeSet = new Set();
+        // insertionBefore[afterIdx] = [{lat,lon,ele,time}, ...]
+        const insertionBefore = new Map();
+
+        // Определяем ns3-префикс для расширений Garmin
+        const nsExtPrefix = (() => {
+          for (const attr of root.attributes) {
+            if (
+              attr.value ===
+              "http://www.garmin.com/xmlschemas/TrackPointExtension/v1"
+            )
+              return attr.name.replace("xmlns:", "");
+          }
+          return "ns3";
+        })();
+
+        for (let ep of episodes) {
+          let { firstBad, lastBad, afterIdx } = ep;
+
+          // 1) Расширение назад по координатам и высоте
+          if (preJitter > 0) {
+            firstBad = extendEpisodeBackward(
+              lats,
+              lons,
+              eles,
+              times,
+              firstBad,
+              afterIdx,
+              preJitter,
+              maxVert,
+            );
+          }
+
+          // 2) Расширение назад по высотному крэшу («плато»)
+          if (maxVert > 0) {
+            const altStart = extendAltitudeBackward(
+              eles,
+              times,
+              firstBad,
+              maxVert,
+            );
+            if (altStart < firstBad) firstBad = altStart;
+          }
+
+          const beforeIdx = firstBad - 1;
+          const cnt = lastBad - firstBad + 1;
+          totalRemoved += cnt;
+
+          const durS =
+            afterIdx < n ? (times[afterIdx] - times[beforeIdx]).toFixed(0) : 0;
+          log(
+            `\nЭпизод глушения: точки [${firstBad}..${lastBad}]  (${cnt} точек, ${durS}с пробел)`,
+            "log-warn",
+          );
+          log(
+            `  До  : ${timeEls[beforeIdx]?.textContent}  (${lats[beforeIdx].toFixed(5)}, ${lons[beforeIdx].toFixed(5)})  ele=${eles[beforeIdx].toFixed(1)}м`,
+          );
+          if (afterIdx < n)
+            log(
+              `  После: ${timeEls[afterIdx]?.textContent}  (${lats[afterIdx].toFixed(5)}, ${lons[afterIdx].toFixed(5)})  ele=${eles[afterIdx].toFixed(1)}м`,
+            );
+
+          for (let i = firstBad; i <= lastBad; i++) removeSet.add(i);
+
+          // 3) Интерполяция
+          if (afterIdx < n) {
+            const stableEle = getPreEpisodeEle(eles, times, beforeIdx);
+            const corrected = Math.abs(stableEle - eles[beforeIdx]) > 5;
+            log(
+              `  Высота: ${stableEle.toFixed(1)}м → ${eles[afterIdx].toFixed(1)}м` +
+                (corrected
+                  ? `  [скорректирована с ${eles[beforeIdx].toFixed(1)}м]`
+                  : ""),
+              "log-info",
+            );
+
+            const interp = buildInterpolated(
+              lats[beforeIdx],
+              lons[beforeIdx],
+              stableEle,
+              times[beforeIdx],
+              lats[afterIdx],
+              lons[afterIdx],
+              eles[afterIdx],
+              times[afterIdx],
+              interval,
+            );
+            insertionBefore.set(afterIdx, interp);
+            totalInserted += interp.length;
+          }
+        }
+
+        // ─── Перестройка сегмента ─────────────────────────────────────────────────
+
+        // Собираем оставшиеся trkpt и вставляем интерполированные
+        const seg = doc.querySelector("trkseg");
+        if (!seg) throw new Error("Элемент <trkseg> не найден");
+
+        // Сериализуем оставшиеся точки в строки (быстрее DOM-манипуляций на 60k точках)
+        const serializer = new XMLSerializer();
+        const newPtLines = [];
+
+        for (let i = 0; i < n; i++) {
+          if (insertionBefore.has(i)) {
+            for (const { lat, lon, ele, time } of insertionBefore.get(i)) {
+              newPtLines.push(makeTrkptXml(lat, lon, ele, time, nsExtPrefix));
+            }
+          }
+          if (!removeSet.has(i)) {
+            newPtLines.push(
+              "\t\t\t" +
+                serializer
+                  .serializeToString(allPts[i])
+                  .replace(/ xmlns(:[a-z0-9]+)?="[^"]*"/g, ""),
+            ); // убираем дублирующиеся xmlns
+          }
+        }
+
+        // Заменяем содержимое trkseg
+        // Используем строковый подход для скорости и сохранения оригинального форматирования
+        let outXml = serializer.serializeToString(doc);
+
+        // Более надёжный способ: строковая замена между <trkseg> и </trkseg>
+        const trkptBlock = newPtLines.join("\n");
+        outXml = outXml.replace(
+          /(<trkseg[^>]*>)([\s\S]*?)(<\/trkseg>)/,
+          `$1\n${trkptBlock}\n\t\t$3`,
+        );
+
+        log(`\nУдалено плохих точек  : ${totalRemoved}`, "log-ok");
+        log(`Вставлено интерполир. : ${totalInserted}`, "log-ok");
+        log(
+          `Итого точек в треке   : ${n - totalRemoved + totalInserted}`,
+          "log-ok",
+        );
+
+        return outXml;
+      }
+
+      // ─── UI ──────────────────────────────────────────────────────────────────────
+
+      let gpxText = null,
+        gpxFileName = "";
+
+      const dropzone = document.getElementById("dropzone");
+      const fileInput = document.getElementById("file-input");
+      const fileNameEl = document.getElementById("file-name");
+      const btnFix = document.getElementById("btn-fix");
+      const btnDl = document.getElementById("btn-download");
+
+      function loadFile(file) {
+        if (!file || !file.name.toLowerCase().endsWith(".gpx")) {
+          alert("Пожалуйста, выберите .gpx файл");
+          return;
+        }
+        gpxFileName = file.name;
+        fileNameEl.textContent = "📄 " + file.name;
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          gpxText = e.target.result;
+          btnFix.disabled = false;
+          log("");
+          logLines = [];
+          logEl.style.display = "none";
+          btnDl.style.display = "none";
+        };
+        reader.readAsText(file, "UTF-8");
+      }
+
+      fileInput.addEventListener("change", (e) => loadFile(e.target.files[0]));
+      dropzone.addEventListener("dragover", (e) => {
+        e.preventDefault();
+        dropzone.classList.add("drag-over");
+      });
+      dropzone.addEventListener("dragleave", () =>
+        dropzone.classList.remove("drag-over"),
+      );
+      dropzone.addEventListener("drop", (e) => {
+        e.preventDefault();
+        dropzone.classList.remove("drag-over");
+        loadFile(e.dataTransfer.files[0]);
+      });
+
+      btnFix.addEventListener("click", () => {
+        if (!gpxText) return;
+        logLines = [];
+        logEl.style.display = "block";
+        btnDl.style.display = "none";
+        btnFix.disabled = true;
+
+        const params = {
+          maxSpeed:
+            parseFloat(document.getElementById("p-maxspeed").value) || 20,
+          minDist:
+            parseFloat(document.getElementById("p-mindist").value) || 1000,
+          preJitter:
+            parseFloat(document.getElementById("p-prejitter").value) || 200,
+          maxVert:
+            parseFloat(document.getElementById("p-vertspeed").value) || 5,
+          interval:
+            parseFloat(document.getElementById("p-interval").value) || 1,
+        };
+
+        // Запускаем в следующем тике, чтобы успел отрисоваться UI
+        setTimeout(() => {
+          try {
+            const result = fixGpx(gpxText, params);
+
+            const blob = new Blob([result], { type: "application/gpx+xml" });
+            const url = URL.createObjectURL(blob);
+            const outName = gpxFileName.replace(/\.gpx$/i, "_fixed.gpx");
+
+            btnDl.href = url;
+            btnDl.download = outName;
+            btnDl.textContent = `⬇ Скачать ${outName}`;
+            btnDl.style.display = "block";
+
+            log("\n✓ Готово!", "log-ok");
+          } catch (err) {
+            log("\n✗ Ошибка: " + err.message, "log-err");
+          } finally {
+            btnFix.disabled = false;
+          }
+        }, 50);
+      });
+    </script>
+  </body>
+</html>

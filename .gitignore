@@ -1,0 +1,8 @@
+# GPX-треки с личными данными
+*.gpx
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
