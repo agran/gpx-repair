@@ -430,6 +430,33 @@
         return { lats, lons };
       }
 
+      function smoothSeries(arr, radius) {
+        const n = arr.length;
+        if (radius <= 0 || n === 0) return arr;
+        const out = new Array(n);
+        let sum = 0,
+          count = 0;
+        for (let k = 0; k <= Math.min(radius, n - 1); k++) {
+          sum += arr[k];
+          count++;
+        }
+        out[0] = sum / count;
+        for (let i = 1; i < n; i++) {
+          const addIdx = i + radius;
+          const remIdx = i - radius - 1;
+          if (addIdx < n) {
+            sum += arr[addIdx];
+            count++;
+          }
+          if (remIdx >= 0) {
+            sum -= arr[remIdx];
+            count--;
+          }
+          out[i] = sum / count;
+        }
+        return out;
+      }
+
       function drawTrack(canvas, lats, lons, color) {
         if (!lats.length) {
           canvas.style.display = "none";
@@ -474,37 +501,32 @@
           h - padding - (lat - minLat) * scale - offY,
         ];
 
-        // Группируем точки в "бакеты" и усредняем их — сглаживает мелкий
-        // GPS-шум (дрожание координат), который иначе делает линию "мохнатой"
-        // на таком масштабе. Это влияет только на превью, не на сами данные.
-        const maxBuckets = 500;
-        const step = Math.max(1, Math.ceil(lats.length / maxBuckets));
+        // Лёгкое скользящее сглаживание убирает мелкое дрожание GPS
+        // (шум в 1-2 точки), но не "съедает" крупные выбросы/артефакты —
+        // радиус окна намного меньше их ширины. Влияет только на превью.
+        const smoothRadius = Math.min(3, Math.floor(lats.length / 10));
+        const smoothLats = smoothSeries(lats, smoothRadius);
+        const smoothLons = smoothSeries(lons, smoothRadius);
+
+        // Прореживание для производительности на очень длинных треках —
+        // берём каждую N-ю уже сглаженную точку, пики при этом не теряются.
+        const maxPoints = 6000;
+        const step = Math.max(1, Math.floor(lats.length / maxPoints));
 
         ctx.strokeStyle = color;
         ctx.lineWidth = 1.6;
         ctx.lineJoin = "round";
         ctx.lineCap = "round";
         ctx.beginPath();
-        let first = true;
         for (let i = 0; i < lats.length; i += step) {
-          const end = Math.min(i + step, lats.length);
-          let sumLat = 0,
-            sumLon = 0;
-          for (let j = i; j < end; j++) {
-            sumLat += lats[j];
-            sumLon += lons[j];
-          }
-          const cnt = end - i;
-          const [x, y] = toXY(sumLat / cnt, sumLon / cnt);
-          if (first) {
-            ctx.moveTo(x, y);
-            first = false;
-          } else ctx.lineTo(x, y);
+          const [x, y] = toXY(smoothLats[i], smoothLons[i]);
+          if (i === 0) ctx.moveTo(x, y);
+          else ctx.lineTo(x, y);
         }
-        ctx.stroke();
-
         const lastIdx = lats.length - 1;
-        const [lx, ly] = toXY(lats[lastIdx], lons[lastIdx]);
+        const [lx, ly] = toXY(smoothLats[lastIdx], smoothLons[lastIdx]);
+        ctx.lineTo(lx, ly);
+        ctx.stroke();
 
         const [sx, sy] = toXY(lats[0], lons[0]);
         ctx.fillStyle = "#4ade80";
