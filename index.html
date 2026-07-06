@@ -231,6 +231,23 @@
         text-align: center;
       }
 
+      .track-canvas {
+        display: none;
+        width: 100%;
+        height: 220px;
+        background: #0d1b35;
+        border: 1px solid #0f3460;
+        border-radius: 8px;
+        margin-top: 14px;
+      }
+      .track-label {
+        display: none;
+        font-size: 0.75rem;
+        color: #555;
+        margin-top: 8px;
+        text-align: center;
+      }
+
       footer {
         margin-top: 32px;
         padding: 16px;
@@ -284,6 +301,10 @@
         accept=".gpx,application/gpx+xml,text/xml"
       />
       <div class="file-name" id="file-name"></div>
+      <canvas id="canvas-before" class="track-canvas"></canvas>
+      <div class="track-label" id="track-label-before">
+        Схема загруженного трека (с артефактами)
+      </div>
     </div>
 
     <div class="card">
@@ -369,6 +390,10 @@
           alt="Готово"
         />
       </div>
+      <canvas id="canvas-after" class="track-canvas"></canvas>
+      <div class="track-label" id="track-label-after">
+        Схема исправленного трека
+      </div>
     </div>
 
     <script>
@@ -388,6 +413,95 @@
       function parseTime(s) {
         return new Date(s).getTime() / 1000;
       } // Unix seconds
+
+      // ─── Визуализация схемы трека ──────────────────────────────────────────────
+
+      function extractLatLon(xmlText) {
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(xmlText, "application/xml");
+        if (doc.querySelector("parsererror")) return { lats: [], lons: [] };
+        const pts = doc.querySelectorAll("trkpt");
+        const lats = new Array(pts.length);
+        const lons = new Array(pts.length);
+        pts.forEach((p, i) => {
+          lats[i] = parseFloat(p.getAttribute("lat"));
+          lons[i] = parseFloat(p.getAttribute("lon"));
+        });
+        return { lats, lons };
+      }
+
+      function drawTrack(canvas, lats, lons, color) {
+        if (!lats.length) {
+          canvas.style.display = "none";
+          return;
+        }
+        const dpr = window.devicePixelRatio || 1;
+        const w = canvas.clientWidth || canvas.parentElement.clientWidth || 600;
+        const h = 220;
+        canvas.width = Math.round(w * dpr);
+        canvas.height = Math.round(h * dpr);
+        canvas.style.display = "block";
+
+        const ctx = canvas.getContext("2d");
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        ctx.clearRect(0, 0, w, h);
+
+        let minLat = Infinity,
+          maxLat = -Infinity,
+          minLon = Infinity,
+          maxLon = -Infinity;
+        for (let i = 0; i < lats.length; i++) {
+          if (lats[i] < minLat) minLat = lats[i];
+          if (lats[i] > maxLat) maxLat = lats[i];
+          if (lons[i] < minLon) minLon = lons[i];
+          if (lons[i] > maxLon) maxLon = lons[i];
+        }
+
+        const avgLat = (minLat + maxLat) / 2;
+        const lonScale = Math.cos((avgLat * Math.PI) / 180) || 1;
+        const padding = 16;
+        const spanLat = Math.max(maxLat - minLat, 1e-9);
+        const spanLon = Math.max((maxLon - minLon) * lonScale, 1e-9);
+        const scale = Math.min(
+          (w - padding * 2) / spanLon,
+          (h - padding * 2) / spanLat,
+        );
+        const offX = (w - padding * 2 - spanLon * scale) / 2;
+        const offY = (h - padding * 2 - spanLat * scale) / 2;
+
+        const toXY = (lat, lon) => [
+          padding + (lon - minLon) * lonScale * scale + offX,
+          h - padding - (lat - minLat) * scale - offY,
+        ];
+
+        // Downsample for performance on очень длинных треках
+        const maxPoints = 4000;
+        const step = Math.max(1, Math.floor(lats.length / maxPoints));
+
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 1.4;
+        ctx.beginPath();
+        for (let i = 0; i < lats.length; i += step) {
+          const [x, y] = toXY(lats[i], lons[i]);
+          if (i === 0) ctx.moveTo(x, y);
+          else ctx.lineTo(x, y);
+        }
+        const lastIdx = lats.length - 1;
+        const [lx, ly] = toXY(lats[lastIdx], lons[lastIdx]);
+        ctx.lineTo(lx, ly);
+        ctx.stroke();
+
+        const [sx, sy] = toXY(lats[0], lons[0]);
+        ctx.fillStyle = "#4ade80";
+        ctx.beginPath();
+        ctx.arc(sx, sy, 4, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.fillStyle = "#f87171";
+        ctx.beginPath();
+        ctx.arc(lx, ly, 4, 0, Math.PI * 2);
+        ctx.fill();
+      }
 
       function formatTime(unixS) {
         return new Date(unixS * 1000).toISOString().replace(".000Z", "Z");
@@ -652,7 +766,10 @@
         for (let i = 1; i < n; i++) {
           lengthBefore += haversine(lats[i - 1], lons[i - 1], lats[i], lons[i]);
         }
-        log(`Длина трека до исправления: ${(lengthBefore / 1000).toFixed(2)} км`, "log-info");
+        log(
+          `Длина трека до исправления: ${(lengthBefore / 1000).toFixed(2)} км`,
+          "log-info",
+        );
 
         // Обнаружение эпизодов
         const episodes = findJammerEpisodes(
@@ -853,6 +970,19 @@
           logLines = [];
           logEl.style.display = "none";
           btnDl.style.display = "none";
+          document.getElementById("done-img").style.display = "none";
+          document.getElementById("canvas-after").style.display = "none";
+          document.getElementById("track-label-after").style.display = "none";
+
+          try {
+            const { lats, lons } = extractLatLon(gpxText);
+            const canvasBefore = document.getElementById("canvas-before");
+            drawTrack(canvasBefore, lats, lons, "#7eb8f7");
+            document.getElementById("track-label-before").style.display =
+              canvasBefore.style.display === "block" ? "block" : "none";
+          } catch (err) {
+            /* превью необязательно, ошибку покажем при нажатии "Исправить" */
+          }
         };
         reader.readAsText(file, "UTF-8");
       }
@@ -908,6 +1038,12 @@
 
             log("\n✓ Готово!", "log-ok");
             document.getElementById("done-img").style.display = "block";
+
+            const { lats: afterLats, lons: afterLons } = extractLatLon(result);
+            const canvasAfter = document.getElementById("canvas-after");
+            drawTrack(canvasAfter, afterLats, afterLons, "#4ade80");
+            document.getElementById("track-label-after").style.display =
+              canvasAfter.style.display === "block" ? "block" : "none";
           } catch (err) {
             log("\n✗ Ошибка: " + err.message, "log-err");
           } finally {
