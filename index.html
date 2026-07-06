@@ -330,13 +330,13 @@
             d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5"
           />
         </svg>
-        <p><strong>Нажмите или перетащите .gpx файл</strong></p>
+        <p><strong>Нажмите или перетащите .gpx, .tcx или .fit файл</strong></p>
         <p>Треки с часов Amazfit, Garmin, Suunto и других</p>
       </div>
       <input
         type="file"
         id="file-input"
-        accept=".gpx,application/gpx+xml,text/xml"
+        accept=".gpx,.tcx,.fit,application/gpx+xml,text/xml"
       />
       <div class="file-name" id="file-name"></div>
       <div id="map-before" class="track-map"></div>
@@ -912,6 +912,230 @@
 \t\t\t</trkpt>`;
       }
 
+      // ─── Импорт TCX / FIT (конвертация в GPX) ────────────────────────────────────
+
+      function escapeXml(s) {
+        return String(s).replace(
+          /[&<>"']/g,
+          (c) =>
+            ({
+              "&": "&amp;",
+              "<": "&lt;",
+              ">": "&gt;",
+              '"': "&quot;",
+              "'": "&apos;",
+            })[c],
+        );
+      }
+
+      // Собирает синтетический GPX-документ из массива точек {lat, lon, ele, time}.
+      // Дальше он проходит через тот же fixGpx()/extractTrackData(), что и обычный GPX.
+      function buildGpxFromPoints(points, trackName) {
+        if (!points.length)
+          throw new Error("Не найдено точек трека для конвертации");
+        const lines = points.map((p) => {
+          const eleTag = Number.isFinite(p.ele)
+            ? `<ele>${p.ele.toFixed(2)}</ele>`
+            : "";
+          const timeTag = Number.isFinite(p.time)
+            ? `<time>${formatTime(p.time)}</time>`
+            : "";
+          return `\t\t\t<trkpt lat="${fmtN(p.lat)}" lon="${fmtN(p.lon)}">${eleTag}${timeTag}</trkpt>`;
+        });
+        return (
+          `<?xml version="1.0" encoding="UTF-8"?>\n` +
+          `<gpx version="1.1" creator="gpx-repair" xmlns="http://www.topografix.com/GPX/1/1">\n` +
+          `\t<trk>\n\t\t<name>${escapeXml(trackName || "Track")}</name>\n\t\t<trkseg>\n` +
+          lines.join("\n") +
+          `\n\t\t</trkseg>\n\t</trk>\n</gpx>`
+        );
+      }
+
+      // TCX (Garmin Training Center Database): Activity/Lap/Track/Trackpoint,
+      // координаты в Position/LatitudeDegrees и LongitudeDegrees.
+      function convertTcxToGpx(tcxText, trackName) {
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(tcxText, "application/xml");
+        if (doc.querySelector("parsererror"))
+          throw new Error("Ошибка разбора TCX-файла");
+
+        const trackpoints = Array.from(doc.querySelectorAll("Trackpoint"));
+        if (!trackpoints.length)
+          throw new Error("В TCX-файле не найдены точки трека (Trackpoint)");
+
+        const points = [];
+        for (const tp of trackpoints) {
+          const posEl = tp.querySelector("Position");
+          if (!posEl) continue; // точки без координат (паузы и т.п.) пропускаем
+          const latEl = posEl.querySelector("LatitudeDegrees");
+          const lonEl = posEl.querySelector("LongitudeDegrees");
+          if (!latEl || !lonEl) continue;
+          const lat = parseFloat(latEl.textContent);
+          const lon = parseFloat(lonEl.textContent);
+          if (!Number.isFinite(lat) || !Number.isFinite(lon)) continue;
+
+          const timeEl = tp.querySelector("Time");
+          const time = timeEl ? parseTime(timeEl.textContent) : NaN;
+          const eleEl = tp.querySelector("AltitudeMeters");
+          const ele = eleEl ? parseFloat(eleEl.textContent) : NaN;
+          points.push({ lat, lon, ele, time });
+        }
+        if (!points.length)
+          throw new Error("В TCX-файле не найдено точек трека с координатами");
+
+        return buildGpxFromPoints(points, trackName);
+      }
+
+      // Минимальный разбор бинарного формата FIT (Garmin): читаем только
+      // record-сообщения (глобальный номер 20) с полями timestamp/position_lat/
+      // position_long/altitude/enhanced_altitude — этого достаточно для GPX-трека.
+      // Спецификация: https://developer.garmin.com/fit/protocol/
+      const FIT_EPOCH_OFFSET = 631065600; // секунд между 1970-01-01 и 1989-12-31 (эпоха FIT)
+
+      function fitSemicirclesToDeg(v) {
+        return v * (180 / 2147483648);
+      }
+
+      function parseFitTrackpoints(arrayBuffer) {
+        const view = new DataView(arrayBuffer);
+        if (view.byteLength < 12) throw new Error("Файл слишком мал для FIT");
+
+        const headerSize = view.getUint8(0);
+        const sig = String.fromCharCode(
+          view.getUint8(8),
+          view.getUint8(9),
+          view.getUint8(10),
+          view.getUint8(11),
+        );
+        if (sig !== ".FIT")
+          throw new Error("Не похоже на FIT-файл (нет сигнатуры .FIT)");
+
+        const dataSize = view.getUint32(4, true);
+        const dataEnd = headerSize + dataSize;
+        if (dataEnd > view.byteLength)
+          throw new Error("Повреждённый FIT-файл (некорректный размер данных)");
+
+        const localDefs = {};
+        let lastTimestamp = null;
+        const points = [];
+
+        function readDataMessage(offset, def) {
+          let lat = null,
+            lon = null,
+            altitude = null,
+            enhAltitude = null,
+            timestamp = null;
+          for (const f of def.fields) {
+            if (def.globalMsgNum === 20) {
+              if (f.defNum === 253 && f.size === 4) {
+                timestamp = view.getUint32(offset, def.littleEndian);
+              } else if (f.defNum === 0 && f.size === 4) {
+                lat = view.getInt32(offset, def.littleEndian);
+              } else if (f.defNum === 1 && f.size === 4) {
+                lon = view.getInt32(offset, def.littleEndian);
+              } else if (f.defNum === 2 && f.size === 2) {
+                altitude = view.getUint16(offset, def.littleEndian);
+              } else if (f.defNum === 78 && f.size === 4) {
+                enhAltitude = view.getUint32(offset, def.littleEndian);
+              }
+            }
+            offset += f.size;
+          }
+          return { offset, lat, lon, altitude, enhAltitude, timestamp };
+        }
+
+        function addPoint(def, res, ts) {
+          if (!def || def.globalMsgNum !== 20) return;
+          if (res.lat === null || res.lon === null) return;
+          if (res.lat === 0x7fffffff || res.lon === 0x7fffffff) return;
+          if (ts == null || ts === 0xffffffff) return;
+          let ele = NaN;
+          if (res.enhAltitude != null && res.enhAltitude !== 0xffffffff) {
+            ele = res.enhAltitude / 5 - 500;
+          } else if (res.altitude != null && res.altitude !== 0xffff) {
+            ele = res.altitude / 5 - 500;
+          }
+          points.push({
+            lat: fitSemicirclesToDeg(res.lat),
+            lon: fitSemicirclesToDeg(res.lon),
+            ele,
+            time: ts + FIT_EPOCH_OFFSET,
+          });
+        }
+
+        let offset = headerSize;
+        while (offset < dataEnd) {
+          const headerByte = view.getUint8(offset);
+          offset += 1;
+
+          if (headerByte & 0x80) {
+            // Заголовок со сжатым временем (compressed timestamp header)
+            const localType = (headerByte >> 5) & 0x03;
+            const def = localDefs[localType];
+            if (!def) break;
+            const timeOffset = headerByte & 0x1f;
+            let ts;
+            if (lastTimestamp == null) {
+              ts = timeOffset;
+            } else {
+              let delta = timeOffset - (lastTimestamp & 0x1f);
+              if (delta < 0) delta += 32;
+              ts = lastTimestamp + delta;
+            }
+            lastTimestamp = ts;
+            const res = readDataMessage(offset, def);
+            offset = res.offset;
+            addPoint(def, res, ts);
+          } else {
+            const isDefinition = !!(headerByte & 0x40);
+            const localType = headerByte & 0x0f;
+            if (isDefinition) {
+              offset += 1; // reserved
+              const arch = view.getUint8(offset);
+              offset += 1;
+              const littleEndian = arch === 0;
+              const globalMsgNum = view.getUint16(offset, littleEndian);
+              offset += 2;
+              const numFields = view.getUint8(offset);
+              offset += 1;
+              const fields = [];
+              for (let i = 0; i < numFields; i++) {
+                const defNum = view.getUint8(offset);
+                offset += 1;
+                const size = view.getUint8(offset);
+                offset += 1;
+                offset += 1; // base type байт нам не нужен — размер поля уже известен
+                fields.push({ defNum, size });
+              }
+              if (headerByte & 0x20) {
+                const numDev = view.getUint8(offset);
+                offset += 1;
+                offset += numDev * 3;
+              }
+              localDefs[localType] = { globalMsgNum, littleEndian, fields };
+            } else {
+              const def = localDefs[localType];
+              if (!def) break;
+              const res = readDataMessage(offset, def);
+              offset = res.offset;
+              if (res.timestamp != null) lastTimestamp = res.timestamp;
+              addPoint(def, res, res.timestamp);
+            }
+          }
+        }
+
+        if (!points.length)
+          throw new Error(
+            "В FIT-файле не найдено точек трека (record) с координатами",
+          );
+        return points;
+      }
+
+      function convertFitToGpx(arrayBuffer, trackName) {
+        const points = parseFitTrackpoints(arrayBuffer);
+        return buildGpxFromPoints(points, trackName);
+      }
+
       // ─── Основная функция обработки ──────────────────────────────────────────────
 
       function fixGpx(xmlText, params) {
@@ -1141,15 +1365,36 @@
       const btnDl = document.getElementById("btn-download");
 
       function loadFile(file) {
-        if (!file || !file.name.toLowerCase().endsWith(".gpx")) {
-          alert("Пожалуйста, выберите .gpx файл");
+        const name = ((file && file.name) || "").toLowerCase();
+        const isGpx = name.endsWith(".gpx");
+        const isTcx = name.endsWith(".tcx");
+        const isFit = name.endsWith(".fit");
+        if (!file || (!isGpx && !isTcx && !isFit)) {
+          alert("Пожалуйста, выберите .gpx, .tcx или .fit файл");
           return;
         }
         gpxFileName = file.name;
         fileNameEl.textContent = "📄 " + file.name;
         const reader = new FileReader();
         reader.onload = (e) => {
-          gpxText = e.target.result;
+          try {
+            if (isGpx) {
+              gpxText = e.target.result;
+            } else if (isTcx) {
+              gpxText = convertTcxToGpx(e.target.result, file.name);
+              fileNameEl.textContent =
+                "📄 " + file.name + " (конвертирован из TCX)";
+            } else {
+              gpxText = convertFitToGpx(e.target.result, file.name);
+              fileNameEl.textContent =
+                "📄 " + file.name + " (конвертирован из FIT)";
+            }
+          } catch (err) {
+            alert("Не удалось разобрать файл: " + err.message);
+            btnFix.disabled = true;
+            gpxText = null;
+            return;
+          }
           btnFix.disabled = false;
           log("");
           logLines = [];
@@ -1179,7 +1424,11 @@
             // превью необязательно, ошибку покажем при нажатии "Исправить"
           }
         };
-        reader.readAsText(file, "UTF-8");
+        if (isFit) {
+          reader.readAsArrayBuffer(file);
+        } else {
+          reader.readAsText(file, "UTF-8");
+        }
       }
 
       fileInput.addEventListener("change", (e) => loadFile(e.target.files[0]));
@@ -1224,7 +1473,8 @@
 
             const blob = new Blob([result], { type: "application/gpx+xml" });
             const url = URL.createObjectURL(blob);
-            const outName = gpxFileName.replace(/\.gpx$/i, "_fixed.gpx");
+            const outName =
+              gpxFileName.replace(/\.(gpx|tcx|fit)$/i, "") + "_fixed.gpx";
 
             btnDl.href = url;
             btnDl.download = outName;
