@@ -66,6 +66,7 @@
         align-items: center;
         justify-content: center;
         gap: 10px;
+        margin-top: 14px;
       }
       .download-row #btn-download {
         flex: 1;
@@ -139,8 +140,48 @@
         gap: 14px;
       }
       @media (max-width: 480px) {
+        body {
+          padding: 16px 10px;
+        }
+        .brand img {
+          width: 34px;
+          height: 34px;
+        }
+        h1 {
+          font-size: 1.3rem;
+        }
+        .subtitle {
+          font-size: 0.78rem;
+          margin-bottom: 18px;
+        }
+        .card {
+          padding: 16px;
+          border-radius: 10px;
+          margin-bottom: 16px;
+        }
+        .card h2 {
+          font-size: 0.92rem;
+        }
         .params-grid {
           grid-template-columns: 1fr;
+        }
+        #log {
+          font-size: 0.73rem;
+          padding: 10px;
+          max-height: 240px;
+        }
+        .download-row {
+          gap: 8px;
+        }
+        #btn-download {
+          font-size: 0.92rem;
+          padding: 11px;
+        }
+        .track-map {
+          height: 240px;
+        }
+        .track-stats {
+          grid-template-columns: repeat(auto-fit, minmax(90px, 1fr));
         }
       }
       .param-row {
@@ -201,10 +242,13 @@
         padding: 14px;
         font-family: "Fira Mono", "Courier New", monospace;
         font-size: 0.8rem;
+        line-height: 1.45;
         max-height: 280px;
         overflow-y: auto;
+        overflow-x: hidden;
         white-space: pre-wrap;
-        word-break: break-all;
+        word-break: normal;
+        overflow-wrap: break-word;
         display: none;
       }
       .log-ok {
@@ -223,21 +267,35 @@
       /* Download */
       #btn-download {
         display: none;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 2px;
         width: 100%;
-        padding: 12px;
+        padding: 11px 14px;
         border: none;
         border-radius: 8px;
         background: #16a34a;
         color: #fff;
-        font-size: 1rem;
-        font-weight: 600;
         cursor: pointer;
         transition: background 0.2s;
         text-align: center;
         text-decoration: none;
+        line-height: 1.3;
       }
       #btn-download:hover {
         background: #15803d;
+      }
+      #btn-download .dl-label {
+        font-size: 1rem;
+        font-weight: 600;
+      }
+      #btn-download .dl-filename {
+        font-size: 0.78rem;
+        font-weight: 400;
+        color: rgba(255, 255, 255, 0.85);
+        max-width: 100%;
+        overflow-wrap: anywhere;
       }
 
       .file-name {
@@ -431,7 +489,10 @@
       <button id="btn-fix" disabled>Исправить трек</button>
       <pre id="log"></pre>
       <div class="download-row">
-        <a id="btn-download" download>⬇ Скачать исправленный GPX</a>
+        <a id="btn-download" download>
+          <span class="dl-label">⬇ Скачать исправленный GPX</span>
+          <span class="dl-filename" id="dl-filename"></span>
+        </a>
         <img
           id="done-img"
           src="https://www.erudit23.ru/gpx-repair/done.svg"
@@ -1600,8 +1661,10 @@
 
             btnDl.href = url;
             btnDl.download = outName;
-            btnDl.textContent = `⬇ Скачать ${outName}`;
-            btnDl.style.display = "block";
+            document.querySelector("#btn-download .dl-label").textContent =
+              "⬇ Скачать";
+            document.getElementById("dl-filename").textContent = outName;
+            btnDl.style.display = "flex";
 
             log("\n✓ Готово!", "log-ok");
             document.getElementById("done-img").style.display = "block";
