@@ -460,40 +460,77 @@
         return { lats, lons, eles };
       }
 
+      function fillMissingEle(eles) {
+        const out = eles.slice();
+        let last = null;
+        for (let i = 0; i < out.length; i++) {
+          if (Number.isNaN(out[i])) out[i] = last;
+          else last = out[i];
+        }
+        let next = null;
+        for (let i = out.length - 1; i >= 0; i--) {
+          if (out[i] === null || Number.isNaN(out[i])) out[i] = next;
+          else next = out[i];
+        }
+        return out;
+      }
+
+      // Набор/сброс высоты по "сырым" точка-к-точке разницам сильно завышен,
+      // т.к. GPS/барометр шумит на каждой отметке (обычно в 1.5-3 раза выше
+      // реальности). Сглаживаем профиль высоты и считаем изменения только
+      // сверх порога нечувствительности — так считают трекинг-сервисы
+      // (Strava, Garmin Connect и т.п.).
+      function computeElevationGainLoss(eles) {
+        const filled = fillMissingEle(eles);
+        const radius = Math.min(10, Math.max(1, Math.floor(filled.length / 20)));
+        const smoothed = smoothSeries(filled, radius);
+
+        const threshold = 3; // м — порог нечувствительности
+        let gain = 0,
+          loss = 0;
+        let base = smoothed[0];
+        for (let i = 1; i < smoothed.length; i++) {
+          const diff = smoothed[i] - base;
+          if (diff >= threshold) {
+            gain += diff;
+            base = smoothed[i];
+          } else if (diff <= -threshold) {
+            loss += -diff;
+            base = smoothed[i];
+          }
+        }
+
+        let minEle = Infinity,
+          maxEle = -Infinity;
+        for (let i = 0; i < smoothed.length; i++) {
+          if (smoothed[i] < minEle) minEle = smoothed[i];
+          if (smoothed[i] > maxEle) maxEle = smoothed[i];
+        }
+
+        return { minEle, maxEle, gain, loss };
+      }
+
       function computeTrackStats(lats, lons, eles) {
         let length = 0;
         for (let i = 1; i < lats.length; i++) {
           length += haversine(lats[i - 1], lons[i - 1], lats[i], lons[i]);
         }
 
-        let minEle = Infinity,
-          maxEle = -Infinity,
-          gain = 0,
-          loss = 0,
-          hasEle = false;
-        let prevEle = null;
-        for (let i = 0; i < eles.length; i++) {
-          const e = eles[i];
-          if (Number.isNaN(e)) continue;
-          hasEle = true;
-          if (e < minEle) minEle = e;
-          if (e > maxEle) maxEle = e;
-          if (prevEle !== null) {
-            const d = e - prevEle;
-            if (d > 0) gain += d;
-            else loss += -d;
-          }
-          prevEle = e;
+        const hasEle = eles.some((e) => !Number.isNaN(e));
+        if (!hasEle) {
+          return {
+            length,
+            hasEle: false,
+            minEle: null,
+            maxEle: null,
+            gain: null,
+            loss: null,
+          };
         }
 
-        return {
-          length,
-          hasEle,
-          minEle: hasEle ? minEle : null,
-          maxEle: hasEle ? maxEle : null,
-          gain: hasEle ? gain : null,
-          loss: hasEle ? loss : null,
-        };
+        const { minEle, maxEle, gain, loss } = computeElevationGainLoss(eles);
+
+        return { length, hasEle: true, minEle, maxEle, gain, loss };
       }
 
       function renderTrackStats(containerEl, stats) {
