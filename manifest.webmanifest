@@ -1,0 +1,19 @@
+{
+  "name": "GPX Jammer Fix",
+  "short_name": "GPX Repair",
+  "description": "Удаление артефактов GPS-глушилки из GPX/TCX/FIT треков. Всё обрабатывается локально в браузере.",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#1a1a2e",
+  "theme_color": "#1a1a2e",
+  "lang": "ru",
+  "icons": [
+    {
+      "src": "./assets/logo.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}

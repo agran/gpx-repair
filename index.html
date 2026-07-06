@@ -9,6 +9,8 @@
       type="image/svg+xml"
       href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%231f2937'/%3E%3Ccircle cx='7' cy='22' r='3' fill='%237eb8f7'/%3E%3Ccircle cx='25' cy='10' r='3' fill='%237eb8f7'/%3E%3Cpath d='M7 22 Q10 6 16 16 Q22 26 25 10' stroke='%237eb8f7' stroke-width='2.2' fill='none' stroke-linecap='round'/%3E%3C/svg%3E"
     />
+    <link rel="manifest" href="./manifest.webmanifest" />
+    <meta name="theme-color" content="#1a1a2e" />
     <link
       rel="stylesheet"
       href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
@@ -74,6 +76,9 @@
         width: 32px;
         height: 32px;
         border-radius: 6px;
+      }
+      .img-broken {
+        display: none !important;
       }
       .card {
         background: #16213e;
@@ -304,7 +309,11 @@
   </head>
   <body>
     <div class="brand">
-      <img src="https://www.erudit23.ru/gpx-repair/logo.svg" alt="GPX Repair" />
+      <img
+        src="https://www.erudit23.ru/gpx-repair/logo.svg"
+        alt="GPX Repair"
+        onerror="this.classList.add('img-broken')"
+      />
       <h1>GPX Jammer Fix</h1>
     </div>
     <p class="subtitle">
@@ -427,6 +436,7 @@
           id="done-img"
           src="https://www.erudit23.ru/gpx-repair/done.svg"
           alt="Готово"
+          onerror="this.classList.add('img-broken')"
         />
       </div>
       <div id="map-after" class="track-map"></div>
@@ -1619,6 +1629,15 @@
           }
         }, 50);
       });
+    </script>
+    <script>
+      if ("serviceWorker" in navigator) {
+        window.addEventListener("load", () => {
+          navigator.serviceWorker
+            .register("./service-worker.js")
+            .catch(() => {});
+        });
+      }
     </script>
     <footer>
       <a href="https://github.com/agran/gpx-repair" target="_blank"
