@@ -48,12 +48,20 @@
         color: #888;
         margin-bottom: 24px;
       }
+      .download-row {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 10px;
+      }
+      .download-row #btn-download {
+        flex: 1;
+      }
       #done-img {
         display: none;
-        width: 28px;
-        height: 28px;
-        vertical-align: middle;
-        margin-left: 8px;
+        flex-shrink: 0;
+        width: 32px;
+        height: 32px;
         border-radius: 6px;
       }
       .card {
@@ -353,8 +361,10 @@
       <h2>3. Обработка</h2>
       <button id="btn-fix" disabled>Исправить трек</button>
       <pre id="log"></pre>
-      <a id="btn-download" download>⬇ Скачать исправленный GPX</a>
-      <img id="done-img" src="https://www.erudit23.ru/gpx-repair/done.svg" alt="Готово" />
+      <div class="download-row">
+        <a id="btn-download" download>⬇ Скачать исправленный GPX</a>
+        <img id="done-img" src="https://www.erudit23.ru/gpx-repair/done.svg" alt="Готово" />
+      </div>
     </div>
 
     <script>
@@ -868,7 +878,7 @@
             btnDl.style.display = "block";
 
             log("\n✓ Готово!", "log-ok");
-            document.getElementById("done-img").style.display = "inline-block";
+            document.getElementById("done-img").style.display = "block";
           } catch (err) {
             log("\n✗ Ошибка: " + err.message, "log-err");
           } finally {
