@@ -141,6 +141,34 @@ def find_jammer_episodes(
             # Нет парного возврата — пропускаем этот скачок
             k += 1
 
+    # ─── Эпизод глушения без «скачка назад» ────────────────────────────────
+    # Трек может обрываться прямо во время глушения (устройство выключили или
+    # остановили запись, пока сигнал ещё не восстановился) — тогда среди
+    # телепортаций нет пары «туда-обратно», т.к. «обратно» попросту не
+    # произошло. Ищем самую ПОЗДНЮЮ телепортацию-«выход» после последнего уже
+    # найденного эпизода, от которой трек так и не вернулся близко к исходной
+    # точке до самого конца записи, и считаем всё от неё до конца трека одним
+    # хвостовым эпизодом (без интерполяции — восстанавливать некуда).
+    last_covered = max((e[1] + 1 for e in episodes), default=0)
+    for k2 in range(len(teleport_at) - 1, -1, -1):
+        t_out = teleport_at[k2]
+        if t_out < last_covered:
+            break  # не залезаем в уже обработанный участок
+
+        first_bad = t_out + 1
+        if first_bad >= n:
+            continue
+
+        d_jump = haversine(lats[t_out], lons[t_out], lats[first_bad], lons[first_bad])
+        if d_jump < min_cluster_dist_m:
+            continue
+
+        dist_end = haversine(lats[n - 1], lons[n - 1], lats[t_out], lons[t_out])
+        if dist_end >= min_cluster_dist_m:
+            episodes.append((first_bad, n - 1))
+            break
+
+    episodes.sort(key=lambda e: e[0])
     return episodes
 
 
@@ -229,25 +257,59 @@ def build_interpolated_points(
     lat0: float, lon0: float, ele0: float, t0: datetime,
     lat1: float, lon1: float, ele1: float, t1: datetime,
     interval_s: float,
-) -> List[Tuple[float, float, float, datetime]]:
+    sensors0: Optional[dict] = None,
+    sensors1: Optional[dict] = None,
+) -> List[dict]:
     """
     Генерирует линейно интерполированные точки между (lat0,lon0) и (lat1,lon1).
     Не включает сами граничные точки.
+
+    sensors0/sensors1 — необязательные словари {"hr", "cad", "atemp"} со
+    значениями граничных точек. Если у ОБЕИХ границ есть значение конкретного
+    поля — оно линейно интерполируется для вставленных точек; если данных
+    нет — поле просто не добавляется в результат (никаких нулей-заглушек).
+    Скорость вставленных точек — реальная средняя скорость перегона
+    (расстояние/время), а не фиктивный 0.0.
     """
     total_s = (t1 - t0).total_seconds()
     if total_s <= interval_s:
         return []
 
-    result = []
+    sensors0 = sensors0 or {}
+    sensors1 = sensors1 or {}
+
+    leg_dist = haversine(lat0, lon0, lat1, lon1)
+    speed = leg_dist / total_s if total_s > 0 else 0.0
+
+    def _both_finite(a: Optional[float], b: Optional[float]) -> bool:
+        return a is not None and b is not None and math.isfinite(a) and math.isfinite(b)
+
+    hr0, hr1 = sensors0.get("hr"), sensors1.get("hr")
+    cad0, cad1 = sensors0.get("cad"), sensors1.get("cad")
+    atemp0, atemp1 = sensors0.get("atemp"), sensors1.get("atemp")
+
+    hr_ok = _both_finite(hr0, hr1)
+    cad_ok = _both_finite(cad0, cad1)
+    atemp_ok = _both_finite(atemp0, atemp1)
+
+    result: List[dict] = []
     t = interval_s
     while t < total_s - 1e-6:
         alpha = t / total_s
-        result.append((
-            lat0 + alpha * (lat1 - lat0),
-            lon0 + alpha * (lon1 - lon0),
-            ele0 + alpha * (ele1 - ele0),
-            t0 + timedelta(seconds=t),
-        ))
+        pt = {
+            "lat": lat0 + alpha * (lat1 - lat0),
+            "lon": lon0 + alpha * (lon1 - lon0),
+            "ele": ele0 + alpha * (ele1 - ele0),
+            "time": t0 + timedelta(seconds=t),
+            "speed": speed,
+        }
+        if hr_ok:
+            pt["hr"] = round(hr0 + alpha * (hr1 - hr0))
+        if cad_ok:
+            pt["cad"] = round(cad0 + alpha * (cad1 - cad0))
+        if atemp_ok:
+            pt["atemp"] = atemp0 + alpha * (atemp1 - atemp0)
+        result.append(pt)
         t += interval_s
 
     return result
@@ -268,32 +330,44 @@ def collect_namespaces(path: str) -> dict:
 def make_trkpt(
     ns: str,
     ns3: str,
-    lat: float,
-    lon: float,
-    ele: float,
-    ts: datetime,
-    speed: float = 0.0,
-    cad: float = 0.0,
+    pt: dict,
 ) -> ET.Element:
-    """Создаёт элемент <trkpt> с минимальным набором полей."""
-    pt = ET.Element(f"{{{ns}}}trkpt")
-    pt.set("lat", f"{lat:.8f}")
-    pt.set("lon", f"{lon:.8f}")
+    """Создаёт элемент <trkpt> с минимальным набором полей.
 
-    ele_el = ET.SubElement(pt, f"{{{ns}}}ele")
-    ele_el.text = f"{ele:.2f}"
+    pt: {"lat", "lon", "ele", "time", "speed"?, "hr"?, "cad"?, "atemp"?} —
+    сенсорные поля необязательны: пишем только то, что реально удалось
+    интерполировать между граничными точками, никаких нулей-заглушек
+    (Strava/Garmin Connect учитывают их в среднюю скорость/каденс за
+    активность, занижая статистику).
+    """
+    el = ET.Element(f"{{{ns}}}trkpt")
+    el.set("lat", f"{pt['lat']:.8f}")
+    el.set("lon", f"{pt['lon']:.8f}")
 
-    time_el = ET.SubElement(pt, f"{{{ns}}}time")
-    time_el.text = fmt_time(ts)
+    ele_el = ET.SubElement(el, f"{{{ns}}}ele")
+    ele_el.text = f"{pt['ele']:.2f}"
 
-    ext_el = ET.SubElement(pt, f"{{{ns}}}extensions")
-    tpe = ET.SubElement(ext_el, f"{{{ns3}}}TrackPointExtension")
-    sp_el = ET.SubElement(tpe, f"{{{ns3}}}speed")
-    sp_el.text = f"{speed:.1f}"
-    cad_el = ET.SubElement(tpe, f"{{{ns3}}}cad")
-    cad_el.text = f"{cad:.1f}"
+    time_el = ET.SubElement(el, f"{{{ns}}}time")
+    time_el.text = fmt_time(pt["time"])
 
-    return pt
+    fields = []
+    if "atemp" in pt:
+        fields.append(("atemp", f"{pt['atemp']:.1f}"))
+    if "hr" in pt:
+        fields.append(("hr", str(pt["hr"])))
+    if "cad" in pt:
+        fields.append(("cad", str(pt["cad"])))
+    if "speed" in pt:
+        fields.append(("speed", f"{pt['speed']:.2f}"))
+
+    if fields:
+        ext_el = ET.SubElement(el, f"{{{ns}}}extensions")
+        tpe = ET.SubElement(ext_el, f"{{{ns3}}}TrackPointExtension")
+        for tag, text in fields:
+            sub_el = ET.SubElement(tpe, f"{{{ns3}}}{tag}")
+            sub_el.text = text
+
+    return el
 
 
 # ---------------------------------------------------------------------------
@@ -351,6 +425,16 @@ def fix_gpx(
         e = p.find(f"{{{NS}}}ele")
         eles.append(float(e.text) if e is not None else 0.0)
     times = [parse_time(p.find(f"{{{NS}}}time").text) for p in pts]
+
+    # Сенсорные данные (пульс/каденс/температура) из TrackPointExtension —
+    # нужны, чтобы интерполировать их для вставленных точек, а не писать нули.
+    def _find_ext_value(p: ET.Element, tag: str) -> float:
+        el = p.find(f".//{{{NS3}}}{tag}")
+        return float(el.text) if el is not None and el.text is not None else float("nan")
+
+    hrs    = [_find_ext_value(p, "hr") for p in pts]
+    cads   = [_find_ext_value(p, "cad") for p in pts]
+    atemps = [_find_ext_value(p, "atemp") for p in pts]
 
     length_before = sum(
         haversine(lats[i - 1], lons[i - 1], lats[i], lons[i]) for i in range(1, n)
@@ -441,9 +525,10 @@ def fix_gpx(
                 (times[after_idx] - times[before_idx]).total_seconds()
                 if after_idx is not None else 0
             )
+            tail_marker = "  [обрыв в конце трека, без возврата]" if after_idx is None else ""
             print(
                 f"\nЭпизод глушения: точки [{ep_start}..{ep_end}]"
-                f"  ({bad_count} точек, {dur_s:.0f} с пробел)"
+                f"  ({bad_count} точек, {dur_s:.0f} с пробел){tail_marker}"
             )
             print(
                 f"  Скачок в  : {times[ep_start]}  "
@@ -463,6 +548,10 @@ def fix_gpx(
                 print(
                     f"  После: {times[after_idx]}  ({lats[after_idx]:.5f}, {lons[after_idx]:.5f})"
                 )
+            else:
+                print(
+                    "  После: — (запись обрывается во время глушения, точки удаляются до конца трека)"
+                )
 
         for idx in range(ep_start, ep_end + 1):
             remove_set.add(idx)
@@ -476,6 +565,16 @@ def fix_gpx(
                 lats[before_idx], lons[before_idx], stable_ele0,        times[before_idx],
                 lats[after_idx],  lons[after_idx],  eles[after_idx],    times[after_idx],
                 interval_s,
+                sensors0={
+                    "hr": hrs[before_idx],
+                    "cad": cads[before_idx],
+                    "atemp": atemps[before_idx],
+                },
+                sensors1={
+                    "hr": hrs[after_idx],
+                    "cad": cads[after_idx],
+                    "atemp": atemps[after_idx],
+                },
             )
             insertion_before[after_idx] = interp
             total_inserted += len(interp)
@@ -501,9 +600,9 @@ def fix_gpx(
 
     for i, pt in enumerate(pts):
         if i in insertion_before:
-            for lat, lon, ele, ts in insertion_before[i]:
-                seg.append(make_trkpt(NS, NS3, lat, lon, ele, ts))
-                add_leg(lat, lon)
+            for ipt in insertion_before[i]:
+                seg.append(make_trkpt(NS, NS3, ipt))
+                add_leg(ipt["lat"], ipt["lon"])
 
         if i not in remove_set:
             seg.append(pt)
