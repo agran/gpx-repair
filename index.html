@@ -9,6 +9,17 @@
       type="image/svg+xml"
       href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%231f2937'/%3E%3Ccircle cx='7' cy='22' r='3' fill='%237eb8f7'/%3E%3Ccircle cx='25' cy='10' r='3' fill='%237eb8f7'/%3E%3Cpath d='M7 22 Q10 6 16 16 Q22 26 25 10' stroke='%237eb8f7' stroke-width='2.2' fill='none' stroke-linecap='round'/%3E%3C/svg%3E"
     />
+    <link
+      rel="stylesheet"
+      href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+      integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
+      crossorigin=""
+    />
+    <script
+      src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+      integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
+      crossorigin=""
+    ></script>
     <style>
       *,
       *::before,
@@ -231,14 +242,17 @@
         text-align: center;
       }
 
-      .track-canvas {
+      .track-map {
         display: none;
         width: 100%;
-        height: 220px;
+        height: 320px;
         background: #0d1b35;
         border: 1px solid #0f3460;
         border-radius: 8px;
         margin-top: 14px;
+      }
+      .track-map .leaflet-tile-pane {
+        filter: saturate(0.9) brightness(0.95);
       }
       .track-label {
         display: none;
@@ -325,7 +339,7 @@
         accept=".gpx,application/gpx+xml,text/xml"
       />
       <div class="file-name" id="file-name"></div>
-      <canvas id="canvas-before" class="track-canvas"></canvas>
+      <div id="map-before" class="track-map"></div>
       <div class="track-label" id="track-label-before">
         Схема загруженного трека (с артефактами)
       </div>
@@ -415,7 +429,7 @@
           alt="Готово"
         />
       </div>
-      <canvas id="canvas-after" class="track-canvas"></canvas>
+      <div id="map-after" class="track-map"></div>
       <div class="track-label" id="track-label-after">
         Схема исправленного трека
       </div>
@@ -482,7 +496,10 @@
       // (Strava, Garmin Connect и т.п.).
       function computeElevationGainLoss(eles) {
         const filled = fillMissingEle(eles);
-        const radius = Math.min(10, Math.max(1, Math.floor(filled.length / 20)));
+        const radius = Math.min(
+          10,
+          Math.max(1, Math.floor(filled.length / 20)),
+        );
         const smoothed = smoothSeries(filled, radius);
 
         const threshold = 3; // м — порог нечувствительности
@@ -535,7 +552,10 @@
 
       function renderTrackStats(containerEl, stats) {
         const items = [
-          { label: "Длина трека", value: `${(stats.length / 1000).toFixed(2)} км` },
+          {
+            label: "Длина трека",
+            value: `${(stats.length / 1000).toFixed(2)} км`,
+          },
         ];
         if (stats.hasEle) {
           items.push(
@@ -581,49 +601,15 @@
         return out;
       }
 
-      function drawTrack(canvas, lats, lons, color) {
+      const mapInstances = {};
+
+      function showTrackMap(containerId, lats, lons, color) {
+        const el = document.getElementById(containerId);
         if (!lats.length) {
-          canvas.style.display = "none";
+          el.style.display = "none";
           return;
         }
-        const dpr = window.devicePixelRatio || 1;
-        const w = canvas.clientWidth || canvas.parentElement.clientWidth || 600;
-        const h = 220;
-        canvas.width = Math.round(w * dpr);
-        canvas.height = Math.round(h * dpr);
-        canvas.style.display = "block";
-
-        const ctx = canvas.getContext("2d");
-        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-        ctx.clearRect(0, 0, w, h);
-
-        let minLat = Infinity,
-          maxLat = -Infinity,
-          minLon = Infinity,
-          maxLon = -Infinity;
-        for (let i = 0; i < lats.length; i++) {
-          if (lats[i] < minLat) minLat = lats[i];
-          if (lats[i] > maxLat) maxLat = lats[i];
-          if (lons[i] < minLon) minLon = lons[i];
-          if (lons[i] > maxLon) maxLon = lons[i];
-        }
-
-        const avgLat = (minLat + maxLat) / 2;
-        const lonScale = Math.cos((avgLat * Math.PI) / 180) || 1;
-        const padding = 16;
-        const spanLat = Math.max(maxLat - minLat, 1e-9);
-        const spanLon = Math.max((maxLon - minLon) * lonScale, 1e-9);
-        const scale = Math.min(
-          (w - padding * 2) / spanLon,
-          (h - padding * 2) / spanLat,
-        );
-        const offX = (w - padding * 2 - spanLon * scale) / 2;
-        const offY = (h - padding * 2 - spanLat * scale) / 2;
-
-        const toXY = (lat, lon) => [
-          padding + (lon - minLon) * lonScale * scale + offX,
-          h - padding - (lat - minLat) * scale - offY,
-        ];
+        el.style.display = "block";
 
         // Лёгкое скользящее сглаживание убирает мелкое дрожание GPS
         // (шум в 1-2 точки), но не "съедает" крупные выбросы/артефакты —
@@ -636,32 +622,53 @@
         // берём каждую N-ю уже сглаженную точку, пики при этом не теряются.
         const maxPoints = 6000;
         const step = Math.max(1, Math.floor(lats.length / maxPoints));
-
-        ctx.strokeStyle = color;
-        ctx.lineWidth = 1.6;
-        ctx.lineJoin = "round";
-        ctx.lineCap = "round";
-        ctx.beginPath();
+        const latlngs = [];
         for (let i = 0; i < lats.length; i += step) {
-          const [x, y] = toXY(smoothLats[i], smoothLons[i]);
-          if (i === 0) ctx.moveTo(x, y);
-          else ctx.lineTo(x, y);
+          latlngs.push([smoothLats[i], smoothLons[i]]);
         }
         const lastIdx = lats.length - 1;
-        const [lx, ly] = toXY(smoothLats[lastIdx], smoothLons[lastIdx]);
-        ctx.lineTo(lx, ly);
-        ctx.stroke();
+        latlngs.push([smoothLats[lastIdx], smoothLons[lastIdx]]);
 
-        const [sx, sy] = toXY(lats[0], lons[0]);
-        ctx.fillStyle = "#4ade80";
-        ctx.beginPath();
-        ctx.arc(sx, sy, 4, 0, Math.PI * 2);
-        ctx.fill();
+        let inst = mapInstances[containerId];
+        if (!inst) {
+          const map = L.map(containerId, { attributionControl: true });
+          L.tileLayer("https://tile.openstreetmap.de/{z}/{x}/{y}.png", {
+            maxZoom: 18,
+            attribution:
+              '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank">OpenStreetMap</a> contributors, tiles by <a href="https://openstreetmap.de/" target="_blank">openstreetmap.de</a>',
+          }).addTo(map);
+          inst = { map, polyline: null, startMarker: null, endMarker: null };
+          mapInstances[containerId] = inst;
+        }
 
-        ctx.fillStyle = "#f87171";
-        ctx.beginPath();
-        ctx.arc(lx, ly, 4, 0, Math.PI * 2);
-        ctx.fill();
+        if (inst.polyline) inst.map.removeLayer(inst.polyline);
+        if (inst.startMarker) inst.map.removeLayer(inst.startMarker);
+        if (inst.endMarker) inst.map.removeLayer(inst.endMarker);
+
+        inst.polyline = L.polyline(latlngs, { color, weight: 3 }).addTo(
+          inst.map,
+        );
+        inst.startMarker = L.circleMarker(latlngs[0], {
+          radius: 5,
+          color: "#166534",
+          weight: 2,
+          fillColor: "#4ade80",
+          fillOpacity: 1,
+        }).addTo(inst.map);
+        inst.endMarker = L.circleMarker(latlngs[latlngs.length - 1], {
+          radius: 5,
+          color: "#7f1d1d",
+          weight: 2,
+          fillColor: "#f87171",
+          fillOpacity: 1,
+        }).addTo(inst.map);
+
+        setTimeout(() => {
+          inst.map.invalidateSize();
+          inst.map.fitBounds(inst.polyline.getBounds(), {
+            padding: [20, 20],
+          });
+        }, 0);
       }
 
       function formatTime(unixS) {
@@ -1132,25 +1139,27 @@
           logEl.style.display = "none";
           btnDl.style.display = "none";
           document.getElementById("done-img").style.display = "none";
-          document.getElementById("canvas-after").style.display = "none";
+          document.getElementById("map-after").style.display = "none";
           document.getElementById("track-label-after").style.display = "none";
           document.getElementById("track-stats-after").style.display = "none";
           document.getElementById("track-stats-before").style.display = "none";
 
           try {
             const { lats, lons, eles } = extractTrackData(gpxText);
-            const canvasBefore = document.getElementById("canvas-before");
-            drawTrack(canvasBefore, lats, lons, "#7eb8f7");
-            document.getElementById("track-label-before").style.display =
-              canvasBefore.style.display === "block" ? "block" : "none";
-            if (canvasBefore.style.display === "block") {
+            showTrackMap("map-before", lats, lons, "#7eb8f7");
+            const shown =
+              document.getElementById("map-before").style.display === "block";
+            document.getElementById("track-label-before").style.display = shown
+              ? "block"
+              : "none";
+            if (shown) {
               renderTrackStats(
                 document.getElementById("track-stats-before"),
                 computeTrackStats(lats, lons, eles),
               );
             }
           } catch (err) {
-            /* превью необязательно, ошибку покажем при нажатии "Исправить" */
+            // превью необязательно, ошибку покажем при нажатии "Исправить"
           }
         };
         reader.readAsText(file, "UTF-8");
@@ -1213,11 +1222,12 @@
               lons: afterLons,
               eles: afterEles,
             } = extractTrackData(result);
-            const canvasAfter = document.getElementById("canvas-after");
-            drawTrack(canvasAfter, afterLats, afterLons, "#4ade80");
+            showTrackMap("map-after", afterLats, afterLons, "#4ade80");
+            const shownAfter =
+              document.getElementById("map-after").style.display === "block";
             document.getElementById("track-label-after").style.display =
-              canvasAfter.style.display === "block" ? "block" : "none";
-            if (canvasAfter.style.display === "block") {
+              shownAfter ? "block" : "none";
+            if (shownAfter) {
               renderTrackStats(
                 document.getElementById("track-stats-after"),
                 computeTrackStats(afterLats, afterLons, afterEles),
