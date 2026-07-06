@@ -765,6 +765,46 @@
           }
           if (!found) k++;
         }
+
+        // ─── Эпизод глушения без "скачка назад" ────────────────────────────────
+        // Трек может обрываться прямо во время глушения (устройство выключили
+        // или запись остановили, пока сигнал ещё не восстановился) — тогда
+        // среди телепортов нет пары "туда-обратно", т.к. "обратно" попросту
+        // не произошло. Ищем самый ПОЗДНИЙ телепорт-"выход" после последнего
+        // уже найденного эпизода, от которого трек так и не вернулся близко
+        // к исходной точке до самого конца записи, и считаем всё от него до
+        // конца трека одним хвостовым эпизодом (без интерполяции — восстанавливать
+        // некуда).
+        const lastCovered = episodes.length
+          ? Math.max(...episodes.map((e) => e.afterIdx))
+          : 0;
+        for (let k2 = teleports.length - 1; k2 >= 0; k2--) {
+          const tOut = teleports[k2];
+          if (tOut < lastCovered) break; // не залезаем в уже обработанный участок
+          const firstBad = tOut + 1;
+          if (firstBad >= n) continue;
+
+          const dJump = haversine(
+            lats[tOut],
+            lons[tOut],
+            lats[firstBad],
+            lons[firstBad],
+          );
+          if (dJump < minClusterDist) continue;
+
+          const distEnd = haversine(
+            lats[n - 1],
+            lons[n - 1],
+            lats[tOut],
+            lons[tOut],
+          );
+          if (distEnd >= minClusterDist) {
+            episodes.push({ firstBad, lastBad: n - 1, afterIdx: n });
+            break;
+          }
+        }
+
+        episodes.sort((a, b) => a.firstBad - b.firstBad);
         return episodes;
       }
 
@@ -1271,7 +1311,9 @@
           let { firstBad, lastBad, afterIdx } = ep;
 
           // 1) Расширение назад по координатам и высоте
-          if (preJitter > 0) {
+          // (для хвостового эпизода без "после" — сравнивать смещение
+          // не с чем, координатное расширение назад пропускаем)
+          if (preJitter > 0 && afterIdx < n) {
             firstBad = extendEpisodeBackward(
               lats,
               lons,
@@ -1302,7 +1344,8 @@
           const durS =
             afterIdx < n ? (times[afterIdx] - times[beforeIdx]).toFixed(0) : 0;
           log(
-            `\nЭпизод глушения: точки [${firstBad}..${lastBad}]  (${cnt} точек, ${durS}с пробел)`,
+            `\nЭпизод глушения: точки [${firstBad}..${lastBad}]  (${cnt} точек, ${durS}с пробел)` +
+              (afterIdx >= n ? "  [обрыв в конце трека, без возврата]" : ""),
             "log-warn",
           );
           log(
@@ -1311,6 +1354,10 @@
           if (afterIdx < n)
             log(
               `  После: ${timeEls[afterIdx]?.textContent}  (${lats[afterIdx].toFixed(5)}, ${lons[afterIdx].toFixed(5)})  ele=${eles[afterIdx].toFixed(1)}м`,
+            );
+          else
+            log(
+              `  После: — (запись обрывается во время глушения, точки удаляются до конца трека)`,
             );
 
           for (let i = firstBad; i <= lastBad; i++) removeSet.add(i);
