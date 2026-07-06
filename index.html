@@ -248,6 +248,30 @@
         text-align: center;
       }
 
+      .track-stats {
+        display: none;
+        margin-top: 10px;
+        grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+        gap: 8px;
+      }
+      .track-stats .stat {
+        background: #10213f;
+        border: 1px solid #16294f;
+        border-radius: 8px;
+        padding: 8px 10px;
+        text-align: center;
+      }
+      .track-stats .stat .stat-value {
+        font-size: 1rem;
+        font-weight: 600;
+        color: #e5e7eb;
+      }
+      .track-stats .stat .stat-label {
+        font-size: 0.7rem;
+        color: #8a93a6;
+        margin-top: 2px;
+      }
+
       footer {
         margin-top: 32px;
         padding: 16px;
@@ -305,6 +329,7 @@
       <div class="track-label" id="track-label-before">
         Схема загруженного трека (с артефактами)
       </div>
+      <div class="track-stats" id="track-stats-before"></div>
     </div>
 
     <div class="card">
@@ -394,6 +419,7 @@
       <div class="track-label" id="track-label-after">
         Схема исправленного трека
       </div>
+      <div class="track-stats" id="track-stats-after"></div>
     </div>
 
     <script>
@@ -416,18 +442,79 @@
 
       // ─── Визуализация схемы трека ──────────────────────────────────────────────
 
-      function extractLatLon(xmlText) {
+      function extractTrackData(xmlText) {
         const parser = new DOMParser();
         const doc = parser.parseFromString(xmlText, "application/xml");
-        if (doc.querySelector("parsererror")) return { lats: [], lons: [] };
+        if (doc.querySelector("parsererror"))
+          return { lats: [], lons: [], eles: [] };
         const pts = doc.querySelectorAll("trkpt");
         const lats = new Array(pts.length);
         const lons = new Array(pts.length);
+        const eles = new Array(pts.length);
         pts.forEach((p, i) => {
           lats[i] = parseFloat(p.getAttribute("lat"));
           lons[i] = parseFloat(p.getAttribute("lon"));
+          const eleEl = p.querySelector("ele");
+          eles[i] = eleEl ? parseFloat(eleEl.textContent) : NaN;
         });
-        return { lats, lons };
+        return { lats, lons, eles };
+      }
+
+      function computeTrackStats(lats, lons, eles) {
+        let length = 0;
+        for (let i = 1; i < lats.length; i++) {
+          length += haversine(lats[i - 1], lons[i - 1], lats[i], lons[i]);
+        }
+
+        let minEle = Infinity,
+          maxEle = -Infinity,
+          gain = 0,
+          loss = 0,
+          hasEle = false;
+        let prevEle = null;
+        for (let i = 0; i < eles.length; i++) {
+          const e = eles[i];
+          if (Number.isNaN(e)) continue;
+          hasEle = true;
+          if (e < minEle) minEle = e;
+          if (e > maxEle) maxEle = e;
+          if (prevEle !== null) {
+            const d = e - prevEle;
+            if (d > 0) gain += d;
+            else loss += -d;
+          }
+          prevEle = e;
+        }
+
+        return {
+          length,
+          hasEle,
+          minEle: hasEle ? minEle : null,
+          maxEle: hasEle ? maxEle : null,
+          gain: hasEle ? gain : null,
+          loss: hasEle ? loss : null,
+        };
+      }
+
+      function renderTrackStats(containerEl, stats) {
+        const items = [
+          { label: "Длина трека", value: `${(stats.length / 1000).toFixed(2)} км` },
+        ];
+        if (stats.hasEle) {
+          items.push(
+            { label: "Макс. высота", value: `${stats.maxEle.toFixed(0)} м` },
+            { label: "Мин. высота", value: `${stats.minEle.toFixed(0)} м` },
+            { label: "Набор высоты", value: `${stats.gain.toFixed(0)} м` },
+            { label: "Сброс высоты", value: `${stats.loss.toFixed(0)} м` },
+          );
+        }
+        containerEl.innerHTML = items
+          .map(
+            (it) =>
+              `<div class="stat"><div class="stat-value">${it.value}</div><div class="stat-label">${it.label}</div></div>`,
+          )
+          .join("");
+        containerEl.style.display = "grid";
       }
 
       function smoothSeries(arr, radius) {
@@ -1010,13 +1097,21 @@
           document.getElementById("done-img").style.display = "none";
           document.getElementById("canvas-after").style.display = "none";
           document.getElementById("track-label-after").style.display = "none";
+          document.getElementById("track-stats-after").style.display = "none";
+          document.getElementById("track-stats-before").style.display = "none";
 
           try {
-            const { lats, lons } = extractLatLon(gpxText);
+            const { lats, lons, eles } = extractTrackData(gpxText);
             const canvasBefore = document.getElementById("canvas-before");
             drawTrack(canvasBefore, lats, lons, "#7eb8f7");
             document.getElementById("track-label-before").style.display =
               canvasBefore.style.display === "block" ? "block" : "none";
+            if (canvasBefore.style.display === "block") {
+              renderTrackStats(
+                document.getElementById("track-stats-before"),
+                computeTrackStats(lats, lons, eles),
+              );
+            }
           } catch (err) {
             /* превью необязательно, ошибку покажем при нажатии "Исправить" */
           }
@@ -1076,11 +1171,21 @@
             log("\n✓ Готово!", "log-ok");
             document.getElementById("done-img").style.display = "block";
 
-            const { lats: afterLats, lons: afterLons } = extractLatLon(result);
+            const {
+              lats: afterLats,
+              lons: afterLons,
+              eles: afterEles,
+            } = extractTrackData(result);
             const canvasAfter = document.getElementById("canvas-after");
             drawTrack(canvasAfter, afterLats, afterLons, "#4ade80");
             document.getElementById("track-label-after").style.display =
               canvasAfter.style.display === "block" ? "block" : "none";
+            if (canvasAfter.style.display === "block") {
+              renderTrackStats(
+                document.getElementById("track-stats-after"),
+                computeTrackStats(afterLats, afterLons, afterEles),
+              );
+            }
           } catch (err) {
             log("\n✗ Ошибка: " + err.message, "log-err");
           } finally {
