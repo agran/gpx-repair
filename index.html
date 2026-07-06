@@ -4,7 +4,11 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>GPX Repair</title>
-    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%231f2937'/%3E%3Ccircle cx='7' cy='22' r='3' fill='%237eb8f7'/%3E%3Ccircle cx='25' cy='10' r='3' fill='%237eb8f7'/%3E%3Cpath d='M7 22 Q10 6 16 16 Q22 26 25 10' stroke='%237eb8f7' stroke-width='2.2' fill='none' stroke-linecap='round'/%3E%3C/svg%3E" />
+    <link
+      rel="icon"
+      type="image/svg+xml"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%231f2937'/%3E%3Ccircle cx='7' cy='22' r='3' fill='%237eb8f7'/%3E%3Ccircle cx='25' cy='10' r='3' fill='%237eb8f7'/%3E%3Cpath d='M7 22 Q10 6 16 16 Q22 26 25 10' stroke='%237eb8f7' stroke-width='2.2' fill='none' stroke-linecap='round'/%3E%3C/svg%3E"
+    />
     <style>
       *,
       *::before,
@@ -23,16 +27,34 @@
         align-items: center;
         padding: 24px 16px;
       }
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin-bottom: 4px;
+      }
+      .brand img {
+        width: 40px;
+        height: 40px;
+        border-radius: 8px;
+      }
       h1 {
         font-size: 1.6rem;
         font-weight: 700;
-        margin-bottom: 4px;
         color: #7eb8f7;
       }
       .subtitle {
         font-size: 0.85rem;
         color: #888;
         margin-bottom: 24px;
+      }
+      #done-img {
+        display: none;
+        width: 28px;
+        height: 28px;
+        vertical-align: middle;
+        margin-left: 8px;
+        border-radius: 6px;
       }
       .card {
         background: #16213e;
@@ -218,7 +240,10 @@
     </style>
   </head>
   <body>
-    <h1>GPX Jammer Fix</h1>
+    <div class="brand">
+      <img src="https://www.erudit23.ru/gpx-repair/logo.svg" alt="GPX Repair" />
+      <h1>GPX Jammer Fix</h1>
+    </div>
     <p class="subtitle">
       Удаление артефактов GPS-глушилки. Всё обрабатывается локально в браузере —
       файл никуда не отправляется.
@@ -329,6 +354,7 @@
       <button id="btn-fix" disabled>Исправить трек</button>
       <pre id="log"></pre>
       <a id="btn-download" download>⬇ Скачать исправленный GPX</a>
+      <img id="done-img" src="https://www.erudit23.ru/gpx-repair/done.svg" alt="Готово" />
     </div>
 
     <script>
@@ -811,6 +837,7 @@
         logLines = [];
         logEl.style.display = "block";
         btnDl.style.display = "none";
+        document.getElementById("done-img").style.display = "none";
         btnFix.disabled = true;
 
         const params = {
@@ -841,6 +868,7 @@
             btnDl.style.display = "block";
 
             log("\n✓ Готово!", "log-ok");
+            document.getElementById("done-img").style.display = "inline-block";
           } catch (err) {
             log("\n✗ Ошибка: " + err.message, "log-err");
           } finally {
@@ -850,7 +878,9 @@
       });
     </script>
     <footer>
-      <a href="https://github.com/agran/gpx-repair" target="_blank">github.com/agran/gpx-repair</a>
+      <a href="https://github.com/agran/gpx-repair" target="_blank"
+        >github.com/agran/gpx-repair</a
+      >
     </footer>
   </body>
 </html>

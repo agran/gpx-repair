@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" width="120" height="120">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#1f2937"/>
+      <stop offset="100%" stop-color="#111827"/>
+    </linearGradient>
+  </defs>
+  <rect x="2" y="2" width="116" height="116" rx="24" fill="url(#bg)" stroke="#374151" stroke-width="2"/>
+
+  <!-- горы -->
+  <path d="M18 82 L42 48 L56 66 L74 34 L102 82 Z" fill="#2d3748"/>
+  <path d="M18 82 L42 48 L56 66 L46 82 Z" fill="#374151"/>
+
+  <!-- трек: слева нормальный, посередине "разрыв" глушилки, справа плавно восстановленный -->
+  <path d="M14 92 Q28 74 40 80 Q50 84 52 70" stroke="#7eb8f7" stroke-width="4" fill="none" stroke-linecap="round"/>
+  <path d="M52 70 Q62 54 70 68 Q78 82 90 60" stroke="#7eb8f7" stroke-width="4" fill="none" stroke-linecap="round" stroke-dasharray="2 7"/>
+  <path d="M90 60 Q98 46 106 50" stroke="#7eb8f7" stroke-width="4" fill="none" stroke-linecap="round"/>
+
+  <circle cx="14" cy="92" r="4.5" fill="#16a34a"/>
+  <circle cx="106" cy="50" r="4.5" fill="#16a34a"/>
+</svg>
