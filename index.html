@@ -372,6 +372,38 @@
       footer a:hover {
         text-decoration: underline;
       }
+
+      .update-banner {
+        position: fixed;
+        left: 50%;
+        bottom: 16px;
+        transform: translateX(-50%);
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        background: #2563eb;
+        color: #fff;
+        padding: 10px 14px;
+        border-radius: 10px;
+        box-shadow: 0 6px 20px rgba(0, 0, 0, 0.4);
+        font-size: 0.85rem;
+        z-index: 1000;
+        max-width: calc(100vw - 32px);
+      }
+      .update-banner button {
+        flex-shrink: 0;
+        border: none;
+        border-radius: 6px;
+        background: #fff;
+        color: #1d4ed8;
+        font-weight: 600;
+        font-size: 0.82rem;
+        padding: 6px 12px;
+        cursor: pointer;
+      }
+      .update-banner button:hover {
+        background: #e5e7eb;
+      }
     </style>
   </head>
   <body>
@@ -1934,11 +1966,40 @@
       });
     </script>
     <script>
+      // ─── Обновление PWA ─────────────────────────────────────────────────────
+      // skipWaiting()/clients.claim() в service-worker.js активируют новую
+      // версию сразу, но уже открытая вкладка/установленное приложение
+      // продолжает работать со старым JS в памяти. Поэтому:
+      //  1. При возврате в приложение принудительно проверяем обновление
+      //     (не ждём, пока браузер сам решит проверить, это может быть раз в сутки).
+      //  2. Когда новый service worker berёт управление — не перезагружаем
+      //     страницу молча (можно потерять недосохранённый результат),
+      //     а показываем ненавязчивый баннер с кнопкой "Обновить".
       if ("serviceWorker" in navigator) {
         window.addEventListener("load", () => {
           navigator.serviceWorker
             .register("./service-worker.js")
+            .then((reg) => {
+              document.addEventListener("visibilitychange", () => {
+                if (document.visibilityState === "visible") reg.update();
+              });
+            })
             .catch(() => {});
+
+          let notified = false;
+          navigator.serviceWorker.addEventListener("controllerchange", () => {
+            if (notified) return;
+            notified = true;
+            const banner = document.createElement("div");
+            banner.className = "update-banner";
+            banner.innerHTML =
+              "<span>Доступно обновление GPX Repair</span>" +
+              '<button type="button">Обновить</button>';
+            banner
+              .querySelector("button")
+              .addEventListener("click", () => window.location.reload());
+            document.body.appendChild(banner);
+          });
         });
       }
     </script>
