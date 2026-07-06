@@ -877,18 +877,43 @@
         ele1,
         t1,
         intervalS,
+        sensors0 = {},
+        sensors1 = {},
       ) {
         const totalS = t1 - t0;
         if (totalS <= intervalS) return [];
+
+        // Средняя скорость перегона (расстояние/время) — физически корректное
+        // значение для вставленных точек вместо заглушки 0.0 (иначе Strava/Garmin
+        // Connect считают эти нули в среднюю скорость и занижают её).
+        const legDist = haversine(lat0, lon0, lat1, lon1);
+        const speed = totalS > 0 ? legDist / totalS : 0;
+
+        const canInterp = (s0, s1) =>
+          Number.isFinite(s0) && Number.isFinite(s1);
+        const hrOk = canInterp(sensors0.hr, sensors1.hr);
+        const cadOk = canInterp(sensors0.cad, sensors1.cad);
+        const atempOk = canInterp(sensors0.atemp, sensors1.atemp);
+
         const pts = [];
         for (let t = intervalS; t < totalS - 1e-6; t += intervalS) {
           const a = t / totalS;
-          pts.push({
+          const pt = {
             lat: lat0 + a * (lat1 - lat0),
             lon: lon0 + a * (lon1 - lon0),
             ele: ele0 + a * (ele1 - ele0),
             time: t0 + t,
-          });
+            speed,
+          };
+          if (hrOk)
+            pt.hr = Math.round(sensors0.hr + a * (sensors1.hr - sensors0.hr));
+          if (cadOk)
+            pt.cad = Math.round(
+              sensors0.cad + a * (sensors1.cad - sensors0.cad),
+            );
+          if (atempOk)
+            pt.atemp = sensors0.atemp + a * (sensors1.atemp - sensors0.atemp);
+          pts.push(pt);
         }
         return pts;
       }
@@ -899,16 +924,31 @@
         return n.toFixed(d);
       }
 
-      function makeTrkptXml(lat, lon, ele, time, nsExt) {
-        return `\t\t\t<trkpt lat="${fmtN(lat)}" lon="${fmtN(lon)}">
-\t\t\t\t<ele>${ele.toFixed(2)}</ele>
-\t\t\t\t<time>${formatTime(time)}</time>
-\t\t\t\t<extensions>
-\t\t\t\t\t<${nsExt}:TrackPointExtension>
-\t\t\t\t\t\t<${nsExt}:speed>0.0</${nsExt}:speed>
-\t\t\t\t\t\t<${nsExt}:cad>0.0</${nsExt}:cad>
-\t\t\t\t\t</${nsExt}:TrackPointExtension>
-\t\t\t\t</extensions>
+      // pt: {lat, lon, ele, time, speed?, hr?, cad?, atemp?} — сенсорные поля
+      // необязательны: пишем только те, что реально удалось интерполировать
+      // (оба граничных значения были доступны), никаких нулей-заглушек.
+      function makeTrkptXml(pt, nsExt) {
+        const fields = [];
+        if (Number.isFinite(pt.atemp))
+          fields.push(
+            `\t\t\t\t\t\t<${nsExt}:atemp>${pt.atemp.toFixed(1)}</${nsExt}:atemp>`,
+          );
+        if (Number.isFinite(pt.hr))
+          fields.push(`\t\t\t\t\t\t<${nsExt}:hr>${pt.hr}</${nsExt}:hr>`);
+        if (Number.isFinite(pt.cad))
+          fields.push(`\t\t\t\t\t\t<${nsExt}:cad>${pt.cad}</${nsExt}:cad>`);
+        if (Number.isFinite(pt.speed))
+          fields.push(
+            `\t\t\t\t\t\t<${nsExt}:speed>${pt.speed.toFixed(2)}</${nsExt}:speed>`,
+          );
+
+        const extensions = fields.length
+          ? `\n\t\t\t\t<extensions>\n\t\t\t\t\t<${nsExt}:TrackPointExtension>\n${fields.join("\n")}\n\t\t\t\t\t</${nsExt}:TrackPointExtension>\n\t\t\t\t</extensions>`
+          : "";
+
+        return `\t\t\t<trkpt lat="${fmtN(pt.lat)}" lon="${fmtN(pt.lon)}">
+\t\t\t\t<ele>${pt.ele.toFixed(2)}</ele>
+\t\t\t\t<time>${formatTime(pt.time)}</time>${extensions}
 \t\t\t</trkpt>`;
       }
 
@@ -1168,6 +1208,21 @@
         const timeEls = allPts.map((p) => p.querySelector("time"));
         const times = timeEls.map((e) => (e ? parseTime(e.textContent) : 0));
 
+        // Сенсорные данные (пульс/каденс/температура) из TrackPointExtension —
+        // нужны, чтобы интерполировать их для вставленных точек, а не писать нули.
+        const hrs = allPts.map((p) => {
+          const e = p.querySelector("hr");
+          return e ? parseFloat(e.textContent) : NaN;
+        });
+        const cads = allPts.map((p) => {
+          const e = p.querySelector("cad");
+          return e ? parseFloat(e.textContent) : NaN;
+        });
+        const atemps = allPts.map((p) => {
+          const e = p.querySelector("atemp");
+          return e ? parseFloat(e.textContent) : NaN;
+        });
+
         log(`Загружено точек: ${n}`, "log-info");
 
         // Длина исходного трека (сумма расстояний между соседними точками)
@@ -1282,6 +1337,16 @@
               eles[afterIdx],
               times[afterIdx],
               interval,
+              {
+                hr: hrs[beforeIdx],
+                cad: cads[beforeIdx],
+                atemp: atemps[beforeIdx],
+              },
+              {
+                hr: hrs[afterIdx],
+                cad: cads[afterIdx],
+                atemp: atemps[afterIdx],
+              },
             );
             insertionBefore.set(afterIdx, interp);
             totalInserted += interp.length;
@@ -1311,9 +1376,9 @@
 
         for (let i = 0; i < n; i++) {
           if (insertionBefore.has(i)) {
-            for (const { lat, lon, ele, time } of insertionBefore.get(i)) {
-              newPtLines.push(makeTrkptXml(lat, lon, ele, time, nsExtPrefix));
-              addLeg(lat, lon);
+            for (const pt of insertionBefore.get(i)) {
+              newPtLines.push(makeTrkptXml(pt, nsExtPrefix));
+              addLeg(pt.lat, pt.lon);
             }
           }
           if (!removeSet.has(i)) {
