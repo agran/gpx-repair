@@ -474,22 +474,37 @@
           h - padding - (lat - minLat) * scale - offY,
         ];
 
-        // Downsample for performance on очень длинных треках
-        const maxPoints = 4000;
-        const step = Math.max(1, Math.floor(lats.length / maxPoints));
+        // Группируем точки в "бакеты" и усредняем их — сглаживает мелкий
+        // GPS-шум (дрожание координат), который иначе делает линию "мохнатой"
+        // на таком масштабе. Это влияет только на превью, не на сами данные.
+        const maxBuckets = 500;
+        const step = Math.max(1, Math.ceil(lats.length / maxBuckets));
 
         ctx.strokeStyle = color;
-        ctx.lineWidth = 1.4;
+        ctx.lineWidth = 1.6;
+        ctx.lineJoin = "round";
+        ctx.lineCap = "round";
         ctx.beginPath();
+        let first = true;
         for (let i = 0; i < lats.length; i += step) {
-          const [x, y] = toXY(lats[i], lons[i]);
-          if (i === 0) ctx.moveTo(x, y);
-          else ctx.lineTo(x, y);
+          const end = Math.min(i + step, lats.length);
+          let sumLat = 0,
+            sumLon = 0;
+          for (let j = i; j < end; j++) {
+            sumLat += lats[j];
+            sumLon += lons[j];
+          }
+          const cnt = end - i;
+          const [x, y] = toXY(sumLat / cnt, sumLon / cnt);
+          if (first) {
+            ctx.moveTo(x, y);
+            first = false;
+          } else ctx.lineTo(x, y);
         }
+        ctx.stroke();
+
         const lastIdx = lats.length - 1;
         const [lx, ly] = toXY(lats[lastIdx], lons[lastIdx]);
-        ctx.lineTo(lx, ly);
-        ctx.stroke();
 
         const [sx, sy] = toXY(lats[0], lons[0]);
         ctx.fillStyle = "#4ade80";
