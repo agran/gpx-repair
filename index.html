@@ -363,7 +363,11 @@
       <pre id="log"></pre>
       <div class="download-row">
         <a id="btn-download" download>⬇ Скачать исправленный GPX</a>
-        <img id="done-img" src="https://www.erudit23.ru/gpx-repair/done.svg" alt="Готово" />
+        <img
+          id="done-img"
+          src="https://www.erudit23.ru/gpx-repair/done.svg"
+          alt="Готово"
+        />
       </div>
     </div>
 
@@ -643,6 +647,13 @@
 
         log(`Загружено точек: ${n}`, "log-info");
 
+        // Длина исходного трека (сумма расстояний между соседними точками)
+        let lengthBefore = 0;
+        for (let i = 1; i < n; i++) {
+          lengthBefore += haversine(lats[i - 1], lons[i - 1], lats[i], lons[i]);
+        }
+        log(`Длина трека до исправления: ${(lengthBefore / 1000).toFixed(2)} км`, "log-info");
+
         // Обнаружение эпизодов
         const episodes = findJammerEpisodes(
           lats,
@@ -761,10 +772,22 @@
         const serializer = new XMLSerializer();
         const newPtLines = [];
 
+        let lengthAfter = 0;
+        let prevLat = null,
+          prevLon = null;
+        const addLeg = (lat, lon) => {
+          if (prevLat !== null) {
+            lengthAfter += haversine(prevLat, prevLon, lat, lon);
+          }
+          prevLat = lat;
+          prevLon = lon;
+        };
+
         for (let i = 0; i < n; i++) {
           if (insertionBefore.has(i)) {
             for (const { lat, lon, ele, time } of insertionBefore.get(i)) {
               newPtLines.push(makeTrkptXml(lat, lon, ele, time, nsExtPrefix));
+              addLeg(lat, lon);
             }
           }
           if (!removeSet.has(i)) {
@@ -774,6 +797,7 @@
                   .serializeToString(allPts[i])
                   .replace(/ xmlns(:[a-z0-9]+)?="[^"]*"/g, ""),
             ); // убираем дублирующиеся xmlns
+            addLeg(lats[i], lons[i]);
           }
         }
 
@@ -792,6 +816,11 @@
         log(`Вставлено интерполир. : ${totalInserted}`, "log-ok");
         log(
           `Итого точек в треке   : ${n - totalRemoved + totalInserted}`,
+          "log-ok",
+        );
+        log(
+          `Длина трека после исправления: ${(lengthAfter / 1000).toFixed(2)} км` +
+            ` (было ${(lengthBefore / 1000).toFixed(2)} км, разница ${((lengthAfter - lengthBefore) / 1000).toFixed(2)} км)`,
           "log-ok",
         );
 
