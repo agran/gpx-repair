@@ -352,6 +352,12 @@ def fix_gpx(
         eles.append(float(e.text) if e is not None else 0.0)
     times = [parse_time(p.find(f"{{{NS}}}time").text) for p in pts]
 
+    length_before = sum(
+        haversine(lats[i - 1], lons[i - 1], lats[i], lons[i]) for i in range(1, n)
+    )
+    if verbose:
+        print(f"Длина трека до исправления: {length_before / 1000:.2f} км")
+
     # --- 3. Поиск эпизодов глушения ---
     episodes = find_jammer_episodes(
         lats, lons, times, max_speed_mps, min_cluster_dist_m
@@ -483,13 +489,25 @@ def fix_gpx(
         seg.remove(pt)
 
     # Добавляем обратно, пропуская плохие и вставляя интерполированные
+    length_after = 0.0
+    prev_lat: Optional[float] = None
+    prev_lon: Optional[float] = None
+
+    def add_leg(lat: float, lon: float) -> None:
+        nonlocal length_after, prev_lat, prev_lon
+        if prev_lat is not None:
+            length_after += haversine(prev_lat, prev_lon, lat, lon)
+        prev_lat, prev_lon = lat, lon
+
     for i, pt in enumerate(pts):
         if i in insertion_before:
             for lat, lon, ele, ts in insertion_before[i]:
                 seg.append(make_trkpt(NS, NS3, lat, lon, ele, ts))
+                add_leg(lat, lon)
 
         if i not in remove_set:
             seg.append(pt)
+            add_leg(lats[i], lons[i])
 
     # --- 6. Запись ---
     tree.write(output_path, encoding="UTF-8", xml_declaration=True)
@@ -498,6 +516,11 @@ def fix_gpx(
         print(f"\nУдалено плохих точек  : {total_removed}")
         print(f"Вставлено интерполир. : {total_inserted}")
         print(f"Итого точек в треке   : {n - total_removed + total_inserted}")
+        print(
+            f"Длина трека после исправления: {length_after / 1000:.2f} км"
+            f" (было {length_before / 1000:.2f} км,"
+            f" разница {(length_after - length_before) / 1000:+.2f} км)"
+        )
         print(f"Результат записан в   : {output_path}")
 
 
