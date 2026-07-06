@@ -1977,6 +1977,11 @@
       //     а показываем ненавязчивый баннер с кнопкой "Обновить".
       if ("serviceWorker" in navigator) {
         window.addEventListener("load", () => {
+          // Если контроллера ещё не было — это первая установка SW на
+          // этой странице (обычный первый визит), а не обновление.
+          // controllerchange в этом случае игнорируем.
+          let hadController = !!navigator.serviceWorker.controller;
+
           navigator.serviceWorker
             .register("./service-worker.js")
             .then((reg) => {
@@ -1988,6 +1993,10 @@
 
           let notified = false;
           navigator.serviceWorker.addEventListener("controllerchange", () => {
+            if (!hadController) {
+              hadController = true;
+              return;
+            }
             if (notified) return;
             notified = true;
             const banner = document.createElement("div");
