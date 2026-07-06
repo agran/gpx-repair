@@ -632,6 +632,9 @@
         let inst = mapInstances[containerId];
         if (!inst) {
           const map = L.map(containerId, { attributionControl: true });
+          map.attributionControl.setPrefix(
+            '<a href="https://leafletjs.com" target="_blank">Leaflet</a>',
+          );
           L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
             maxZoom: 19,
             attribution:
