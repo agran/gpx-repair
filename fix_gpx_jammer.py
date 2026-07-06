@@ -16,6 +16,7 @@ fix_gpx_jammer.py
 Использование:
   python fix_gpx_jammer.py track.gpx
   python fix_gpx_jammer.py track.gpx output.gpx
+  python fix_gpx_jammer.py track.gpx --profile hiking
   python fix_gpx_jammer.py track.gpx --max-speed 20 --interval 2
   python fix_gpx_jammer.py track.gpx --no-interpolate   # просто удалить
 
@@ -29,10 +30,33 @@ import sys
 import xml.etree.ElementTree as ET
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 
 # Префиксы, зарезервированные ElementTree: ns0, ns1, ns2, ...
 _RESERVED_NS_PREFIX = re.compile(r"^ns\d+$")
+
+
+# ---------------------------------------------------------------------------
+# Профили активности
+# ---------------------------------------------------------------------------
+# Профиль — только стартовый набор значений: явно указанные CLI-флаги
+# (--max-speed, --min-distance и т.д.) всегда переопределяют его.
+
+ACTIVITY_PROFILES: Dict[str, Dict[str, float]] = {
+    "hiking":     {"label": "🥾 Пеший поход",            "max_speed": 10.0, "min_distance": 1000.0,  "pre_jitter_dist": 200.0,  "max_vert_speed": 3.0,  "interval": 1.0},
+    "running":    {"label": "🏃 Бег / трейлраннинг",      "max_speed": 12.0, "min_distance": 1500.0,  "pre_jitter_dist": 300.0,  "max_vert_speed": 4.0,  "interval": 1.0},
+    "kayak":      {"label": "🛶 Сплав / каяк / SUP",      "max_speed": 8.0,  "min_distance": 1000.0,  "pre_jitter_dist": 200.0,  "max_vert_speed": 2.0,  "interval": 1.0},
+    "horse":      {"label": "🐎 Верховая езда",           "max_speed": 15.0, "min_distance": 1500.0,  "pre_jitter_dist": 300.0,  "max_vert_speed": 3.0,  "interval": 1.0},
+    "mtb":        {"label": "🚴 Велосипед (МТБ)",         "max_speed": 25.0, "min_distance": 2000.0,  "pre_jitter_dist": 500.0,  "max_vert_speed": 5.0,  "interval": 1.0},
+    "road_bike":  {"label": "🚴 Велосипед (шоссе)",       "max_speed": 30.0, "min_distance": 2500.0,  "pre_jitter_dist": 500.0,  "max_vert_speed": 5.0,  "interval": 1.0},
+    "ski":        {"label": "⛷ Горные лыжи / сноуборд",  "max_speed": 40.0, "min_distance": 2000.0,  "pre_jitter_dist": 600.0,  "max_vert_speed": 15.0, "interval": 1.0},
+    "enduro":     {"label": "🏍 Эндуро / мото-бездорожье", "max_speed": 40.0, "min_distance": 3000.0,  "pre_jitter_dist": 800.0,  "max_vert_speed": 8.0,  "interval": 1.0},
+    "boat":       {"label": "🚤 Катер / моторная лодка",  "max_speed": 35.0, "min_distance": 3000.0,  "pre_jitter_dist": 800.0,  "max_vert_speed": 2.0,  "interval": 1.0},
+    "car":        {"label": "🚗 Авто / шоссейный мотоцикл", "max_speed": 70.0, "min_distance": 5000.0, "pre_jitter_dist": 1500.0, "max_vert_speed": 6.0,  "interval": 2.0},
+    "paraglider": {"label": "🪂 Параплан / дельтаплан",   "max_speed": 25.0, "min_distance": 3000.0,  "pre_jitter_dist": 500.0,  "max_vert_speed": 20.0, "interval": 1.0},
+    "train":      {"label": "🚆 Поезд / автобус",         "max_speed": 90.0, "min_distance": 10000.0, "pre_jitter_dist": 0.0,    "max_vert_speed": 4.0,  "interval": 2.0},
+}
+DEFAULT_PROFILE = "hiking"
 
 
 # ---------------------------------------------------------------------------
@@ -635,43 +659,58 @@ def main() -> None:
 Примеры:
   python fix_gpx_jammer.py track.gpx
   python fix_gpx_jammer.py track.gpx fixed.gpx
-  python fix_gpx_jammer.py track.gpx --max-speed 15   # пешеходный поход
-  python fix_gpx_jammer.py track.gpx --max-speed 80   # автомобиль
+  python fix_gpx_jammer.py track.gpx --profile hiking
+  python fix_gpx_jammer.py track.gpx --profile car
+  python fix_gpx_jammer.py track.gpx --profile mtb --max-speed 28  # профиль + ручная подстройка
   python fix_gpx_jammer.py track.gpx --no-interpolate # только удалить точки
-        """,
+
+Доступные профили (--profile), по умолчанию — """
+        + DEFAULT_PROFILE
+        + """:
+"""
+        + "\n".join(
+            f"  {key:<12} {p['label']}" for key, p in ACTIVITY_PROFILES.items()
+        )
+        + "\n        ",
     )
     parser.add_argument("input",  help="Входной GPX-файл")
     parser.add_argument("output", nargs="?", help="Выходной GPX-файл (по умолчанию: <input>_fixed.gpx)")
     parser.add_argument(
-        "--max-speed", type=float, default=30.0,
-        metavar="M/S",
-        help="Максимальная реалистичная скорость в м/с (по умолчанию: 30 = 108 км/ч). "
-             "Для пешего похода рекомендуется 10–15, для велосипеда — 20–30.",
+        "--profile", choices=sorted(ACTIVITY_PROFILES), default=None,
+        metavar="NAME",
+        help=f"Профиль активности, задаёт значения ниже по умолчанию (по умолчанию: {DEFAULT_PROFILE}). "
+             "См. список профилей ниже. Явно указанные флаги --max-speed и т.п. всегда переопределяют значение профиля.",
     )
     parser.add_argument(
-        "--min-distance", type=float, default=1000.0,
+        "--max-speed", type=float, default=None,
+        metavar="M/S",
+        help="Максимальная реалистичная скорость в м/с (по умолчанию — из профиля, для hiking это 10). "
+             "Переопределяет значение --profile.",
+    )
+    parser.add_argument(
+        "--min-distance", type=float, default=None,
         metavar="M",
         help="Минимальное расстояние от нормального трека до ложного кластера, "
-             "чтобы признать его глушилкой (по умолчанию: 1000 м).",
+             "чтобы признать его глушилкой (по умолчанию — из профиля). Переопределяет --profile.",
     )
     parser.add_argument(
-        "--interval", type=float, default=1.0,
+        "--interval", type=float, default=None,
         metavar="SEC",
-        help="Шаг интерполяции в секундах (по умолчанию: 1.0). "
-             "Подберите под исходную частоту записи трека.",
+        help="Шаг интерполяции в секундах (по умолчанию — из профиля). "
+             "Подберите под исходную частоту записи трека. Переопределяет --profile.",
     )
     parser.add_argument(
-        "--max-vert-speed", type=float, default=5.0,
+        "--max-vert-speed", type=float, default=None,
         metavar="M/S",
-        help="Максимальная реалистичная вертикальная скорость в м/с (по умолчанию: 5). "
-             "Точки с большим изменением высоты удаляются вместе с jammer-эпизодом.",
+        help="Максимальная реалистичная вертикальная скорость в м/с (по умолчанию — из профиля). "
+             "Точки с большим изменением высоты удаляются вместе с jammer-эпизодом. Переопределяет --profile.",
     )
     parser.add_argument(
-        "--pre-jitter-dist", type=float, default=200.0,
+        "--pre-jitter-dist", type=float, default=None,
         metavar="M",
         help="Убирать точки ПЕРЕД эпизодом, смещённые от post-jammer-позиции "
-             "более чем на M метров (ранний дрейф GPS). "
-             "0 — не расширять назад (по умолчанию: 200 м).",
+             "более чем на M метров (ранний дрейф GPS). 0 — не расширять назад "
+             "(по умолчанию — из профиля). Переопределяет --profile.",
     )
     parser.add_argument(
         "--no-interpolate", action="store_true",
@@ -695,15 +734,20 @@ def main() -> None:
         p = Path(inp)
         out = str(p.parent / (p.stem + "_fixed" + p.suffix))
 
+    profile = ACTIVITY_PROFILES[args.profile or DEFAULT_PROFILE]
+
+    if not args.quiet:
+        print(f"Профиль: {profile['label']} ({args.profile or DEFAULT_PROFILE})")
+
     fix_gpx(
         input_path=inp,
         output_path=out,
-        max_speed_mps=args.max_speed,
-        min_cluster_dist_m=args.min_distance,
+        max_speed_mps=args.max_speed if args.max_speed is not None else profile["max_speed"],
+        min_cluster_dist_m=args.min_distance if args.min_distance is not None else profile["min_distance"],
         interpolate=not args.no_interpolate,
-        interval_s=args.interval,
-        pre_jitter_dist_m=args.pre_jitter_dist,
-        max_vert_speed_mps=args.max_vert_speed,
+        interval_s=args.interval if args.interval is not None else profile["interval"],
+        pre_jitter_dist_m=args.pre_jitter_dist if args.pre_jitter_dist is not None else profile["pre_jitter_dist"],
+        max_vert_speed_mps=args.max_vert_speed if args.max_vert_speed is not None else profile["max_vert_speed"],
         verbose=not args.quiet,
     )
 

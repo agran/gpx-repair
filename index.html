@@ -193,7 +193,8 @@
         font-size: 0.8rem;
         color: #888;
       }
-      .param-row input[type="number"] {
+      .param-row input[type="number"],
+      .param-row select {
         background: #0d1b35;
         border: 1px solid #0f3460;
         color: #e0e0e0;
@@ -202,13 +203,19 @@
         font-size: 0.9rem;
         width: 100%;
       }
-      .param-row input:focus {
+      .param-row input:focus,
+      .param-row select:focus {
         outline: none;
         border-color: #7eb8f7;
       }
       .param-row .hint {
         font-size: 0.73rem;
         color: #555;
+      }
+      .profile-row {
+        margin-bottom: 16px;
+        padding-bottom: 16px;
+        border-bottom: 1px solid #0f3460;
       }
 
       /* Buttons */
@@ -328,20 +335,22 @@
       .track-stats {
         display: none;
         margin-top: 10px;
-        grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+        grid-template-columns: repeat(auto-fit, minmax(95px, 1fr));
         gap: 8px;
       }
       .track-stats .stat {
         background: #10213f;
         border: 1px solid #16294f;
         border-radius: 8px;
-        padding: 8px 10px;
+        padding: 8px 6px;
         text-align: center;
+        min-width: 0;
       }
       .track-stats .stat .stat-value {
         font-size: 1rem;
         font-weight: 600;
         color: #e5e7eb;
+        white-space: nowrap;
       }
       .track-stats .stat .stat-label {
         font-size: 0.7rem;
@@ -415,13 +424,21 @@
 
     <div class="card">
       <h2>2. Параметры</h2>
+      <div class="param-row profile-row">
+        <label>Тип активности</label>
+        <select id="p-profile"></select>
+        <span class="hint"
+          >Профиль подставляет параметры ниже — их всё равно можно подправить
+          вручную</span
+        >
+      </div>
       <div class="params-grid">
         <div class="param-row">
           <label>Макс. горизонт. скорость (м/с)</label>
           <input
             type="number"
             id="p-maxspeed"
-            value="20"
+            value="10"
             min="1"
             max="500"
             step="1"
@@ -436,7 +453,7 @@
           <input
             type="number"
             id="p-vertspeed"
-            value="5"
+            value="3"
             min="0.5"
             max="100"
             step="0.5"
@@ -531,18 +548,21 @@
         const parser = new DOMParser();
         const doc = parser.parseFromString(xmlText, "application/xml");
         if (doc.querySelector("parsererror"))
-          return { lats: [], lons: [], eles: [] };
+          return { lats: [], lons: [], eles: [], times: [] };
         const pts = doc.querySelectorAll("trkpt");
         const lats = new Array(pts.length);
         const lons = new Array(pts.length);
         const eles = new Array(pts.length);
+        const times = new Array(pts.length);
         pts.forEach((p, i) => {
           lats[i] = parseFloat(p.getAttribute("lat"));
           lons[i] = parseFloat(p.getAttribute("lon"));
           const eleEl = p.querySelector("ele");
           eles[i] = eleEl ? parseFloat(eleEl.textContent) : NaN;
+          const timeEl = p.querySelector("time");
+          times[i] = timeEl ? parseTime(timeEl.textContent) : NaN;
         });
-        return { lats, lons, eles };
+        return { lats, lons, eles, times };
       }
 
       function fillMissingEle(eles) {
@@ -598,10 +618,25 @@
         return { minEle, maxEle, gain, loss };
       }
 
-      function computeTrackStats(lats, lons, eles) {
+      function computeTrackStats(lats, lons, eles, times) {
         let length = 0;
+        let maxSpeed = 0;
+        let hasSpeed = false;
         for (let i = 1; i < lats.length; i++) {
-          length += haversine(lats[i - 1], lons[i - 1], lats[i], lons[i]);
+          const d = haversine(lats[i - 1], lons[i - 1], lats[i], lons[i]);
+          length += d;
+          if (
+            times &&
+            Number.isFinite(times[i]) &&
+            Number.isFinite(times[i - 1])
+          ) {
+            const dt = times[i] - times[i - 1];
+            if (dt > 0) {
+              hasSpeed = true;
+              const v = d / dt;
+              if (v > maxSpeed) maxSpeed = v;
+            }
+          }
         }
 
         const hasEle = eles.some((e) => !Number.isNaN(e));
@@ -613,12 +648,23 @@
             maxEle: null,
             gain: null,
             loss: null,
+            hasSpeed,
+            maxSpeed,
           };
         }
 
         const { minEle, maxEle, gain, loss } = computeElevationGainLoss(eles);
 
-        return { length, hasEle: true, minEle, maxEle, gain, loss };
+        return {
+          length,
+          hasEle: true,
+          minEle,
+          maxEle,
+          gain,
+          loss,
+          hasSpeed,
+          maxSpeed,
+        };
       }
 
       function renderTrackStats(containerEl, stats) {
@@ -628,6 +674,12 @@
             value: `${(stats.length / 1000).toFixed(2)} км`,
           },
         ];
+        if (stats.hasSpeed) {
+          items.push({
+            label: "Макс. скорость",
+            value: `${(stats.maxSpeed * 3.6).toFixed(1)} км/ч`,
+          });
+        }
         if (stats.hasEle) {
           items.push(
             { label: "Макс. высота", value: `${stats.maxEle.toFixed(0)} м` },
@@ -1547,6 +1599,193 @@
       const btnFix = document.getElementById("btn-fix");
       const btnDl = document.getElementById("btn-download");
 
+      // ─── Профили активности ────────────────────────────────────────────────────
+      // Профиль — это только стартовая точка: поля ниже остаются редактируемыми.
+      const ACTIVITY_PROFILES = [
+        [
+          "hiking",
+          {
+            label: "🥾 Пеший поход",
+            maxSpeed: 10,
+            minDist: 1000,
+            preJitter: 200,
+            maxVert: 3,
+            interval: 1,
+          },
+        ],
+        [
+          "running",
+          {
+            label: "🏃 Бег / трейлраннинг",
+            maxSpeed: 12,
+            minDist: 1500,
+            preJitter: 300,
+            maxVert: 4,
+            interval: 1,
+          },
+        ],
+        [
+          "kayak",
+          {
+            label: "🛶 Сплав / каяк / SUP",
+            maxSpeed: 8,
+            minDist: 1000,
+            preJitter: 200,
+            maxVert: 2,
+            interval: 1,
+          },
+        ],
+        [
+          "horse",
+          {
+            label: "🐎 Верховая езда",
+            maxSpeed: 15,
+            minDist: 1500,
+            preJitter: 300,
+            maxVert: 3,
+            interval: 1,
+          },
+        ],
+        [
+          "mtb",
+          {
+            label: "🚴 Велосипед (МТБ)",
+            maxSpeed: 25,
+            minDist: 2000,
+            preJitter: 500,
+            maxVert: 5,
+            interval: 1,
+          },
+        ],
+        [
+          "road_bike",
+          {
+            label: "🚴 Велосипед (шоссе)",
+            maxSpeed: 30,
+            minDist: 2500,
+            preJitter: 500,
+            maxVert: 5,
+            interval: 1,
+          },
+        ],
+        [
+          "ski",
+          {
+            label: "⛷ Горные лыжи / сноуборд",
+            maxSpeed: 40,
+            minDist: 2000,
+            preJitter: 600,
+            maxVert: 15,
+            interval: 1,
+          },
+        ],
+        [
+          "enduro",
+          {
+            label: "🏍 Эндуро / мото-бездорожье",
+            maxSpeed: 40,
+            minDist: 3000,
+            preJitter: 800,
+            maxVert: 8,
+            interval: 1,
+          },
+        ],
+        [
+          "boat",
+          {
+            label: "🚤 Катер / моторная лодка",
+            maxSpeed: 35,
+            minDist: 3000,
+            preJitter: 800,
+            maxVert: 2,
+            interval: 1,
+          },
+        ],
+        [
+          "car",
+          {
+            label: "🚗 Авто / шоссейный мотоцикл",
+            maxSpeed: 70,
+            minDist: 5000,
+            preJitter: 1500,
+            maxVert: 6,
+            interval: 2,
+          },
+        ],
+        [
+          "paraglider",
+          {
+            label: "🪂 Параплан / дельтаплан",
+            maxSpeed: 25,
+            minDist: 3000,
+            preJitter: 500,
+            maxVert: 20,
+            interval: 1,
+          },
+        ],
+        [
+          "train",
+          {
+            label: "🚆 Поезд / автобус",
+            maxSpeed: 90,
+            minDist: 10000,
+            preJitter: 0,
+            maxVert: 4,
+            interval: 2,
+          },
+        ],
+      ];
+      const DEFAULT_PROFILE = "hiking";
+      const CUSTOM_PROFILE_KEY = "custom";
+      const CUSTOM_PROFILE_LABEL = "🛠 Пользовательский";
+      const PROFILE_PARAM_IDS = [
+        "p-maxspeed",
+        "p-mindist",
+        "p-prejitter",
+        "p-vertspeed",
+        "p-interval",
+      ];
+
+      function applyProfile(key) {
+        const entry = ACTIVITY_PROFILES.find(([k]) => k === key);
+        if (!entry) return;
+        const p = entry[1];
+        document.getElementById("p-maxspeed").value = p.maxSpeed;
+        document.getElementById("p-mindist").value = p.minDist;
+        document.getElementById("p-prejitter").value = p.preJitter;
+        document.getElementById("p-vertspeed").value = p.maxVert;
+        document.getElementById("p-interval").value = p.interval;
+      }
+
+      (function initProfileSelect() {
+        const select = document.getElementById("p-profile");
+        for (const [key, p] of ACTIVITY_PROFILES) {
+          const opt = document.createElement("option");
+          opt.value = key;
+          opt.textContent = p.label;
+          select.appendChild(opt);
+        }
+        // Скрытая опция-плейсхолдер: не выбирается вручную из списка,
+        // но подставляется автоматически, когда пользователь правит поля руками.
+        const customOpt = document.createElement("option");
+        customOpt.value = CUSTOM_PROFILE_KEY;
+        customOpt.textContent = CUSTOM_PROFILE_LABEL;
+        customOpt.hidden = true;
+        select.appendChild(customOpt);
+
+        select.value = DEFAULT_PROFILE;
+        applyProfile(DEFAULT_PROFILE);
+        select.addEventListener("change", () => applyProfile(select.value));
+
+        for (const id of PROFILE_PARAM_IDS) {
+          document.getElementById(id).addEventListener("input", () => {
+            if (select.value !== CUSTOM_PROFILE_KEY) {
+              select.value = CUSTOM_PROFILE_KEY;
+            }
+          });
+        }
+      })();
+
       function loadFile(file) {
         const name = ((file && file.name) || "").toLowerCase();
         const isGpx = name.endsWith(".gpx");
@@ -1590,7 +1829,7 @@
           document.getElementById("track-stats-before").style.display = "none";
 
           try {
-            const { lats, lons, eles } = extractTrackData(gpxText);
+            const { lats, lons, eles, times } = extractTrackData(gpxText);
             showTrackMap("map-before", lats, lons, "#e11d48");
             const shown =
               document.getElementById("map-before").style.display === "block";
@@ -1600,7 +1839,7 @@
             if (shown) {
               renderTrackStats(
                 document.getElementById("track-stats-before"),
-                computeTrackStats(lats, lons, eles),
+                computeTrackStats(lats, lons, eles, times),
               );
             }
           } catch (err) {
@@ -1673,6 +1912,7 @@
               lats: afterLats,
               lons: afterLons,
               eles: afterEles,
+              times: afterTimes,
             } = extractTrackData(result);
             showTrackMap("map-after", afterLats, afterLons, "#1d4ed8");
             const shownAfter =
@@ -1682,7 +1922,7 @@
             if (shownAfter) {
               renderTrackStats(
                 document.getElementById("track-stats-after"),
-                computeTrackStats(afterLats, afterLons, afterEles),
+                computeTrackStats(afterLats, afterLons, afterEles, afterTimes),
               );
             }
           } catch (err) {
