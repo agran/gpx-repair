@@ -1163,7 +1163,7 @@
 
           try {
             const { lats, lons, eles } = extractTrackData(gpxText);
-            showTrackMap("map-before", lats, lons, "#1d4ed8");
+            showTrackMap("map-before", lats, lons, "#e11d48");
             const shown =
               document.getElementById("map-before").style.display === "block";
             document.getElementById("track-label-before").style.display = shown
@@ -1239,7 +1239,7 @@
               lons: afterLons,
               eles: afterEles,
             } = extractTrackData(result);
-            showTrackMap("map-after", afterLats, afterLons, "#e11d48");
+            showTrackMap("map-after", afterLats, afterLons, "#1d4ed8");
             const shownAfter =
               document.getElementById("map-after").style.display === "block";
             document.getElementById("track-label-after").style.display =
