@@ -640,15 +640,29 @@
             attribution:
               '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank">OpenStreetMap</a>',
           }).addTo(map);
-          inst = { map, polyline: null, startMarker: null, endMarker: null };
+          inst = {
+            map,
+            polyline: null,
+            casing: null,
+            startMarker: null,
+            endMarker: null,
+          };
           mapInstances[containerId] = inst;
         }
 
+        if (inst.casing) inst.map.removeLayer(inst.casing);
         if (inst.polyline) inst.map.removeLayer(inst.polyline);
         if (inst.startMarker) inst.map.removeLayer(inst.startMarker);
         if (inst.endMarker) inst.map.removeLayer(inst.endMarker);
 
-        inst.polyline = L.polyline(latlngs, { color, weight: 3 }).addTo(
+        // Белая "подложка" под линией трека даёт контраст на любом фоне карты
+        // (светлом, тёмном, зелёном лесном и т.п.), где сам цвет трека может теряться.
+        inst.casing = L.polyline(latlngs, {
+          color: "#ffffff",
+          weight: 6,
+          opacity: 0.9,
+        }).addTo(inst.map);
+        inst.polyline = L.polyline(latlngs, { color, weight: 3.5 }).addTo(
           inst.map,
         );
         inst.startMarker = L.circleMarker(latlngs[0], {
@@ -1149,7 +1163,7 @@
 
           try {
             const { lats, lons, eles } = extractTrackData(gpxText);
-            showTrackMap("map-before", lats, lons, "#7eb8f7");
+            showTrackMap("map-before", lats, lons, "#1d4ed8");
             const shown =
               document.getElementById("map-before").style.display === "block";
             document.getElementById("track-label-before").style.display = shown
@@ -1225,7 +1239,7 @@
               lons: afterLons,
               eles: afterEles,
             } = extractTrackData(result);
-            showTrackMap("map-after", afterLats, afterLons, "#4ade80");
+            showTrackMap("map-after", afterLats, afterLons, "#e11d48");
             const shownAfter =
               document.getElementById("map-after").style.display === "block";
             document.getElementById("track-label-after").style.display =
