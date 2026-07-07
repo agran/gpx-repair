@@ -2017,7 +2017,14 @@
       // или ПОСЛЕ (dir=+1) индекса idx — используется, чтобы определить курс
       // движения по треку рядом с границей эпизода (устойчиво к GPS-дрожанию
       // соседних точек).
-      function getHeadingRef(lats, lons, idx, dir, minDist = 20, maxSteps = 80) {
+      function getHeadingRef(
+        lats,
+        lons,
+        idx,
+        dir,
+        minDist = 20,
+        maxSteps = 80,
+      ) {
         const n = lats.length;
         let i = idx,
           dist = 0,
@@ -2036,7 +2043,8 @@
       // Единичный вектор направления A→B в локальных метрах восток/север.
       function unitHeading(latA, lonA, latB, lonB) {
         const mPerDegLat = 111_320;
-        const mPerDegLon = 111_320 * Math.cos(((latA + latB) / 2) * Math.PI / 180);
+        const mPerDegLon =
+          111_320 * Math.cos((((latA + latB) / 2) * Math.PI) / 180);
         const dx = (lonB - lonA) * mPerDegLon;
         const dy = (latB - latA) * mPerDegLat;
         const len = Math.hypot(dx, dy);
@@ -2106,9 +2114,13 @@
         return (alpha) => {
           const u = 1 - alpha;
           const x =
-            3 * u * u * alpha * x1 + 3 * u * alpha * alpha * x2 + alpha ** 3 * x3;
+            3 * u * u * alpha * x1 +
+            3 * u * alpha * alpha * x2 +
+            alpha ** 3 * x3;
           const y =
-            3 * u * u * alpha * y1 + 3 * u * alpha * alpha * y2 + alpha ** 3 * y3;
+            3 * u * u * alpha * y1 +
+            3 * u * alpha * alpha * y2 +
+            alpha ** 3 * y3;
           return { lat: lat0 + y / mPerDegLat, lon: lon0 + x / mPerDegLon };
         };
       }
@@ -2284,10 +2296,22 @@
         if (SEAM_BLEND_DIST_M > 0) {
           const chordDir = unitHeading(lat0, lon0, lat1, lon1);
           const dirIn =
-            (headingRefBefore && unitHeading(headingRefBefore.lat, headingRefBefore.lon, lat0, lon0)) ||
+            (headingRefBefore &&
+              unitHeading(
+                headingRefBefore.lat,
+                headingRefBefore.lon,
+                lat0,
+                lon0,
+              )) ||
             chordDir;
           const dirOut =
-            (headingRefAfter && unitHeading(lat1, lon1, headingRefAfter.lat, headingRefAfter.lon)) ||
+            (headingRefAfter &&
+              unitHeading(
+                lat1,
+                lon1,
+                headingRefAfter.lat,
+                headingRefAfter.lon,
+              )) ||
             chordDir;
 
           for (const s of sampled) {
