@@ -2,7 +2,7 @@
 
 # GPX Repair
 
-Automatically repairs GPX tracks corrupted by a GPS jammer. It doesn't recover the real data, but it finds the corrupted section, removes it, and smoothly connects the start and end of the glitched segment.
+Automatically repairs GPX tracks corrupted by a GPS jammer. It doesn't recover the actual (real) route through the glitched section, but it finds the corrupted section, removes it, and fills the gap between the start and end of the glitched segment — either with a straight line, or (by default for most activity profiles) with a plausible route along real roads/trails with terrain elevation.
 
 ## Web version
 
