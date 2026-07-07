@@ -5831,7 +5831,9 @@
                       "📄 " + file.name + t("suffix_fit");
                   }
                 } catch (err) {
-                  alert(t("alert_parse_fail", { msg: err.message }));
+                  logLines = [];
+                  logEl.style.display = "block";
+                  log(t("alert_parse_fail", { msg: err.message }), "log-err");
                   btnFix.disabled = true;
                   gpxText = null;
                   document.getElementById("color-mode-row").style.display =
