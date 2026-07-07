@@ -1491,15 +1491,26 @@
         afterIdx,
         displacedM,
         maxVertSpeed,
+        maxLookbackS = 300,
       ) {
         const refLat = lats[afterIdx],
           refLon = lons[afterIdx];
+        const refTime = times[firstBad];
         let newFirst = firstBad;
         let i = firstBad - 1;
 
         while (i >= 0) {
+          // Суммарный откат назад от исходного начала эпизода ограничен —
+          // "ранний дрейф" по определению короткий, а не поиск похожего
+          // участка где-то в далёком прошлом трека. Без этого ограничения
+          // на треках, где GPS реально проходит неподалёку (в пределах
+          // displacedM) от точки post-jammer-возврата лишь изредка, можно
+          // было ошибочно откатиться на десятки минут вглубь нормального
+          // трека.
+          if (refTime - times[i] > maxLookbackS) break;
+
           const dtFwd = Math.abs(times[i + 1] - times[i]);
-          if (dtFwd > 3600) break;
+          if (dtFwd > 3600) break; // реальный разрыв в записи
 
           const coordBad =
             haversine(lats[i], lons[i], refLat, refLon) >= displacedM;
@@ -1525,6 +1536,9 @@
       function extendAltitudeBackward(eles, times, epStart, maxVertSpeed) {
         let newStart = epStart;
         let i = epStart - 1;
+        let frozenBackS = 0;
+        const FROZEN_EPS_M = 0.005;
+        const MAX_FROZEN_BACK_S = 60;
 
         while (i >= 0) {
           if (i === 0) break;
@@ -1536,6 +1550,7 @@
 
           if (inAnomaly) {
             newStart = i;
+            frozenBackS = 0; // настоящая аномалия сбрасывает лимит
             i--;
             continue;
           }
@@ -1551,6 +1566,18 @@
               }
             }
           }
+
+          // "Замороженное" показание высоты (глушилка иногда сначала
+          // застывает на одном значении, и лишь потом начинается сам крэш) —
+          // считаем частью глитча, но не дальше MAX_FROZEN_BACK_S назад,
+          // чтобы не съесть настоящий длительный привал.
+          if (dhIn < FROZEN_EPS_M && frozenBackS < MAX_FROZEN_BACK_S) {
+            frozenBackS += dtIn;
+            newStart = i;
+            i--;
+            continue;
+          }
+
           break;
         }
         return newStart;
@@ -2013,6 +2040,15 @@
         return c * c * (3 - 2 * c);
       }
 
+      // Как smoothstep01, но быстрее сходится к 1 (быстрее "встаёт" на
+      // маршрут/тропу, жертвуя длиной плавного участка) — производная в 0
+      // по-прежнему нулевая (нет излома в точке шва), но большая часть
+      // возврата на маршрут происходит в первой половине дистанции примыкания.
+      function seamBlendWeight(t) {
+        const s = smoothstep01(t);
+        return 1 - (1 - s) * (1 - s);
+      }
+
       // Точка реального трека на расстоянии не менее minDist метров ДО (dir=-1)
       // или ПОСЛЕ (dir=+1) индекса idx — используется, чтобы определить курс
       // движения по треку рядом с границей эпизода (устойчиво к GPS-дрожанию
@@ -2291,8 +2327,10 @@
         // не учитывает, куда реально двигался трек) — стягиваем к линии,
         // продолженной по КУРСУ реального трека до/после эпизода: рядом с
         // границей путь сначала идёт в том же направлении, в котором трек уже
-        // двигался, и лишь затем плавно поворачивает на маршрут.
-        const SEAM_BLEND_DIST_M = Math.min(150, routeLen * 0.25);
+        // двигался, и лишь затем поворачивает на маршрут. Дистанция примыкания
+        // намеренно небольшая — быстрее вернуться на тропу важнее, чем долго
+        // и плавно к ней подходить.
+        const SEAM_BLEND_DIST_M = Math.min(40, routeLen * 0.15);
         if (SEAM_BLEND_DIST_M > 0) {
           const chordDir = unitHeading(lat0, lon0, lat1, lon1);
           const dirIn =
@@ -2320,11 +2358,11 @@
             const wStart =
               distFromStart >= SEAM_BLEND_DIST_M
                 ? 1
-                : smoothstep01(distFromStart / SEAM_BLEND_DIST_M);
+                : seamBlendWeight(distFromStart / SEAM_BLEND_DIST_M);
             const wEnd =
               distFromEnd >= SEAM_BLEND_DIST_M
                 ? 1
-                : smoothstep01(distFromEnd / SEAM_BLEND_DIST_M);
+                : seamBlendWeight(distFromEnd / SEAM_BLEND_DIST_M);
 
             if (wStart < 1 && dirIn) {
               const p = projectPoint(lat0, lon0, dirIn, distFromStart);
@@ -2575,7 +2613,24 @@
 
           let { firstBad, lastBad, afterIdx } = ep;
 
-          // 1) Расширение назад по координатам и высоте
+          // 1) Расширение назад по высотному крэшу («плато») — запускается
+          // ПЕРВЫМ, т.к. у него нет ограничения на суммарное время отката
+          // (аномалия сама себя ограничивает). Координатное расширение ниже
+          // использует УЖЕ расширенную границу как точку отсчёта для своего
+          // ограниченного по времени отката, чтобы поймать раннее смещение
+          // координат сразу ПЕРЕД началом высотного крэша, а не отсчитывать
+          // время от далёкого сырого начала эпизода.
+          if (maxVert > 0) {
+            const altStart = extendAltitudeBackward(
+              eles,
+              times,
+              firstBad,
+              maxVert,
+            );
+            if (altStart < firstBad) firstBad = altStart;
+          }
+
+          // 2) Расширение назад по координатам
           // (для хвостового эпизода без "после" — сравнивать смещение
           // не с чем, координатное расширение назад пропускаем)
           if (preJitter > 0 && afterIdx < n) {
@@ -2589,17 +2644,6 @@
               preJitter,
               maxVert,
             );
-          }
-
-          // 2) Расширение назад по высотному крэшу («плато»)
-          if (maxVert > 0) {
-            const altStart = extendAltitudeBackward(
-              eles,
-              times,
-              firstBad,
-              maxVert,
-            );
-            if (altStart < firstBad) firstBad = altStart;
           }
 
           const beforeIdx = firstBad - 1;

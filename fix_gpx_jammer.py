@@ -189,6 +189,17 @@ def resample_route(
     return out, total_length
 
 
+def seam_blend_weight(t: float) -> float:
+    """
+    Как smoothstep01, но быстрее сходится к 1 (быстрее "встаёт" на
+    маршрут/тропу, жертвуя длиной плавного участка) — производная в 0
+    по-прежнему нулевая (нет излома в точке шва), но большая часть
+    возврата на маршрут происходит в первой половине дистанции примыкания.
+    """
+    s = smoothstep01(t)
+    return 1.0 - (1.0 - s) * (1.0 - s)
+
+
 def smoothstep01(t: float) -> float:
     """Гладкая S-образная кривая (0 при t<=0, 1 при t>=1, непрерывная
     производная на границах) — используется для плавного примыкания
@@ -493,7 +504,7 @@ def extend_episode_backward(
     first_bad: int,
     after_idx: int,
     displaced_m: float,
-    max_lookback_s: float = 3600.0,
+    max_lookback_s: float = 300.0,
     max_vert_speed_mps: float = 5.0,
 ) -> int:
     """
@@ -502,19 +513,31 @@ def extend_episode_backward(
     - имеют аномальную скорость изменения высоты > max_vert_speed_mps
       (глушилка часто портит высоту раньше, чем координаты).
     Возвращает новый (расширенный) first_bad.
+
+    max_lookback_s ограничивает СУММАРНЫЙ откат назад от исходного начала
+    эпизода: «ранний дрейф» по определению короткий (это не поиск похожего
+    участка где-то в далёком прошлом трека). Без этого ограничения на
+    треках, где GPS реально проходит неподалёку (в пределах displaced_m)
+    от точки post-jammer-возврата лишь изредка, можно было ошибочно
+    откатиться на десятки минут вглубь нормального трека.
     """
     if after_idx >= len(lats):
         return first_bad
 
     ref_lat, ref_lon = lats[after_idx], lons[after_idx]
+    ref_time = times[first_bad]
 
     new_first = first_bad
     i = first_bad - 1
 
     while i >= 0:
-        dt = abs((times[i + 1] - times[i]).total_seconds())
-        if dt > max_lookback_s:
+        # Суммарный откат назад ограничен — см. docstring.
+        if (ref_time - times[i]).total_seconds() > max_lookback_s:
             break
+
+        dt = abs((times[i + 1] - times[i]).total_seconds())
+        if dt > 3600:
+            break  # реальный разрыв в записи — до него GPS всё ещё надёжен
 
         # Критерий 1: координатное смещение
         coord_displaced = haversine(lats[i], lons[i], ref_lat, ref_lon) >= displaced_m
@@ -710,8 +733,10 @@ def build_routed_interpolated(
     # учитывает, куда реально двигался трек) — стягиваем к линии,
     # продолженной по КУРСУ реального трека до/после эпизода: рядом с
     # границей путь сначала идёт в том же направлении, в котором трек уже
-    # двигался, и лишь затем плавно поворачивает на маршрут.
-    seam_blend_dist_m = min(150.0, route_len * 0.25)
+    # двигался, и лишь затем поворачивает на маршрут. Дистанция примыкания
+    # намеренно небольшая — быстрее вернуться на тропу важнее, чем долго
+    # и плавно к ней подходить.
+    seam_blend_dist_m = min(40.0, route_len * 0.15)
     if seam_blend_dist_m > 0 and sampled:
         chord_dir = unit_heading(lat0, lon0, lat1, lon1)
         dir_in = (
@@ -728,11 +753,11 @@ def build_routed_interpolated(
             dist_from_end = route_len - dist_from_start
             w_start = (
                 1.0 if dist_from_start >= seam_blend_dist_m
-                else smoothstep01(dist_from_start / seam_blend_dist_m)
+                else seam_blend_weight(dist_from_start / seam_blend_dist_m)
             )
             w_end = (
                 1.0 if dist_from_end >= seam_blend_dist_m
-                else smoothstep01(dist_from_end / seam_blend_dist_m)
+                else seam_blend_weight(dist_from_end / seam_blend_dist_m)
             )
 
             if w_start < 1 and dir_in:
@@ -991,23 +1016,22 @@ def fix_gpx(
     for ep_start, ep_end in episodes:
         after_idx  = ep_end + 1 if ep_end + 1 < n else None
 
-        # Расширяем эпизод назад: убираем «ранний дрейф» перед глушилкой
-        if pre_jitter_dist_m > 0 and after_idx is not None:
-            ep_start = extend_episode_backward(
-                lats, lons, eles, times,
-                first_bad=ep_start,
-                after_idx=after_idx,
-                displaced_m=pre_jitter_dist_m,
-                max_vert_speed_mps=max_vert_speed_mps,
-            )
-
-        # Дополнительный проход назад для аномалий ВЫСОТЫ:
+        # Проход назад для аномалий ВЫСОТЫ (запускаем ПЕРВЫМ):
         # Обнаруживает "плато неправильной высоты" и предшествующий крэш.
         # (Координаты таких точек корректны, но высота уже испорчена глушилкой.)
+        # Идёт первым, потому что у него нет ограничения на суммарное время
+        # отката (аномалия сама себя ограничивает) — а координатный проход
+        # ниже использует УЖЕ расширенную границу как точку отсчёта для
+        # своего ограниченного по времени отката, чтобы поймать раннее
+        # смещение координат сразу ПЕРЕД началом высотного крэша, а не
+        # отсчитывать время от далёкого сырого начала эпизода.
         if max_vert_speed_mps > 0:
             before_candidate = ep_start - 1
             i = before_candidate
             new_alt_start = ep_start
+            frozen_back_s = 0.0
+            FROZEN_EPS_M = 0.005
+            MAX_FROZEN_BACK_S = 60.0
             while i >= 0:
                 if i == 0:
                     break
@@ -1021,6 +1045,7 @@ def fix_gpx(
                 if in_anomaly:
                     # Явная аномалия входящего перехода
                     new_alt_start = i
+                    frozen_back_s = 0.0  # настоящая аномалия сбрасывает лимит
                     i -= 1
                     continue
 
@@ -1036,10 +1061,33 @@ def fix_gpx(
                             new_alt_start = i
                             i -= 1
                             continue
+
+                # "Замороженное" показание высоты (глушилка иногда сначала
+                # застывает на одном значении, и лишь потом начинается сам
+                # крэш) — считаем частью глитча, но не дальше MAX_FROZEN_BACK_S
+                # назад, чтобы не съесть настоящий длительный привал.
+                if dh_in < FROZEN_EPS_M and frozen_back_s < MAX_FROZEN_BACK_S:
+                    frozen_back_s += dt_in
+                    new_alt_start = i
+                    i -= 1
+                    continue
+
                 break  # всё чисто — останавливаемся
 
             if new_alt_start < ep_start:
                 ep_start = new_alt_start
+
+        # Расширяем эпизод назад по координатам: убираем «ранний дрейф»
+        # перед глушилкой (запускается ВТОРЫМ, от уже расширенной по
+        # высоте границы — см. комментарий выше).
+        if pre_jitter_dist_m > 0 and after_idx is not None:
+            ep_start = extend_episode_backward(
+                lats, lons, eles, times,
+                first_bad=ep_start,
+                after_idx=after_idx,
+                displaced_m=pre_jitter_dist_m,
+                max_vert_speed_mps=max_vert_speed_mps,
+            )
 
         bad_count = ep_end - ep_start + 1
         total_removed += bad_count
