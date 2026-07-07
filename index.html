@@ -40,11 +40,19 @@
         align-items: center;
         padding: 24px 16px;
       }
+      .header-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        width: 100%;
+        max-width: 720px;
+        margin-bottom: 4px;
+      }
       .brand {
         display: flex;
         align-items: center;
         gap: 10px;
-        margin-bottom: 4px;
       }
       .brand img {
         width: 40px;
@@ -444,12 +452,9 @@
       }
 
       .lang-switch {
-        position: fixed;
-        top: 12px;
-        right: 12px;
         display: flex;
         gap: 4px;
-        z-index: 500;
+        flex-shrink: 0;
       }
       .lang-switch button {
         border: 1px solid #0f3460;
@@ -466,29 +471,22 @@
         color: #fff;
         border-color: #2563eb;
       }
-      @media (max-width: 480px) {
-        .lang-switch {
-          position: static;
-          width: 100%;
-          max-width: 720px;
-          justify-content: flex-end;
-          margin: 0 0 10px;
-        }
-      }
     </style>
   </head>
   <body>
-    <div class="lang-switch" id="lang-switch">
-      <button type="button" data-lang="ru">RU</button>
-      <button type="button" data-lang="en">EN</button>
-    </div>
-    <div class="brand">
-      <img
-        src="https://www.erudit23.ru/gpx-repair/logo.svg"
-        alt="GPX Repair"
-        onerror="this.classList.add('img-broken')"
-      />
-      <h1>GPX Repair</h1>
+    <div class="header-row">
+      <div class="brand">
+        <img
+          src="https://www.erudit23.ru/gpx-repair/logo.svg"
+          alt="GPX Repair"
+          onerror="this.classList.add('img-broken')"
+        />
+        <h1>GPX Repair</h1>
+      </div>
+      <div class="lang-switch" id="lang-switch">
+        <button type="button" data-lang="ru">RU</button>
+        <button type="button" data-lang="en">EN</button>
+      </div>
     </div>
     <p class="subtitle" data-i18n="subtitle">
       Удаление артефактов GPS-глушилки. Обработка — локально на устройстве, файл
