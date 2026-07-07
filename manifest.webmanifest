@@ -1,5 +1,5 @@
 {
-  "name": "GPX Jammer Fix",
+  "name": "GPX Repair",
   "short_name": "GPX Repair",
   "description": "Удаление артефактов GPS-глушилки из GPX/TCX/FIT треков. Всё обрабатывается локально в браузере.",
   "start_url": "./index.html",
