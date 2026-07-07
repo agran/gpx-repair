@@ -312,6 +312,10 @@
         color: #8b94a8;
         cursor: not-allowed;
       }
+      .no-episodes-msg {
+        color: #4ade80;
+        margin-bottom: 12px;
+      }
 
       /* Log */
       #log {
@@ -687,6 +691,15 @@
 
     <div class="card">
       <h2 data-i18n="card3_title">3. Обработка</h2>
+      <p
+        id="no-episodes-msg"
+        class="hint no-episodes-msg"
+        style="display: none"
+        data-i18n="no_episodes_msg"
+      >
+        ✓ Аномальных участков не найдено — трек уже в порядке, исправление не
+        требуется.
+      </p>
       <button id="btn-fix" disabled data-i18n="btn_fix">Исправить трек</button>
       <pre id="log"></pre>
       <div class="download-row">
@@ -756,6 +769,8 @@
           episode_label: "Эпизод {n}",
           episode_tail: "обрыв в конце трека",
           episode_points: "{n} точек",
+          no_episodes_msg:
+            "✓ Аномальных участков не найдено — трек уже в порядке, исправление не требуется.",
           card3_title: "3. Обработка",
           btn_fix: "Исправить трек",
           btn_download_label: "⬇ Скачать исправленный GPX",
@@ -885,6 +900,8 @@
           episode_label: "Episode {n}",
           episode_tail: "track cut off at the end",
           episode_points: "{n} points",
+          no_episodes_msg:
+            "✓ No anomalous sections found — the track is already clean, no fix needed.",
           card3_title: "3. Processing",
           btn_fix: "Fix track",
           btn_download_label: "⬇ Download fixed GPX",
@@ -3173,6 +3190,7 @@
 
       const episodeCard = document.getElementById("episode-card");
       const episodeListEl = document.getElementById("episode-list");
+      const noEpisodesMsg = document.getElementById("no-episodes-msg");
       let episodeChoices = []; // режим на каждый обнаруженный эпизод, по индексу
       let episodePreview = []; // последний обнаруженный список эпизодов
       let episodePreviewTimes = []; // times[] трека, для которого построен episodePreview
@@ -3180,6 +3198,7 @@
       function updateEpisodeList() {
         if (!gpxText) {
           episodeCard.style.display = "none";
+          noEpisodesMsg.style.display = "none";
           episodeChoices = [];
           episodePreview = [];
           return;
@@ -3189,10 +3208,14 @@
           ({ lats, lons, eles, times } = extractTrackData(gpxText));
         } catch (e) {
           episodeCard.style.display = "none";
+          noEpisodesMsg.style.display = "none";
+          btnFix.disabled = true;
           return;
         }
         if (!lats.length) {
           episodeCard.style.display = "none";
+          noEpisodesMsg.style.display = "none";
+          btnFix.disabled = true;
           return;
         }
         const maxSpeed =
@@ -3211,7 +3234,10 @@
         const defaultMode = document.getElementById("p-interp-mode").value;
         episodeChoices = episodes.map(() => defaultMode);
         renderEpisodeList(episodes, times);
-        episodeCard.style.display = episodes.length ? "block" : "none";
+        const hasEpisodes = episodes.length > 0;
+        episodeCard.style.display = hasEpisodes ? "block" : "none";
+        noEpisodesMsg.style.display = hasEpisodes ? "none" : "block";
+        btnFix.disabled = !hasEpisodes;
       }
 
       function renderEpisodeList(episodes, times) {
@@ -3374,7 +3400,6 @@
             updateEpisodeList();
             return;
           }
-          btnFix.disabled = false;
           log("");
           logLines = [];
           logEl.style.display = "none";
