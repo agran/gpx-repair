@@ -604,9 +604,7 @@
           >Раскраска трека</label
         >
         <select id="color-mode-select">
-          <option value="plain" data-i18n="color_mode_plain">
-            Однотонный
-          </option>
+          <option value="plain" data-i18n="color_mode_plain">Однотонный</option>
           <option value="speed" data-i18n="color_mode_speed">Скорость</option>
           <option value="grade" data-i18n="color_mode_grade">
             Уклон (набор/сброс)
@@ -789,6 +787,39 @@
           data-i18n-alt="alt_done"
           onerror="this.classList.add('img-broken')"
         />
+      </div>
+      <div
+        class="color-mode-row"
+        id="color-mode-row-after"
+        style="display: none"
+      >
+        <label for="color-mode-select-after" data-i18n="color_mode_label"
+          >Раскраска трека</label
+        >
+        <select id="color-mode-select-after">
+          <option value="plain" data-i18n="color_mode_plain">Однотонный</option>
+          <option value="speed" data-i18n="color_mode_speed">Скорость</option>
+          <option value="grade" data-i18n="color_mode_grade">
+            Уклон (набор/сброс)
+          </option>
+          <option value="elevation" data-i18n="color_mode_elevation">
+            Высота
+          </option>
+          <option
+            value="hr"
+            id="color-mode-hr-option-after"
+            hidden
+            data-i18n="color_mode_hr"
+          >
+            Пульс
+          </option>
+        </select>
+        <div class="color-legend" id="color-legend-after" style="display: none">
+          <span class="color-legend-bar"></span>
+          <span id="color-legend-min-after"></span>
+          <span class="color-legend-sep">—</span>
+          <span id="color-legend-max-after"></span>
+        </div>
       </div>
       <div id="map-after" class="track-map"></div>
       <div
@@ -1399,7 +1430,10 @@
       // Диапазон значений по перцентилям — устойчив к единичным выбросам
       // (иначе один аномальный всплеск скорости "сплющит" всю остальную шкалу).
       function percentileRange(values, lowP, highP) {
-        const arr = values.filter(Number.isFinite).slice().sort((a, b) => a - b);
+        const arr = values
+          .filter(Number.isFinite)
+          .slice()
+          .sort((a, b) => a - b);
         if (!arr.length) return { min: 0, max: 1 };
         const lo = arr[Math.floor((arr.length - 1) * lowP)];
         const hi = arr[Math.ceil((arr.length - 1) * highP)];
@@ -1487,20 +1521,50 @@
         return { segColors, legend: { min, max, unit } };
       }
 
-      const colorLegendEl = document.getElementById("color-legend");
-      const colorLegendMinEl = document.getElementById("color-legend-min");
-      const colorLegendMaxEl = document.getElementById("color-legend-max");
+      // Каждая карта ("до"/"после") имеет свой переключатель и свою легенду —
+      // они синхронизированы по значению (colorMode общий), но показывают
+      // диапазон именно своего трека.
+      const COLOR_MODE_UI = {
+        "map-before": {
+          row: "color-mode-row",
+          select: "color-mode-select",
+          hrOption: "color-mode-hr-option",
+          legend: "color-legend",
+          legendMin: "color-legend-min",
+          legendMax: "color-legend-max",
+        },
+        "map-after": {
+          row: "color-mode-row-after",
+          select: "color-mode-select-after",
+          hrOption: "color-mode-hr-option-after",
+          legend: "color-legend-after",
+          legendMin: "color-legend-min-after",
+          legendMax: "color-legend-max-after",
+        },
+      };
 
-      function updateColorLegend(legend) {
-        if (!colorLegendEl) return;
+      function setColorModeSelects(value) {
+        for (const key in COLOR_MODE_UI) {
+          const sel = document.getElementById(COLOR_MODE_UI[key].select);
+          if (sel) sel.value = value;
+        }
+      }
+
+      function updateColorLegend(containerId, legend) {
+        const ui = COLOR_MODE_UI[containerId];
+        if (!ui) return;
+        const el = document.getElementById(ui.legend);
+        if (!el) return;
         if (!legend) {
-          colorLegendEl.style.display = "none";
+          el.style.display = "none";
           return;
         }
-        colorLegendEl.style.display = "flex";
+        el.style.display = "flex";
         const fmt = (v) => (Math.abs(v) >= 100 ? Math.round(v) : v.toFixed(1));
-        colorLegendMinEl.textContent = `${fmt(legend.min)} ${legend.unit}`;
-        colorLegendMaxEl.textContent = `${fmt(legend.max)} ${legend.unit}`;
+        document.getElementById(ui.legendMin).textContent =
+          `${fmt(legend.min)} ${legend.unit}`;
+        document.getElementById(ui.legendMax).textContent =
+          `${fmt(legend.max)} ${legend.unit}`;
       }
 
       // Перерисовывает уже показанные карты в текущем режиме раскраски —
@@ -1622,7 +1686,7 @@
             inst.map,
           );
         }
-        updateColorLegend(legend);
+        updateColorLegend(containerId, legend);
         inst.startMarker = L.circleMarker(latlngs[0], {
           radius: 5,
           color: "#166534",
@@ -3703,6 +3767,8 @@
             btnFix.disabled = true;
             gpxText = null;
             document.getElementById("color-mode-row").style.display = "none";
+            document.getElementById("color-mode-row-after").style.display =
+              "none";
             updateEpisodeList();
             return;
           }
@@ -3715,6 +3781,8 @@
           document.getElementById("track-label-after").style.display = "none";
           document.getElementById("track-stats-after").style.display = "none";
           document.getElementById("track-stats-before").style.display = "none";
+          document.getElementById("color-mode-row-after").style.display =
+            "none";
 
           try {
             const { lats, lons, eles, times, hrs } = extractTrackData(gpxText);
@@ -3727,7 +3795,7 @@
             document.getElementById("color-mode-row").style.display = shown
               ? "flex"
               : "none";
-            updateColorModeAvailability(hrs);
+            updateColorModeAvailability("map-before", hrs);
             if (shown) {
               renderTrackStats(
                 document.getElementById("track-stats-before"),
@@ -3761,25 +3829,30 @@
       });
 
       // ─── Раскраска трека на карте ───────────────────────────────────────────
-      // Опция "Пульс" доступна только если хотя бы одна точка трека содержит
-      // данные пульса (не у всех устройств/файлов они есть).
-      function updateColorModeAvailability(hrs) {
+      // Опция "Пульс" доступна только если хотя бы одна точка соответствующего
+      // трека содержит данные пульса (не у всех устройств/файлов они есть).
+      function updateColorModeAvailability(containerId, hrs) {
+        const ui = COLOR_MODE_UI[containerId];
+        if (!ui) return;
         const hasHr = Array.isArray(hrs) && hrs.some(Number.isFinite);
-        const hrOption = document.getElementById("color-mode-hr-option");
+        const hrOption = document.getElementById(ui.hrOption);
         hrOption.hidden = !hasHr;
         if (!hasHr && colorMode === "hr") {
           colorMode = "plain";
-          document.getElementById("color-mode-select").value = "plain";
+          setColorModeSelects("plain");
           redrawMapsForColorMode();
         }
       }
 
-      document
-        .getElementById("color-mode-select")
-        .addEventListener("change", (e) => {
-          colorMode = e.target.value;
-          redrawMapsForColorMode();
-        });
+      for (const key in COLOR_MODE_UI) {
+        document
+          .getElementById(COLOR_MODE_UI[key].select)
+          .addEventListener("change", (e) => {
+            colorMode = e.target.value;
+            setColorModeSelects(colorMode);
+            redrawMapsForColorMode();
+          });
+      }
 
       btnFix.addEventListener("click", () => {
         if (!gpxText) return;
@@ -3847,8 +3920,10 @@
               document.getElementById("map-after").style.display === "block";
             document.getElementById("track-label-after").style.display =
               shownAfter ? "block" : "none";
+            document.getElementById("color-mode-row-after").style.display =
+              shownAfter ? "flex" : "none";
             if (shownAfter) {
-              updateColorModeAvailability(afterHrs);
+              updateColorModeAvailability("map-after", afterHrs);
               renderTrackStats(
                 document.getElementById("track-stats-after"),
                 computeTrackStats(afterLats, afterLons, afterEles, afterTimes),
