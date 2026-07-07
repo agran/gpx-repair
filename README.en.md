@@ -19,15 +19,15 @@ python fix_gpx_jammer.py input.gpx output.gpx
 
 ### Parameters
 
-| Parameter           | Default | Description                                                  |
-| ------------------- | ------- | -------------------------------------------------------------- |
-| `--max-speed`       | 20 m/s  | Maximum allowed speed; teleportation is detected above this    |
-| `--min-distance`    | 1000 m  | Minimum distance of an anomalous jump                          |
-| `--pre-jitter-dist` | 200 m   | Remove drift points before the main jump                       |
-| `--max-vert-speed`  | 5 m/s   | Maximum allowed vertical speed                                 |
-| `--interval`        | 1 s     | Interpolation step between points                               |
-| `--no-interpolate`  | —       | Don't fill the gap, just remove it                              |
-| `--gap-fill`        | from profile | Gap fill method: `line` — straight line (offline), `foot`/`bike`/`car` — route along roads and trails via OSRM (routing.openstreetmap.de) with terrain elevation from Open-Meteo. Requires internet; silently falls back to `line` on network errors |
+| Parameter           | Default      | Description                                                                                                                                                                                                                                          |
+| ------------------- | ------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--max-speed`       | 20 m/s       | Maximum allowed speed; teleportation is detected above this                                                                                                                                                                                          |
+| `--min-distance`    | 1000 m       | Minimum distance of an anomalous jump                                                                                                                                                                                                                |
+| `--pre-jitter-dist` | 200 m        | Remove drift points before the main jump                                                                                                                                                                                                             |
+| `--max-vert-speed`  | 5 m/s        | Maximum allowed vertical speed                                                                                                                                                                                                                       |
+| `--interval`        | 1 s          | Interpolation step between points                                                                                                                                                                                                                    |
+| `--no-interpolate`  | —            | Don't fill the gap, just remove it                                                                                                                                                                                                                   |
+| `--gap-fill`        | from profile | Gap fill method: `line` — simple offline join, `foot`/`bike`/`car` — route along roads and trails via OSRM (routing.openstreetmap.de) with terrain elevation from Open-Meteo. Requires internet; silently falls back to `line` on network errors |
 
 ## How it works
 

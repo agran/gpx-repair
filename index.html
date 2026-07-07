@@ -545,7 +545,7 @@
         <label data-i18n="label_interp_mode">Заполнение пробелов</label>
         <select id="p-interp-mode">
           <option value="linear" data-i18n="gapfill_linear" selected>
-            Прямая линия (офлайн)
+            Простое соединение (офлайн)
           </option>
           <option value="foot" data-i18n="gapfill_foot">Маршрут: пешком</option>
           <option value="bike" data-i18n="gapfill_bike">
@@ -700,7 +700,7 @@
           label_interp_mode: "Заполнение пробелов",
           hint_interp_mode:
             'Режимы "Маршрут" отправляют координаты границ пробелов на routing.openstreetmap.de и api.open-meteo.com',
-          gapfill_linear: "Прямая линия (офлайн)",
+          gapfill_linear: "Простое соединение (офлайн)",
           gapfill_foot: "Маршрут: пешком",
           gapfill_bike: "Маршрут: велосипед",
           gapfill_car: "Маршрут: авто",
@@ -767,7 +767,7 @@
           log_length_before: "Длина трека до исправления: {km} км",
           log_no_episodes: "Аномальных эпизодов не обнаружено.",
           log_routed_limit:
-            "⚠ Эпизодов с маршрутизацией много ({count}) — маршрутизация ограничена первыми {max}, остальные заполнятся линией.",
+            "⚠ Эпизодов с маршрутизацией много ({count}) — маршрутизация ограничена первыми {max}, остальные заполнятся простым соединением (офлайн).",
           log_episode_kept:
             "\nЭпизод глушения: точки [{first}..{last}] — оставлен без изменений (выбрано «оставить как было»)",
           log_episode_header:
@@ -828,7 +828,7 @@
           label_interp_mode: "Gap fill mode",
           hint_interp_mode:
             '"Route" modes send the gap-boundary coordinates to routing.openstreetmap.de and api.open-meteo.com',
-          gapfill_linear: "Straight line (offline)",
+          gapfill_linear: "Simple join (offline)",
           gapfill_foot: "Route: on foot",
           gapfill_bike: "Route: bicycle",
           gapfill_car: "Route: car",
@@ -896,7 +896,7 @@
           log_length_before: "Track length before fix: {km} km",
           log_no_episodes: "No anomalous episodes detected.",
           log_routed_limit:
-            "⚠ Too many routed episodes ({count}) — routing limited to the first {max}, the rest will be filled with a straight line.",
+            "⚠ Too many routed episodes ({count}) — routing limited to the first {max}, the rest will be filled with a simple offline join.",
           log_episode_kept:
             "\nJammer episode: points [{first}..{last}] — left unchanged (kept as-is)",
           log_episode_header:
@@ -1591,6 +1591,8 @@
         intervalS,
         sensors0 = {},
         sensors1 = {},
+        headingRefBefore,
+        headingRefAfter,
       ) {
         const totalS = t1 - t0;
         if (totalS <= intervalS) return [];
@@ -1601,6 +1603,19 @@
         const legDist = haversine(lat0, lon0, lat1, lon1);
         const speed = totalS > 0 ? legDist / totalS : 0;
 
+        // Вместо прямой линии — плавная кривая (кубический Безье), которая у
+        // границ идёт по КУРСУ реального трека до/после пробела (как и при
+        // маршрутизации по тропам) и лишь между ними сходится к прямой —
+        // так стык с реальным треком не выглядит изломом под углом.
+        const curveAt = makeHermiteCurve(
+          lat0,
+          lon0,
+          headingRefBefore,
+          lat1,
+          lon1,
+          headingRefAfter,
+        );
+
         const canInterp = (s0, s1) =>
           Number.isFinite(s0) && Number.isFinite(s1);
         const hrOk = canInterp(sensors0.hr, sensors1.hr);
@@ -1610,9 +1625,10 @@
         const pts = [];
         for (let t = intervalS; t < totalS - 1e-6; t += intervalS) {
           const a = t / totalS;
+          const { lat, lon } = curveAt(a);
           const pt = {
-            lat: lat0 + a * (lat1 - lat0),
-            lon: lon0 + a * (lon1 - lon0),
+            lat,
+            lon,
             ele: ele0 + a * (ele1 - ele0),
             time: t0 + t,
             speed,
@@ -1989,6 +2005,114 @@
         return { points: out, totalLength: L };
       }
 
+      // Гладкая S-образная кривая (0 при t<=0, 1 при t>=1, непрерывная
+      // производная на границах) — используется для плавного примыкания
+      // маршрута к реальному треку на границах эпизода.
+      function smoothstep01(t) {
+        const c = t < 0 ? 0 : t > 1 ? 1 : t;
+        return c * c * (3 - 2 * c);
+      }
+
+      // Точка реального трека на расстоянии не менее minDist метров ДО (dir=-1)
+      // или ПОСЛЕ (dir=+1) индекса idx — используется, чтобы определить курс
+      // движения по треку рядом с границей эпизода (устойчиво к GPS-дрожанию
+      // соседних точек).
+      function getHeadingRef(lats, lons, idx, dir, minDist = 20, maxSteps = 80) {
+        const n = lats.length;
+        let i = idx,
+          dist = 0,
+          steps = 0;
+        while (steps < maxSteps) {
+          const next = i + dir;
+          if (next < 0 || next >= n) break;
+          dist += haversine(lats[i], lons[i], lats[next], lons[next]);
+          i = next;
+          steps++;
+          if (dist >= minDist) break;
+        }
+        return { lat: lats[i], lon: lons[i] };
+      }
+
+      // Единичный вектор направления A→B в локальных метрах восток/север.
+      function unitHeading(latA, lonA, latB, lonB) {
+        const mPerDegLat = 111_320;
+        const mPerDegLon = 111_320 * Math.cos(((latA + latB) / 2) * Math.PI / 180);
+        const dx = (lonB - lonA) * mPerDegLon;
+        const dy = (latB - latA) * mPerDegLat;
+        const len = Math.hypot(dx, dy);
+        return len < 1e-6 ? null : { x: dx / len, y: dy / len };
+      }
+
+      // Точка на расстоянии dist метров от (lat, lon) вдоль направления dir.
+      function projectPoint(lat, lon, dir, dist) {
+        const mPerDegLat = 111_320;
+        const mPerDegLon = 111_320 * Math.cos((lat * Math.PI) / 180);
+        return {
+          lat: lat + (dir.y * dist) / mPerDegLat,
+          lon: lon + (dir.x * dist) / mPerDegLon,
+        };
+      }
+
+      // Кубическая кривая Безье от (lat0,lon0) к (lat1,lon1), которая у
+      // старта идёт по направлению dirIn (курс реального трека ДО пробела —
+      // точка headingRefBefore), а у конца — по направлению dirOut (курс
+      // ПОСЛЕ пробела — headingRefAfter). Если курс не определён (нет
+      // соседних точек), опорные точки ложатся на прямую хорду и кривая
+      // вырождается в обычную прямую линию — как было раньше.
+      // Возвращает функцию alpha(0..1) → {lat, lon}.
+      function makeHermiteCurve(
+        lat0,
+        lon0,
+        headingRefBefore,
+        lat1,
+        lon1,
+        headingRefAfter,
+      ) {
+        const D = haversine(lat0, lon0, lat1, lon1);
+        if (D < 1e-6) {
+          return () => ({ lat: lat0, lon: lon0 });
+        }
+        const chordDir = unitHeading(lat0, lon0, lat1, lon1);
+        const dirIn =
+          (headingRefBefore &&
+            unitHeading(
+              headingRefBefore.lat,
+              headingRefBefore.lon,
+              lat0,
+              lon0,
+            )) ||
+          chordDir;
+        const dirOut =
+          (headingRefAfter &&
+            unitHeading(
+              lat1,
+              lon1,
+              headingRefAfter.lat,
+              headingRefAfter.lon,
+            )) ||
+          chordDir;
+
+        const mPerDegLat = 111_320;
+        const mPerDegLon =
+          111_320 * Math.cos(((lat0 + lat1) / 2) * (Math.PI / 180));
+        const x3 = (lon1 - lon0) * mPerDegLon;
+        const y3 = (lat1 - lat0) * mPerDegLat;
+        const k = D / 3;
+        const x1 = dirIn.x * k,
+          y1 = dirIn.y * k;
+        const x2 = x3 - dirOut.x * k,
+          y2 = y3 - dirOut.y * k;
+
+        return (alpha) => {
+          const u = 1 - alpha;
+          const x =
+            3 * u * u * alpha * x1 + 3 * u * alpha * alpha * x2 + alpha ** 3 * x3;
+          const y =
+            3 * u * u * alpha * y1 + 3 * u * alpha * alpha * y2 + alpha ** 3 * y3;
+          return { lat: lat0 + y / mPerDegLat, lon: lon0 + x / mPerDegLon };
+        };
+      }
+
       // ─── Высота рельефа (Open-Meteo, резерв Opentopodata) ──────────────────────
 
       const elevationCache = new Map();
@@ -2084,6 +2208,8 @@
         profile,
         maxSpeedParam,
         routedBudget,
+        headingRefBefore,
+        headingRefAfter,
       ) {
         const fallback = (reason) => ({
           points: buildInterpolated(
@@ -2098,6 +2224,8 @@
             intervalS,
             sensors0,
             sensors1,
+            headingRefBefore,
+            headingRefAfter,
           ),
           method: "linear",
           reason,
@@ -2138,11 +2266,54 @@
           return fallback(t("reason_too_slow"));
         }
 
-        const { points: sampled } = resampleRoute(
+        const { points: sampled, totalLength: routeLen } = resampleRoute(
           r.geometry.coordinates,
           totalS,
           intervalS,
         );
+
+        // ─── Плавное примыкание маршрута к реальному треку ──────────────────
+        // OSRM привязывает граничные точки к БЛИЖАЙШЕЙ дороге/тропе (до 300 м
+        // в сторону), из-за чего трек мог влетать в маршрут и вылетать из него
+        // под острым/прямым углом. Вместо стягивания к прямой хорде (которая
+        // не учитывает, куда реально двигался трек) — стягиваем к линии,
+        // продолженной по КУРСУ реального трека до/после эпизода: рядом с
+        // границей путь сначала идёт в том же направлении, в котором трек уже
+        // двигался, и лишь затем плавно поворачивает на маршрут.
+        const SEAM_BLEND_DIST_M = Math.min(150, routeLen * 0.25);
+        if (SEAM_BLEND_DIST_M > 0) {
+          const chordDir = unitHeading(lat0, lon0, lat1, lon1);
+          const dirIn =
+            (headingRefBefore && unitHeading(headingRefBefore.lat, headingRefBefore.lon, lat0, lon0)) ||
+            chordDir;
+          const dirOut =
+            (headingRefAfter && unitHeading(lat1, lon1, headingRefAfter.lat, headingRefAfter.lon)) ||
+            chordDir;
+
+          for (const s of sampled) {
+            const distFromStart = s.alpha * routeLen;
+            const distFromEnd = routeLen - distFromStart;
+            const wStart =
+              distFromStart >= SEAM_BLEND_DIST_M
+                ? 1
+                : smoothstep01(distFromStart / SEAM_BLEND_DIST_M);
+            const wEnd =
+              distFromEnd >= SEAM_BLEND_DIST_M
+                ? 1
+                : smoothstep01(distFromEnd / SEAM_BLEND_DIST_M);
+
+            if (wStart < 1 && dirIn) {
+              const p = projectPoint(lat0, lon0, dirIn, distFromStart);
+              s.lat = p.lat * (1 - wStart) + s.lat * wStart;
+              s.lon = p.lon * (1 - wStart) + s.lon * wStart;
+            }
+            if (wEnd < 1 && dirOut) {
+              const p = projectPoint(lat1, lon1, dirOut, -distFromEnd);
+              s.lat = p.lat * (1 - wEnd) + s.lat * wEnd;
+              s.lon = p.lon * (1 - wEnd) + s.lon * wEnd;
+            }
+          }
+        }
 
         // ─── Высота: ≤98 опорных точек маршрута + 2 граничные ───
         const maxAnchors = 98;
@@ -2480,6 +2651,10 @@
             };
 
             let interpResult;
+            const headingRefBefore =
+              beforeIdx > 0 ? getHeadingRef(lats, lons, beforeIdx, -1) : null;
+            const headingRefAfter =
+              afterIdx < n - 1 ? getHeadingRef(lats, lons, afterIdx, 1) : null;
             if (routed) {
               interpResult = await buildRoutedInterpolated(
                 lats[beforeIdx],
@@ -2496,6 +2671,8 @@
                 mode,
                 maxSpeed,
                 routedBudget,
+                headingRefBefore,
+                headingRefAfter,
               );
             } else {
               interpResult = {
@@ -2511,6 +2688,8 @@
                   interval,
                   sensors0,
                   sensors1,
+                  headingRefBefore,
+                  headingRefAfter,
                 ),
                 method: "linear",
               };
@@ -2806,7 +2985,7 @@
       }
 
       // ─── Список аномальных участков с индивидуальным выбором заполнения ────────
-      // Помимо режимов из "Заполнение пробелов" (прямая линия / маршрут), для
+      // Помимо режимов из "Заполнение пробелов" (простое соединение / маршрут), для
       // каждого найденного участка отдельно можно выбрать "удалить" (вырезать
       // без замены) или "оставить как было" (вообще не трогать).
       const GAP_FILL_OPTIONS = [

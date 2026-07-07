@@ -189,6 +189,102 @@ def resample_route(
     return out, total_length
 
 
+def smoothstep01(t: float) -> float:
+    """Гладкая S-образная кривая (0 при t<=0, 1 при t>=1, непрерывная
+    производная на границах) — используется для плавного примыкания
+    маршрута к реальному треку на границах эпизода."""
+    c = 0.0 if t < 0 else 1.0 if t > 1 else t
+    return c * c * (3 - 2 * c)
+
+
+def get_heading_ref(
+    lats: List[float], lons: List[float], idx: int, direction: int,
+    min_dist: float = 20.0, max_steps: int = 80,
+) -> Tuple[float, float]:
+    """Точка реального трека на расстоянии не менее min_dist метров ДО
+    (direction=-1) или ПОСЛЕ (direction=+1) индекса idx — используется, чтобы
+    определить курс движения по треку рядом с границей эпизода (устойчиво
+    к GPS-дрожанию соседних точек)."""
+    n = len(lats)
+    i = idx
+    dist = 0.0
+    steps = 0
+    while steps < max_steps:
+        nxt = i + direction
+        if nxt < 0 or nxt >= n:
+            break
+        dist += haversine(lats[i], lons[i], lats[nxt], lons[nxt])
+        i = nxt
+        steps += 1
+        if dist >= min_dist:
+            break
+    return lats[i], lons[i]
+
+
+def unit_heading(
+    lat_a: float, lon_a: float, lat_b: float, lon_b: float,
+) -> Optional[Tuple[float, float]]:
+    """Единичный вектор направления A→B в локальных метрах восток/север."""
+    m_per_deg_lat = 111_320.0
+    m_per_deg_lon = 111_320.0 * math.cos(math.radians((lat_a + lat_b) / 2))
+    dx = (lon_b - lon_a) * m_per_deg_lon
+    dy = (lat_b - lat_a) * m_per_deg_lat
+    length = math.hypot(dx, dy)
+    if length < 1e-6:
+        return None
+    return dx / length, dy / length
+
+
+def project_point(
+    lat: float, lon: float, direction: Tuple[float, float], dist: float,
+) -> Tuple[float, float]:
+    """Точка на расстоянии dist метров от (lat, lon) вдоль направления direction."""
+    m_per_deg_lat = 111_320.0
+    m_per_deg_lon = 111_320.0 * math.cos(math.radians(lat))
+    dx, dy = direction
+    return lat + (dy * dist) / m_per_deg_lat, lon + (dx * dist) / m_per_deg_lon
+
+
+def make_hermite_curve(
+    lat0: float, lon0: float, heading_ref_before: Optional[Tuple[float, float]],
+    lat1: float, lon1: float, heading_ref_after: Optional[Tuple[float, float]],
+):
+    """Кубическая кривая Безье от (lat0,lon0) к (lat1,lon1), которая у старта
+    идёт по курсу реального трека ДО пробела (heading_ref_before), а у конца —
+    по курсу ПОСЛЕ пробела (heading_ref_after). Если курс не определён, опорные
+    точки ложатся на прямую хорду и кривая вырождается в обычную прямую линию.
+    Возвращает функцию alpha(0..1) -> (lat, lon)."""
+    d = haversine(lat0, lon0, lat1, lon1)
+    if d < 1e-6:
+        return lambda alpha: (lat0, lon0)
+
+    chord_dir = unit_heading(lat0, lon0, lat1, lon1)
+    dir_in = (
+        unit_heading(heading_ref_before[0], heading_ref_before[1], lat0, lon0)
+        if heading_ref_before else None
+    ) or chord_dir
+    dir_out = (
+        unit_heading(lat1, lon1, heading_ref_after[0], heading_ref_after[1])
+        if heading_ref_after else None
+    ) or chord_dir
+
+    m_per_deg_lat = 111_320.0
+    m_per_deg_lon = 111_320.0 * math.cos(math.radians((lat0 + lat1) / 2))
+    x3 = (lon1 - lon0) * m_per_deg_lon
+    y3 = (lat1 - lat0) * m_per_deg_lat
+    k = d / 3
+    x1, y1 = dir_in[0] * k, dir_in[1] * k
+    x2, y2 = x3 - dir_out[0] * k, y3 - dir_out[1] * k
+
+    def curve_at(alpha: float) -> Tuple[float, float]:
+        u = 1 - alpha
+        x = 3 * u * u * alpha * x1 + 3 * u * alpha * alpha * x2 + alpha ** 3 * x3
+        y = 3 * u * u * alpha * y1 + 3 * u * alpha * alpha * y2 + alpha ** 3 * y3
+        return lat0 + y / m_per_deg_lat, lon0 + x / m_per_deg_lon
+
+    return curve_at
+
+
 _elevation_cache: Dict[str, Optional[float]] = {}
 
 
@@ -472,10 +568,14 @@ def build_interpolated_points(
     interval_s: float,
     sensors0: Optional[dict] = None,
     sensors1: Optional[dict] = None,
+    heading_ref_before: Optional[Tuple[float, float]] = None,
+    heading_ref_after: Optional[Tuple[float, float]] = None,
 ) -> List[dict]:
     """
-    Генерирует линейно интерполированные точки между (lat0,lon0) и (lat1,lon1).
-    Не включает сами граничные точки.
+    Генерирует интерполированные точки между (lat0,lon0) и (lat1,lon1) вдоль
+    плавной кривой (кубический Безье), которая у границ идёт по курсу
+    реального трека до/после пробела — как и при маршрутизации по тропам —
+    а не по прямой линии со изломом на стыке. Не включает сами граничные точки.
 
     sensors0/sensors1 — необязательные словари {"hr", "cad", "atemp"} со
     значениями граничных точек. Если у ОБЕИХ границ есть значение конкретного
@@ -494,6 +594,10 @@ def build_interpolated_points(
     leg_dist = haversine(lat0, lon0, lat1, lon1)
     speed = leg_dist / total_s if total_s > 0 else 0.0
 
+    curve_at = make_hermite_curve(
+        lat0, lon0, heading_ref_before, lat1, lon1, heading_ref_after,
+    )
+
     def _both_finite(a: Optional[float], b: Optional[float]) -> bool:
         return a is not None and b is not None and math.isfinite(a) and math.isfinite(b)
 
@@ -509,9 +613,10 @@ def build_interpolated_points(
     t = interval_s
     while t < total_s - 1e-6:
         alpha = t / total_s
+        lat, lon = curve_at(alpha)
         pt = {
-            "lat": lat0 + alpha * (lat1 - lat0),
-            "lon": lon0 + alpha * (lon1 - lon0),
+            "lat": lat,
+            "lon": lon,
             "ele": ele0 + alpha * (ele1 - ele0),
             "time": t0 + timedelta(seconds=t),
             "speed": speed,
@@ -537,6 +642,8 @@ def build_routed_interpolated(
     profile: str,
     max_speed_mps: float,
     routed_budget: dict,
+    heading_ref_before: Optional[Tuple[float, float]] = None,
+    heading_ref_after: Optional[Tuple[float, float]] = None,
 ) -> dict:
     """
     Пытается заполнить пробел маршрутом по дорогам/тропам (OSRM), с высотой
@@ -558,6 +665,7 @@ def build_routed_interpolated(
             "points": build_interpolated_points(
                 lat0, lon0, ele0, t0, lat1, lon1, ele1, t1,
                 interval_s, sensors0, sensors1,
+                heading_ref_before, heading_ref_after,
             ),
             "method": "linear",
             "reason": reason,
@@ -571,7 +679,7 @@ def build_routed_interpolated(
 
     if routed_budget["used"] >= routed_budget["max"]:
         return fallback(
-            f"достигнут лимит маршрутизации ({routed_budget['max']} эпизодов) — прямая линия"
+            f"достигнут лимит маршрутизации ({routed_budget['max']} эпизодов) — простое соединение (офлайн)"
         )
     routed_budget["used"] += 1
 
@@ -593,7 +701,48 @@ def build_routed_interpolated(
     if route_dist / total_s > 1.2 * max_speed_mps:
         return fallback("маршрут требует нереальной скорости")
 
-    sampled, _ = resample_route(r["geometry"]["coordinates"], total_s, interval_s)
+    sampled, route_len = resample_route(r["geometry"]["coordinates"], total_s, interval_s)
+
+    # ─── Плавное примыкание маршрута к реальному треку ──────────────────
+    # OSRM привязывает граничные точки к БЛИЖАЙШЕЙ дороге/тропе (до 300 м
+    # в сторону), из-за чего трек мог влетать в маршрут и вылетать из него
+    # под острым/прямым углом. Вместо стягивания к прямой хорде (которая не
+    # учитывает, куда реально двигался трек) — стягиваем к линии,
+    # продолженной по КУРСУ реального трека до/после эпизода: рядом с
+    # границей путь сначала идёт в том же направлении, в котором трек уже
+    # двигался, и лишь затем плавно поворачивает на маршрут.
+    seam_blend_dist_m = min(150.0, route_len * 0.25)
+    if seam_blend_dist_m > 0 and sampled:
+        chord_dir = unit_heading(lat0, lon0, lat1, lon1)
+        dir_in = (
+            unit_heading(heading_ref_before[0], heading_ref_before[1], lat0, lon0)
+            if heading_ref_before else None
+        ) or chord_dir
+        dir_out = (
+            unit_heading(lat1, lon1, heading_ref_after[0], heading_ref_after[1])
+            if heading_ref_after else None
+        ) or chord_dir
+
+        for s in sampled:
+            dist_from_start = s["alpha"] * route_len
+            dist_from_end = route_len - dist_from_start
+            w_start = (
+                1.0 if dist_from_start >= seam_blend_dist_m
+                else smoothstep01(dist_from_start / seam_blend_dist_m)
+            )
+            w_end = (
+                1.0 if dist_from_end >= seam_blend_dist_m
+                else smoothstep01(dist_from_end / seam_blend_dist_m)
+            )
+
+            if w_start < 1 and dir_in:
+                p_lat, p_lon = project_point(lat0, lon0, dir_in, dist_from_start)
+                s["lat"] = p_lat * (1 - w_start) + s["lat"] * w_start
+                s["lon"] = p_lon * (1 - w_start) + s["lon"] * w_start
+            if w_end < 1 and dir_out:
+                p_lat, p_lon = project_point(lat1, lon1, dir_out, -dist_from_end)
+                s["lat"] = p_lat * (1 - w_end) + s["lat"] * w_end
+                s["lon"] = p_lon * (1 - w_end) + s["lon"] * w_end
 
     # ─── Высота: ≤98 опорных точек маршрута + 2 граничные ───
     max_anchors = 98
@@ -752,7 +901,7 @@ def fix_gpx(
     ДО эпизода, которые смещены от post-jammer-позиции более чем на это расстояние
     (убирает «ранний дрейф» GPS перед включением глушилки).
 
-    gap_fill_mode: "line" — прямая линия (офлайн), "foot"/"bike"/"car" —
+    gap_fill_mode: "line" — простое соединение (офлайн), "foot"/"bike"/"car" —
     маршрутизация по дорогам/тропам через OSRM с высотой рельефа из
     Open-Meteo. При ошибке сети/API или неправдоподобном маршруте молча
     откатывается на прямую линию для конкретного эпизода.
@@ -950,12 +1099,20 @@ def fix_gpx(
                 "atemp": atemps[after_idx],
             }
 
+            heading_ref_before = (
+                get_heading_ref(lats, lons, before_idx, -1) if before_idx > 0 else None
+            )
+            heading_ref_after = (
+                get_heading_ref(lats, lons, after_idx, 1) if after_idx < len(lats) - 1 else None
+            )
+
             if gap_fill_mode in ("foot", "bike", "car"):
                 result = build_routed_interpolated(
                     lats[before_idx], lons[before_idx], stable_ele0,     times[before_idx],
                     lats[after_idx],  lons[after_idx],  eles[after_idx], times[after_idx],
                     interval_s, sensors0, sensors1,
                     gap_fill_mode, max_speed_mps, routed_budget,
+                    heading_ref_before, heading_ref_after,
                 )
                 interp = result["points"]
                 if verbose:
@@ -968,7 +1125,7 @@ def fix_gpx(
                     else:
                         reason = result.get("reason")
                         suffix = f" — {reason}" if reason else ""
-                        print(f"  Заполнение    : прямая линия (офлайн){suffix}")
+                        print(f"  Заполнение    : простое соединение (офлайн){suffix}")
             else:
                 interp = build_interpolated_points(
                     lats[before_idx], lons[before_idx], stable_ele0,     times[before_idx],
@@ -976,6 +1133,8 @@ def fix_gpx(
                     interval_s,
                     sensors0=sensors0,
                     sensors1=sensors1,
+                    heading_ref_before=heading_ref_before,
+                    heading_ref_after=heading_ref_after,
                 )
             insertion_before[after_idx] = interp
             total_inserted += len(interp)
@@ -1098,7 +1257,7 @@ def main() -> None:
     parser.add_argument(
         "--gap-fill", choices=["line", "foot", "bike", "car"], default=None,
         metavar="MODE",
-        help="Способ заполнения пробела: line — прямая линия (офлайн); "
+        help="Способ заполнения пробела: line — простое соединение (офлайн); "
              "foot/bike/car — маршрутизация по дорогам и тропам через OSRM "
              "(routing.openstreetmap.de) с высотой рельефа из Open-Meteo "
              "(требует интернет; при ошибке сети/API молча откатывается на line). "
