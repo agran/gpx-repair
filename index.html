@@ -1397,11 +1397,25 @@
         }
         if (!teleports.length) return [];
 
+        // Локальные микро-выбросы: короткая эрратичная серия точек (GPS-шум/
+        // мультипуть, например под лесным пологом), где скачок НЕ дотягивает
+        // до minClusterDist (не "дальняя" глушилка), но скорость перехода
+        // ГРУБО (в разы) превышает заявленный максимум — такое не спишешь на
+        // обычный шум GPS. В отличие от дальних эпизодов, такая серия обычно
+        // не заканчивается чётким "скачком назад", а просто затухает до
+        // разумной скорости — поэтому возврат ищем по критерию "скорость от
+        // точки ДО эпизода до кандидата снова правдоподобна", а не по
+        // фиксированному расстоянию.
+        const MICRO_OVERSPEED_MULT = 3.0;
+        const MICRO_SCAN_SECONDS = 120.0;
+        const MICRO_SCAN_POINTS = 200;
+        const MICRO_BACKWARD_DIST_M = 50.0;
+
         const episodes = [];
         let k = 0;
         while (k < teleports.length) {
           const tOut = teleports[k];
-          const firstBad = tOut + 1;
+          let firstBad = tOut + 1;
           if (firstBad >= n) break;
 
           const dJump = haversine(
@@ -1411,6 +1425,48 @@
             lons[firstBad],
           );
           if (dJump < minClusterDist) {
+            const dtJump = Math.max(1, times[firstBad] - times[tOut]);
+            if (dJump / dtJump >= maxSpeedMps * MICRO_OVERSPEED_MULT) {
+              const refLatM = lats[tOut],
+                refLonM = lons[tOut];
+              const refTimeM = times[tOut];
+              let resumeIdx = null;
+              const scanEnd = Math.min(n, firstBad + 1 + MICRO_SCAN_POINTS);
+              for (let j = firstBad + 1; j < scanEnd; j++) {
+                const dtAfter = Math.max(1, times[j] - refTimeM);
+                if (dtAfter > MICRO_SCAN_SECONDS) break;
+                const dAfter = haversine(lats[j], lons[j], refLatM, refLonM);
+                if (dAfter / dtAfter <= maxSpeedMps) {
+                  resumeIdx = j;
+                  break;
+                }
+              }
+              if (resumeIdx !== null) {
+                // Расширяем эпизод НАЗАД: точки перед tOut могли уже уйти в
+                // сторону выброса со скоростью, ещё не превысившей порог
+                // maxSpeedMps (из-за большого dt), хотя по факту они уже
+                // далеко от места возврата (resumeIdx) - то есть являются
+                // частью того же самого микро-выброса.
+                const refLatR = lats[resumeIdx],
+                  refLonR = lons[resumeIdx];
+                let j = tOut;
+                let stepsBack = 0;
+                while (j >= 0 && stepsBack < MICRO_SCAN_POINTS) {
+                  const dLocal = haversine(lats[j], lons[j], refLatR, refLonR);
+                  if (dLocal < MICRO_BACKWARD_DIST_M) break;
+                  firstBad = j;
+                  j--;
+                  stepsBack++;
+                }
+                episodes.push({
+                  firstBad,
+                  lastBad: resumeIdx - 1,
+                  afterIdx: resumeIdx,
+                });
+                while (k < teleports.length && teleports[k] < resumeIdx) k++;
+                continue;
+              }
+            }
             k++;
             continue;
           }
@@ -2310,7 +2366,7 @@
         if (routeDist / Math.max(D, 1) > 4) {
           return fallback(t("reason_big_detour"));
         }
-        if (routeDist / totalS > 1.2 * maxSpeedParam) {
+        if (routeDist / totalS > maxSpeedParam) {
           return fallback(t("reason_too_slow"));
         }
 

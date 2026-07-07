@@ -418,6 +418,19 @@ def find_jammer_episodes(
     if not teleport_at:
         return []
 
+    # Локальные микро-выбросы: короткая эрратичная серия точек (GPS-шум/
+    # мультипуть, например под лесным пологом), где скачок НЕ дотягивает до
+    # min_cluster_dist_m (не «дальняя» глушилка), но скорость перехода ГРУБО
+    # (в разы) превышает заявленный максимум — такое не спишешь на обычный
+    # шум GPS. В отличие от дальних эпизодов, такая серия обычно не
+    # заканчивается чётким «скачком назад», а просто затухает до разумной
+    # скорости — поэтому возврат ищем по критерию «скорость от точки ДО
+    # эпизода до кандидата снова правдоподобна», а не по фикс. расстоянию.
+    MICRO_OVERSPEED_MULT = 3.0
+    MICRO_SCAN_SECONDS = 120.0
+    MICRO_SCAN_POINTS = 200
+    MICRO_BACKWARD_DIST_M = 50.0
+
     episodes: List[Tuple[int, int]] = []
     k = 0  # текущая позиция в списке телепортаций
 
@@ -431,6 +444,40 @@ def find_jammer_episodes(
         # Скачок должен быть ДОСТАТОЧНО БОЛЬШИМ, чтобы быть глушилкой
         d_jump = haversine(lats[t_out], lons[t_out], lats[first_bad], lons[first_bad])
         if d_jump < min_cluster_dist_m:
+            dt_jump = max((times[first_bad] - times[t_out]).total_seconds(), 1.0)
+            if d_jump / dt_jump >= max_speed_mps * MICRO_OVERSPEED_MULT:
+                ref_lat_m, ref_lon_m = lats[t_out], lons[t_out]
+                ref_time_m = times[t_out]
+                resume_idx = None
+                scan_end = min(n, first_bad + 1 + MICRO_SCAN_POINTS)
+                for j in range(first_bad + 1, scan_end):
+                    dt_after = max((times[j] - ref_time_m).total_seconds(), 1.0)
+                    if dt_after > MICRO_SCAN_SECONDS:
+                        break
+                    d_after = haversine(lats[j], lons[j], ref_lat_m, ref_lon_m)
+                    if d_after / dt_after <= max_speed_mps:
+                        resume_idx = j
+                        break
+                if resume_idx is not None:
+                    # Расширяем эпизод НАЗАД: точки перед t_out могли уже
+                    # уйти в сторону "выброса" со скоростью, ещё не превысившей
+                    # порог max_speed_mps (из-за большого dt), хотя по факту
+                    # они уже далеко от места возврата (resume_idx) -
+                    # то есть являются частью того же самого микро-выброса.
+                    ref_lat_r, ref_lon_r = lats[resume_idx], lons[resume_idx]
+                    j = t_out
+                    steps_back = 0
+                    while j >= 0 and steps_back < MICRO_SCAN_POINTS:
+                        d_local = haversine(lats[j], lons[j], ref_lat_r, ref_lon_r)
+                        if d_local < MICRO_BACKWARD_DIST_M:
+                            break
+                        first_bad = j
+                        j -= 1
+                        steps_back += 1
+                    episodes.append((first_bad, resume_idx - 1))
+                    while k < len(teleport_at) and teleport_at[k] < resume_idx:
+                        k += 1
+                    continue
             k += 1
             continue
 
@@ -721,7 +768,7 @@ def build_routed_interpolated(
     route_dist = r["distance"]
     if route_dist / max(d, 1) > 4:
         return fallback("маршрут слишком длинный (большой объезд)")
-    if route_dist / total_s > 1.2 * max_speed_mps:
+    if route_dist / total_s > max_speed_mps:
         return fallback("маршрут требует нереальной скорости")
 
     sampled, route_len = resample_route(r["geometry"]["coordinates"], total_s, interval_s)
