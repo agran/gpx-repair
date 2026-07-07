@@ -9,8 +9,9 @@ with a plausible replacement — one of two ways:
 
 - a **route along real roads and trails** with terrain elevation
   (the default for most activity profiles);
-- a **smooth curve** that continues the track's heading at both ends —
-  without the kink a straight-line join would produce.
+- a **smooth curve**: at both ends it heads in the same direction as the
+  real track, so there's no sharp kink like you'd get from simply joining
+  the points with a straight line.
 
 ## Web version
 
