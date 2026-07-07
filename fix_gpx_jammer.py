@@ -296,9 +296,6 @@ def make_hermite_curve(
     return curve_at
 
 
-_elevation_cache: Dict[str, Optional[float]] = {}
-
-
 def _ele_cache_key(lat: float, lon: float) -> str:
     return f"{lat:.4f},{lon:.4f}"
 
@@ -329,23 +326,32 @@ def fetch_elevations_raw(coord_pairs: List[Tuple[float, float]]) -> Optional[Lis
     return None
 
 
-def fetch_elevations(points: List[Tuple[float, float]]) -> Dict[str, Optional[float]]:
-    """points: [(lat, lon), ...]. Возвращает {cache_key: высота|None}."""
+def fetch_elevations(
+    points: List[Tuple[float, float]],
+    elevation_cache: Dict[str, Optional[float]],
+) -> Dict[str, Optional[float]]:
+    """points: [(lat, lon), ...]. Возвращает {cache_key: высота|None}.
+
+    elevation_cache передаётся явно вызывающей стороной (а не хранится в
+    глобальной переменной модуля): один трек — один свежий кэш, без риска
+    накопить/переиспользовать чужие данные между разными вызовами fix_gpx
+    в одном процессе (например, при пакетной обработке нескольких файлов).
+    """
     need = []
     for lat, lon in points:
         key = _ele_cache_key(lat, lon)
-        if key not in _elevation_cache:
+        if key not in elevation_cache:
             need.append((lat, lon, key))
     for i in range(0, len(need), MAX_ELEVATION_POINTS_PER_REQUEST):
         chunk = need[i:i + MAX_ELEVATION_POINTS_PER_REQUEST]
         result = fetch_elevations_raw([(lat, lon) for lat, lon, _ in chunk])
         if result is None:
             for _, _, key in chunk:
-                _elevation_cache[key] = None
+                elevation_cache[key] = None
         else:
             for (_, _, key), val in zip(chunk, result):
-                _elevation_cache[key] = val
-    return {_ele_cache_key(lat, lon): _elevation_cache.get(_ele_cache_key(lat, lon)) for lat, lon in points}
+                elevation_cache[key] = val
+    return {_ele_cache_key(lat, lon): elevation_cache.get(_ele_cache_key(lat, lon)) for lat, lon in points}
 
 
 def calibrate_elevation(dem: float, alpha: float, ele0: float, dem0: float, ele1: float, dem1: float) -> float:
@@ -731,6 +737,7 @@ def build_routed_interpolated(
     profile: str,
     max_speed_mps: float,
     routed_budget: dict,
+    elevation_cache: Dict[str, Optional[float]],
     heading_ref_before: Optional[Tuple[float, float]] = None,
     heading_ref_after: Optional[Tuple[float, float]] = None,
 ) -> dict:
@@ -744,6 +751,8 @@ def build_routed_interpolated(
     profile: "foot" | "bike" | "car".
     routed_budget: {"used": int, "max": int} — общий на весь трек лимит
     запросов маршрутизации (публичные сервисы бесплатны, не будем их спамить).
+    elevation_cache: кэш высот DEM, общий на все эпизоды одного вызова fix_gpx
+    (создаётся вызывающей стороной, не хранится в глобальной переменной модуля).
 
     Возвращает {"points": [...], "method": "routed"|"linear", "reason"?: str,
     "dem_ok"?: bool, "distance_km"?: float}.
@@ -845,7 +854,7 @@ def build_routed_interpolated(
     dem_map: Optional[Dict[str, Optional[float]]] = None
     try:
         anchor_coords = [(sampled[i]["lat"], sampled[i]["lon"]) for i in anchor_idxs]
-        dem_map = fetch_elevations([(lat0, lon0), (lat1, lon1)] + anchor_coords)
+        dem_map = fetch_elevations([(lat0, lon0), (lat1, lon1)] + anchor_coords, elevation_cache)
     except Exception:
         dem_map = None
 
@@ -1018,8 +1027,7 @@ def fix_gpx(
 
     seg = root.find(f".//{{{NS}}}trkseg")
     if seg is None:
-        print("ОШИБКА: в файле не найден элемент <trkseg>", file=sys.stderr)
-        sys.exit(1)
+        raise ValueError("В файле не найден элемент <trkseg>")
 
     pts = list(seg.findall(f"{{{NS}}}trkpt"))
     n   = len(pts)
@@ -1033,7 +1041,15 @@ def fix_gpx(
     for p in pts:
         e = p.find(f"{{{NS}}}ele")
         eles.append(float(e.text) if e is not None else 0.0)
-    times = [parse_time(p.find(f"{{{NS}}}time").text) for p in pts]
+    times = []
+    for i, p in enumerate(pts):
+        time_el = p.find(f"{{{NS}}}time")
+        if time_el is None or not time_el.text:
+            raise ValueError(
+                f"Точка трека #{i} не содержит <time> — обработка требует, "
+                "чтобы у всех точек было время записи"
+            )
+        times.append(parse_time(time_el.text))
 
     # Сенсорные данные (пульс/каденс/температура) из TrackPointExtension —
     # нужны, чтобы интерполировать их для вставленных точек, а не писать нули.
@@ -1070,6 +1086,7 @@ def fix_gpx(
     # insertion_before[i] = список точек, вставляемых ПЕРЕД pts[i]
     insertion_before: dict = {}
     routed_budget = {"used": 0, "max": MAX_ROUTED_EPISODES}
+    elevation_cache: Dict[str, Optional[float]] = {}
 
     if gap_fill_mode in ("foot", "bike", "car"):
         routed_requested = sum(
@@ -1228,7 +1245,7 @@ def fix_gpx(
                     lats[before_idx], lons[before_idx], stable_ele0,     times[before_idx],
                     lats[after_idx],  lons[after_idx],  eles[after_idx], times[after_idx],
                     interval_s, sensors0, sensors1,
-                    gap_fill_mode, max_speed_mps, routed_budget,
+                    gap_fill_mode, max_speed_mps, routed_budget, elevation_cache,
                     heading_ref_before, heading_ref_after,
                 )
                 interp = result["points"]
@@ -1408,18 +1425,22 @@ def main() -> None:
         if gap_fill_mode != "line":
             print(f"Заполнение пробелов: маршрут ({gap_fill_mode}) через OSRM/Open-Meteo")
 
-    fix_gpx(
-        input_path=inp,
-        output_path=out,
-        max_speed_mps=args.max_speed if args.max_speed is not None else profile["max_speed"],
-        min_cluster_dist_m=args.min_distance if args.min_distance is not None else profile["min_distance"],
-        interpolate=not args.no_interpolate,
-        interval_s=args.interval if args.interval is not None else profile["interval"],
-        pre_jitter_dist_m=args.pre_jitter_dist if args.pre_jitter_dist is not None else profile["pre_jitter_dist"],
-        max_vert_speed_mps=args.max_vert_speed if args.max_vert_speed is not None else profile["max_vert_speed"],
-        gap_fill_mode=gap_fill_mode,
-        verbose=not args.quiet,
-    )
+    try:
+        fix_gpx(
+            input_path=inp,
+            output_path=out,
+            max_speed_mps=args.max_speed if args.max_speed is not None else profile["max_speed"],
+            min_cluster_dist_m=args.min_distance if args.min_distance is not None else profile["min_distance"],
+            interpolate=not args.no_interpolate,
+            interval_s=args.interval if args.interval is not None else profile["interval"],
+            pre_jitter_dist_m=args.pre_jitter_dist if args.pre_jitter_dist is not None else profile["pre_jitter_dist"],
+            max_vert_speed_mps=args.max_vert_speed if args.max_vert_speed is not None else profile["max_vert_speed"],
+            gap_fill_mode=gap_fill_mode,
+            verbose=not args.quiet,
+        )
+    except ValueError as e:
+        print(f"ОШИБКА: {e}", file=sys.stderr)
+        sys.exit(1)
 
 
 if __name__ == "__main__":

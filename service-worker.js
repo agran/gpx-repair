@@ -2,11 +2,15 @@
 // Всё, что нужно для запуска инструмента (HTML, Leaflet, иконки), кэшируется —
 // поход/трек можно чинить без интернета.
 //
+// Leaflet вендорится локально (./vendor/leaflet/), а не грузится с unpkg CDN:
+// если внешний CDN отвалится или изменит контент без смены версии в URL,
+// офлайн-режим PWA не должен молча сломаться.
+//
 // Декоративные картинки с erudit23.ru сюда НЕ входят: они всегда пытаются
 // загрузиться напрямую с сайта, а если сети/доступа нет — просто не
 // показываются (см. onerror в index.html), без подстановки кэша-заглушки.
 
-const CACHE_NAME = "gpx-repair-v3";
+const CACHE_NAME = "gpx-repair-v4";
 
 const PRECACHE_URLS = [
   "./",
@@ -14,8 +18,13 @@ const PRECACHE_URLS = [
   "./manifest.webmanifest",
   "./assets/logo.svg",
   "./assets/done.svg",
-  "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css",
-  "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js",
+  "./vendor/leaflet/leaflet.css",
+  "./vendor/leaflet/leaflet.js",
+  "./vendor/leaflet/images/marker-icon.png",
+  "./vendor/leaflet/images/marker-icon-2x.png",
+  "./vendor/leaflet/images/marker-shadow.png",
+  "./vendor/leaflet/images/layers.png",
+  "./vendor/leaflet/images/layers-2x.png",
 ];
 
 self.addEventListener("install", (event) => {
