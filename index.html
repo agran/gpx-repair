@@ -331,6 +331,26 @@
           rgb(239, 68, 68) 100%
         );
       }
+      .relief-toggle {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 0.83rem;
+        color: #a3adc2;
+        cursor: pointer;
+        user-select: none;
+      }
+      .relief-toggle input {
+        cursor: pointer;
+      }
+      .track-popup {
+        font-size: 0.82rem;
+        line-height: 1.5;
+        color: #1a1a2e;
+      }
+      .track-popup div:first-child {
+        margin-bottom: 4px;
+      }
 
       /* Buttons */
       #btn-fix {
@@ -627,6 +647,10 @@
           <span class="color-legend-sep">—</span>
           <span id="color-legend-max"></span>
         </div>
+        <label class="relief-toggle">
+          <input type="checkbox" id="relief-toggle" />
+          <span data-i18n="relief_label">Рельеф (изолинии)</span>
+        </label>
       </div>
       <div id="map-before" class="track-map"></div>
       <div
@@ -820,6 +844,10 @@
           <span class="color-legend-sep">—</span>
           <span id="color-legend-max-after"></span>
         </div>
+        <label class="relief-toggle">
+          <input type="checkbox" id="relief-toggle-after" />
+          <span data-i18n="relief_label">Рельеф (изолинии)</span>
+        </label>
       </div>
       <div id="map-after" class="track-map"></div>
       <div
@@ -886,6 +914,9 @@
           stat_minele: "Мин. высота",
           stat_gain: "Набор высоты",
           stat_loss: "Сброс высоты",
+          stat_minhr: "Мин. пульс",
+          stat_maxhr: "Макс. пульс",
+          stat_avghr: "Средний пульс",
           alert_bad_filetype: "Пожалуйста, выберите .gpx, .tcx или .fit файл",
           alert_parse_fail: "Не удалось разобрать файл: {msg}",
           suffix_tcx: " (конвертирован из TCX)",
@@ -922,6 +953,10 @@
           color_mode_grade: "Уклон (набор/сброс)",
           color_mode_elevation: "Высота",
           color_mode_hr: "Пульс",
+          relief_label: "Рельеф (изолинии)",
+          popup_time: "Время",
+          popup_elapsed: "С начала трека",
+          popup_percent: "Процент трека",
           log_loaded_points: "Загружено точек: {n}",
           log_length_before: "Длина трека до исправления: {km} км",
           log_no_episodes: "Аномальных эпизодов не обнаружено.",
@@ -1024,6 +1059,9 @@
           stat_minele: "Min elevation",
           stat_gain: "Elevation gain",
           stat_loss: "Elevation loss",
+          stat_minhr: "Min heart rate",
+          stat_maxhr: "Max heart rate",
+          stat_avghr: "Avg heart rate",
           alert_bad_filetype: "Please select a .gpx, .tcx or .fit file",
           alert_parse_fail: "Failed to parse file: {msg}",
           suffix_tcx: " (converted from TCX)",
@@ -1060,6 +1098,10 @@
           color_mode_grade: "Grade (climb/descent)",
           color_mode_elevation: "Elevation",
           color_mode_hr: "Heart rate",
+          relief_label: "Relief (contour lines)",
+          popup_time: "Time",
+          popup_elapsed: "Since track start",
+          popup_percent: "Track progress",
           log_loaded_points: "Loaded points: {n}",
           log_length_before: "Track length before fix: {km} km",
           log_no_episodes: "No anomalous episodes detected.",
@@ -1119,6 +1161,15 @@
       try {
         const saved = localStorage.getItem(LANG_STORAGE_KEY);
         if (saved === "en" || saved === "ru") currentLang = saved;
+      } catch (e) {}
+
+      // Подложка карты OpenTopoMap (горизонтали высот, рельефная штриховка) —
+      // опциональна и выключена по умолчанию, включается чекбоксом рядом с
+      // раскраской трека; выбор запоминается между визитами.
+      const RELIEF_STORAGE_KEY = "gpxRepairRelief";
+      let reliefMode = false;
+      try {
+        reliefMode = localStorage.getItem(RELIEF_STORAGE_KEY) === "1";
       } catch (e) {}
 
       function t(key, vars) {
@@ -1271,7 +1322,7 @@
         return { minEle, maxEle, gain, loss };
       }
 
-      function computeTrackStats(lats, lons, eles, times) {
+      function computeTrackStats(lats, lons, eles, times, hrs) {
         let length = 0;
         let maxSpeed = 0;
         let hasSpeed = false;
@@ -1292,6 +1343,26 @@
           }
         }
 
+        let hasHr = false,
+          minHr = Infinity,
+          maxHr = -Infinity,
+          sumHr = 0,
+          countHr = 0;
+        if (hrs) {
+          for (let i = 0; i < hrs.length; i++) {
+            if (Number.isFinite(hrs[i])) {
+              hasHr = true;
+              if (hrs[i] < minHr) minHr = hrs[i];
+              if (hrs[i] > maxHr) maxHr = hrs[i];
+              sumHr += hrs[i];
+              countHr++;
+            }
+          }
+        }
+        const hrStats = hasHr
+          ? { minHr, maxHr, avgHr: sumHr / countHr }
+          : { minHr: null, maxHr: null, avgHr: null };
+
         const hasEle = eles.some((e) => !Number.isNaN(e));
         if (!hasEle) {
           return {
@@ -1303,6 +1374,8 @@
             loss: null,
             hasSpeed,
             maxSpeed,
+            hasHr,
+            ...hrStats,
           };
         }
 
@@ -1317,6 +1390,8 @@
           loss,
           hasSpeed,
           maxSpeed,
+          hasHr,
+          ...hrStats,
         };
       }
 
@@ -1353,6 +1428,22 @@
             {
               label: t("stat_loss"),
               value: `${stats.loss.toFixed(0)} ${t("unit_m")}`,
+            },
+          );
+        }
+        if (stats.hasHr) {
+          items.push(
+            {
+              label: t("stat_minhr"),
+              value: `${Math.round(stats.minHr)} ${t("unit_bpm")}`,
+            },
+            {
+              label: t("stat_maxhr"),
+              value: `${Math.round(stats.maxHr)} ${t("unit_bpm")}`,
+            },
+            {
+              label: t("stat_avghr"),
+              value: `${Math.round(stats.avgHr)} ${t("unit_bpm")}`,
             },
           );
         }
@@ -1403,6 +1494,57 @@
       // Текущий режим раскраски трека на карте: "plain" | "speed" | "grade" |
       // "elevation" | "hr" — общий для карт "до" и "после".
       let colorMode = "plain";
+
+      // Подложки карты: обычная OSM и OpenTopoMap (горизонтали высот, рельефная
+      // штриховка) — переключаются чекбоксом "Рельеф", не требуют повторной
+      // отрисовки трека, меняется только тайловый слой.
+      const TILE_LAYER_CONFIGS = {
+        osm: {
+          url: "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
+          options: {
+            maxZoom: 19,
+            attribution:
+              '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank">OpenStreetMap</a>',
+          },
+        },
+        relief: {
+          // Тайлы у OpenTopoMap есть только до 17 зума — дальше Leaflet сам
+          // растягивает (upscale) 17-й уровень, чтобы не было пустых плиток
+          // при более сильном приближении к треку.
+          url: "https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png",
+          options: {
+            maxZoom: 19,
+            maxNativeZoom: 17,
+            subdomains: "abc",
+            attribution:
+              '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank">OpenStreetMap</a> ' +
+              'contributors, SRTM &mdash; map style: &copy; <a href="https://opentopomap.org" target="_blank">OpenTopoMap</a> (<a href="https://creativecommons.org/licenses/by-sa/3.0/" target="_blank">CC-BY-SA</a>)',
+          },
+        },
+      };
+
+      function makeTileLayer(relief) {
+        const cfg = relief ? TILE_LAYER_CONFIGS.relief : TILE_LAYER_CONFIGS.osm;
+        return L.tileLayer(cfg.url, cfg.options);
+      }
+
+      // Переключает подложку сразу у всех уже созданных карт и синхронизирует
+      // оба чекбокса (у карты "до" и "после") — без перерисовки самого трека.
+      function setReliefMode(value) {
+        reliefMode = !!value;
+        try {
+          localStorage.setItem(RELIEF_STORAGE_KEY, reliefMode ? "1" : "0");
+        } catch (e) {}
+        for (const id of ["relief-toggle", "relief-toggle-after"]) {
+          const el = document.getElementById(id);
+          if (el) el.checked = reliefMode;
+        }
+        for (const key in mapInstances) {
+          const inst = mapInstances[key];
+          if (inst.tileLayer) inst.map.removeLayer(inst.tileLayer);
+          inst.tileLayer = makeTileLayer(reliefMode).addTo(inst.map);
+        }
+      }
 
       // Пятиточечная градиентная шкала (синий→зелёный→жёлтый→оранжевый→красный),
       // используется для всех метрик — интуитивно "холодный→горячий".
@@ -1491,6 +1633,226 @@
         if (!legend || !Number.isFinite(value)) return "#5b6478";
         const range = legend.max - legend.min || 1;
         return colorScale((value - legend.min) / range);
+      }
+
+      // ─── Всплывающая подсказка по клику/тапу на трек ────────────────────────
+      // Показывает все данные точки трека: координаты, время (по треку и с
+      // начала маршрута), высоту, пульс и мгновенные скорость/уклон — то есть
+      // всё, что вообще может быть показано цветом трека (см. metricForSegment).
+
+      // Ищет ближайшую точку среди n точек (по функции доступа getLatLon(i))
+      // к месту клика — простая линейная метрика в градусах достаточно точна
+      // на масштабе одного трека и намного проще/надёжнее, чем попытка понять,
+      // по какому именно (возможно прореженному/собранному из кусочков) слою
+      // кликнули.
+      function nearestIndexBy(n, getLatLon, lat, lng) {
+        let best = 0,
+          bestD = Infinity;
+        const cosLat = Math.cos((lat * Math.PI) / 180);
+        for (let i = 0; i < n; i++) {
+          const [la, lo] = getLatLon(i);
+          const dLat = la - lat;
+          const dLon = (lo - lng) * cosLat;
+          const d = dLat * dLat + dLon * dLon;
+          if (d < bestD) {
+            bestD = d;
+            best = i;
+          }
+        }
+        return best;
+      }
+
+      // Мгновенная метрика В ТОЧКЕ (а не на отрезке) — среднее значений на
+      // соседних отрезках (до и после точки), либо то из них, что доступно.
+      function metricAtIdxFromArrays(mode, lats, lons, eles, times, hrs, i) {
+        const mk = (j) => ({
+          lat: lats[j],
+          lon: lons[j],
+          ele: eles ? eles[j] : NaN,
+          time: times ? times[j] : NaN,
+          hr: hrs ? hrs[j] : NaN,
+        });
+        const n = lats.length;
+        const prev = i > 0 ? metricForSegment(mode, mk(i - 1), mk(i)) : NaN;
+        const next = i < n - 1 ? metricForSegment(mode, mk(i), mk(i + 1)) : NaN;
+        if (Number.isFinite(prev) && Number.isFinite(next))
+          return (prev + next) / 2;
+        return Number.isFinite(prev) ? prev : next;
+      }
+
+      function metricAtIdxFromPoints(mode, points, i) {
+        const n = points.length;
+        const prev =
+          i > 0 ? metricForSegment(mode, points[i - 1], points[i]) : NaN;
+        const next =
+          i < n - 1 ? metricForSegment(mode, points[i], points[i + 1]) : NaN;
+        if (Number.isFinite(prev) && Number.isFinite(next))
+          return (prev + next) / 2;
+        return Number.isFinite(prev) ? prev : next;
+      }
+
+      // Процент прохождения ВСЕГО трека в этой точке — по времени (точка/весь
+      // диапазон времени трека), а если времени нет — по индексу точки среди
+      // переданного набора (грубая оценка, работает только для основного трека).
+      function computeTrackPercent(data, timeUnix, idx, total) {
+        if (data && data.times && data.times.length > 1) {
+          const t0 = data.times[0];
+          const t1 = data.times[data.times.length - 1];
+          if (
+            Number.isFinite(t0) &&
+            Number.isFinite(t1) &&
+            Number.isFinite(timeUnix) &&
+            t1 > t0
+          ) {
+            return Math.max(
+              0,
+              Math.min(100, ((timeUnix - t0) / (t1 - t0)) * 100),
+            );
+          }
+        }
+        if (Number.isFinite(idx) && Number.isFinite(total) && total > 1) {
+          return (idx / (total - 1)) * 100;
+        }
+        return NaN;
+      }
+
+      // Все значения тут числовые (посчитаны нами), поэтому в HTML идут без
+      // экранирования — исходный текст из GPX сюда не попадает.
+      function buildPointPopupHtml(
+        lat,
+        lon,
+        ele,
+        hr,
+        timeUnix,
+        startTime,
+        speedVal,
+        gradeVal,
+        percentVal,
+      ) {
+        const rows = [`<b>${lat.toFixed(6)}, ${lon.toFixed(6)}</b>`];
+        if (Number.isFinite(timeUnix)) {
+          rows.push(`${t("popup_time")}: ${formatEpisodeTime(timeUnix)}`);
+          if (Number.isFinite(startTime)) {
+            rows.push(
+              `${t("popup_elapsed")}: ${formatDuration(timeUnix - startTime)}`,
+            );
+          }
+        }
+        if (Number.isFinite(percentVal)) {
+          rows.push(`${t("popup_percent")}: ${percentVal.toFixed(1)}%`);
+        }
+        if (Number.isFinite(ele)) {
+          rows.push(
+            `${t("color_mode_elevation")}: ${ele.toFixed(1)} ${t("unit_m")}`,
+          );
+        }
+        if (Number.isFinite(speedVal)) {
+          rows.push(
+            `${t("color_mode_speed")}: ${speedVal.toFixed(1)} ${t("unit_kmh")}`,
+          );
+        }
+        if (Number.isFinite(gradeVal)) {
+          rows.push(
+            `${t("color_mode_grade")}: ${gradeVal >= 0 ? "+" : ""}${gradeVal.toFixed(1)}%`,
+          );
+        }
+        if (Number.isFinite(hr)) {
+          rows.push(
+            `${t("color_mode_hr")}: ${Math.round(hr)} ${t("unit_bpm")}`,
+          );
+        }
+        return `<div class="track-popup">${rows.map((r) => `<div>${r}</div>`).join("")}</div>`;
+      }
+
+      // Обработчик клика по любому слою ОСНОВНОГО трека (обводка/сплошная
+      // линия/цветные отрезки) — находит ближайшую РЕАЛЬНУЮ (несглаженную)
+      // точку трека и показывает по ней всплывающую подсказку.
+      function onMainTrackClick(containerId) {
+        return function (e) {
+          const data = mapTrackData[containerId];
+          if (!data || !data.lats.length) return;
+          const idx = nearestIndexBy(
+            data.lats.length,
+            (i) => [data.lats[i], data.lons[i]],
+            e.latlng.lat,
+            e.latlng.lng,
+          );
+          const lat = data.lats[idx],
+            lon = data.lons[idx];
+          const ele = data.eles ? data.eles[idx] : NaN;
+          const hr = data.hrs ? data.hrs[idx] : NaN;
+          const timeUnix = data.times ? data.times[idx] : NaN;
+          const startTime =
+            data.times && data.times.length ? data.times[0] : NaN;
+          const speedVal = metricAtIdxFromArrays(
+            "speed",
+            data.lats,
+            data.lons,
+            data.eles,
+            data.times,
+            data.hrs,
+            idx,
+          );
+          const gradeVal = metricAtIdxFromArrays(
+            "grade",
+            data.lats,
+            data.lons,
+            data.eles,
+            data.times,
+            data.hrs,
+            idx,
+          );
+          const percentVal = computeTrackPercent(
+            data,
+            timeUnix,
+            idx,
+            data.lats.length,
+          );
+          const html = buildPointPopupHtml(
+            lat,
+            lon,
+            ele,
+            hr,
+            timeUnix,
+            startTime,
+            speedVal,
+            gradeVal,
+            percentVal,
+          );
+          mapInstances[containerId].map.openPopup(html, [lat, lon]);
+        };
+      }
+
+      // Обработчик клика по слоям ВСТАВЛЕННОГО (интерполированного) участка —
+      // те же данные, но по точкам конкретной вставки (seg.points).
+      function onInterpSegClick(containerId, seg) {
+        return function (e) {
+          const data = mapTrackData[containerId];
+          const startTime =
+            data && data.times && data.times.length ? data.times[0] : NaN;
+          const idx = nearestIndexBy(
+            seg.points.length,
+            (i) => [seg.points[i].lat, seg.points[i].lon],
+            e.latlng.lat,
+            e.latlng.lng,
+          );
+          const p = seg.points[idx];
+          const speedVal = metricAtIdxFromPoints("speed", seg.points, idx);
+          const gradeVal = metricAtIdxFromPoints("grade", seg.points, idx);
+          const percentVal = computeTrackPercent(data, p.time, NaN, NaN);
+          const html = buildPointPopupHtml(
+            p.lat,
+            p.lon,
+            p.ele,
+            p.hr,
+            p.time,
+            startTime,
+            speedVal,
+            gradeVal,
+            percentVal,
+          );
+          mapInstances[containerId].map.openPopup(html, [p.lat, p.lon]);
+        };
       }
 
       // Считает метрику раскраски на каждом отрезке между соседними точками
@@ -1670,21 +2032,46 @@
           map.attributionControl.setPrefix(
             '<a href="https://leafletjs.com" target="_blank">Leaflet</a>',
           );
-          L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-            maxZoom: 19,
-            attribution:
-              '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank">OpenStreetMap</a>',
-          }).addTo(map);
+          // OpenTopoMap вместо обычной OSM-подложки — рельефная штриховка и
+          // горизонтали высот прямо на карте, без отдельного слоя/API;
+          // необязателен, включается чекбоксом "Рельеф" (reliefMode).
+          const tileLayer = makeTileLayer(reliefMode).addTo(map);
           inst = {
             map,
+            tileLayer,
             polyline: null,
             casing: null,
             colorSegments: [],
             startMarker: null,
             endMarker: null,
             interpLayers: [],
+            lastLegend: null,
           };
           mapInstances[containerId] = inst;
+          // При зуме пиксельная длина реальных метров меняется, а вместе с
+          // ней и фаза пунктира на вставке (см. drawInterpSegments) — без
+          // этой подписки на стыках цветных кусочков после зума мог бы
+          // появляться небольшой перескок пунктира.
+          map.on("zoomend", () => {
+            // Анимация fitBounds/setView может дать несколько zoomend подряд -
+            // откладываем перерисовку на следующий кадр, чтобы не запускать
+            // clearInterpSegments/drawInterpSegments по несколько раз почти
+            // одновременно (гонка при удалении одних и тех же слоёв).
+            if (inst._interpRedrawPending) return;
+            inst._interpRedrawPending = true;
+            requestAnimationFrame(() => {
+              inst._interpRedrawPending = false;
+              const segs = mapInterpData[containerId];
+              if (segs && segs.length) {
+                drawInterpSegments(
+                  containerId,
+                  segs,
+                  colorMode,
+                  inst.lastLegend,
+                );
+              }
+            });
+          });
         }
 
         if (inst.casing) inst.map.removeLayer(inst.casing);
@@ -1702,6 +2089,7 @@
           weight: 6,
           opacity: 0.9,
         }).addTo(inst.map);
+        inst.casing.on("click", onMainTrackClick(containerId));
 
         const { segColors, legend } = computeColorSegments(
           colorMode,
@@ -1719,14 +2107,17 @@
               color: segColors[k],
               weight: 3.5,
             }).addTo(inst.map);
+            seg.on("click", onMainTrackClick(containerId));
             inst.colorSegments.push(seg);
           }
         } else {
           inst.polyline = L.polyline(latlngs, { color, weight: 3.5 }).addTo(
             inst.map,
           );
+          inst.polyline.on("click", onMainTrackClick(containerId));
         }
         updateColorLegend(containerId, legend);
+        inst.lastLegend = legend;
         // Вставленные участки всегда показываются пунктиром поверх основного трека,
         // перерисовываются в текущем режиме раскраски, чтобы не пропадать при
         // смене режима или масштаба карты.
@@ -1767,7 +2158,16 @@
       function clearInterpSegments(containerId) {
         const inst = mapInstances[containerId];
         if (inst && inst.interpLayers) {
-          for (const l of inst.interpLayers) inst.map.removeLayer(l);
+          // На перекрывающиеся вызовы (например, серия zoomend-событий во
+          // время анимации fitBounds) один и тот же слой может быть удалён
+          // дважды - защищаемся, чтобы не уронить всю страницу.
+          for (const l of inst.interpLayers) {
+            try {
+              if (inst.map.hasLayer(l)) inst.map.removeLayer(l);
+            } catch (e) {
+              // см. комментарий выше - безопасно игнорируем.
+            }
+          }
           inst.interpLayers = [];
         }
       }
@@ -1794,23 +2194,110 @@
               weight: 8,
               opacity: 0.95,
             }).addTo(inst.map);
+            casing.on("click", onInterpSegClick(containerId, seg));
             inst.interpLayers.push(casing);
 
             if (mode && mode !== "plain") {
               // Красим вставку по той же метрике и той же шкале (legend),
-              // что и весь остальной трек, но оставляем пунктирной.
-              for (let k = 0; k < seg.points.length - 1; k++) {
+              // что и весь остальной трек, повторяя ВИЗУАЛЬНО тот же
+              // пунктир "10,8", что и в Однотонном режиме. Раньше это
+              // делалось через dashArray на множестве мелких кусочков, но у
+              // каждого отдельного SVG-<path> фаза stroke-dasharray
+              // стартует заново с нуля — на кусочках короче одного цикла
+              // пунктира это давало "рябь": пунктир выглядел мельче и
+              // грязнее ровных штрихов Однотонного режима.
+              // Вместо этого сами вычисляем (в пикселях текущего вида
+              // карты), где именно должны быть видимые штрихи пунктира
+              // "10,8", и рисуем ТОЛЬКО эти штрихи как сплошные цветные
+              // отрезки — без dashArray вообще. ВАЖНО: каждый штрих рисуем
+              // не прямой хордой между его концами, а ЛОМАНОЙ через все
+              // исходные вершины трека внутри штриха — иначе на изгибах
+              // трека хорда короче дуги, и длина штрихов "плывёт" (7-10px
+              // вместо ровных 10px), из-за чего пунктир выглядел менее
+              // аккуратно, чем в Однотонном режиме. С ломаной длина каждого
+              // штриха вдоль трека совпадает с dashOn=10 точно так же, как
+              // и у обычного stroke-dasharray. При изменении зума
+              // пересчитываем штрихи заново (см. подписку на 'zoomend' в
+              // showTrackMap).
+              const dashOn = 10;
+              const dashGap = 8;
+              const cycle = dashOn + dashGap;
+              const pxPts = seg.points.map((p) =>
+                inst.map.latLngToLayerPoint([p.lat, p.lon]),
+              );
+              const pxCum = [0];
+              for (let i = 1; i < pxPts.length; i++) {
+                pxCum.push(pxCum[i - 1] + pxPts[i - 1].distanceTo(pxPts[i]));
+              }
+              const total = pxCum[pxCum.length - 1];
+              let cursor = 0;
+              const pointAtDist = (dist) => {
+                const d = Math.max(0, Math.min(dist, total));
+                while (cursor < pxCum.length - 2 && pxCum[cursor + 1] < d) {
+                  cursor++;
+                }
+                const segLen = pxCum[cursor + 1] - pxCum[cursor];
+                const t = segLen > 0 ? (d - pxCum[cursor]) / segLen : 0;
+                return L.point(
+                  pxPts[cursor].x + (pxPts[cursor + 1].x - pxPts[cursor].x) * t,
+                  pxPts[cursor].y + (pxPts[cursor + 1].y - pxPts[cursor].y) * t,
+                );
+              };
+              for (let pos = 0; pos < total; pos += cycle) {
+                const onEnd = Math.min(pos + dashOn, total);
+                const p0 = pointAtDist(pos);
+                const idx0 = cursor;
+                const p1 = pointAtDist(onEnd);
+                const idx1 = cursor;
+                const pxChunk = [p0];
+                for (let i = idx0 + 1; i <= idx1; i++) pxChunk.push(pxPts[i]);
+                pxChunk.push(p1);
+                // Для метрики берём не соседние (idx1, idx1+1) точки, а
+                // растягиваем окно замера в обе стороны, пока между его
+                // концами не наберётся хотя бы ~2м реальной дистанции.
+                // Иначе на медленных участках, где точки интерполяции стоят
+                // раз в секунду в считанных сантиметрах друг от друга,
+                // metricForSegment для Уклона почти всегда получает d<=1м и
+                // возвращает NaN — весь пунктир окрашивается серым
+                // (нет данных), хотя уклон на самом деле есть.
+                let mIdx0 = idx0;
+                let mIdx1 = Math.max(idx1, idx0 + 1);
+                while (
+                  mIdx1 < seg.points.length - 1 &&
+                  haversine(
+                    seg.points[mIdx0].lat,
+                    seg.points[mIdx0].lon,
+                    seg.points[mIdx1].lat,
+                    seg.points[mIdx1].lon,
+                  ) < 2
+                ) {
+                  mIdx1++;
+                }
+                while (
+                  mIdx0 > 0 &&
+                  haversine(
+                    seg.points[mIdx0].lat,
+                    seg.points[mIdx0].lon,
+                    seg.points[mIdx1].lat,
+                    seg.points[mIdx1].lon,
+                  ) < 2
+                ) {
+                  mIdx0--;
+                }
                 const value = metricForSegment(
                   mode,
-                  seg.points[k],
-                  seg.points[k + 1],
+                  seg.points[mIdx0],
+                  seg.points[mIdx1],
                 );
-                const layer = L.polyline([latlngs[k], latlngs[k + 1]], {
-                  color: colorForValue(value, legend),
-                  weight: 4,
-                  dashArray: "10,8",
-                  opacity: 1,
-                }).addTo(inst.map);
+                const layer = L.polyline(
+                  pxChunk.map((pt) => inst.map.layerPointToLatLng(pt)),
+                  {
+                    color: colorForValue(value, legend),
+                    weight: 4,
+                    opacity: 1,
+                  },
+                ).addTo(inst.map);
+                layer.on("click", onInterpSegClick(containerId, seg));
                 inst.interpLayers.push(layer);
               }
             } else {
@@ -1821,6 +2308,7 @@
                 dashArray: "10,8",
                 opacity: 1,
               }).addTo(inst.map);
+              layer.on("click", onInterpSegClick(containerId, seg));
               inst.interpLayers.push(layer);
             }
           } catch (e) {
@@ -1834,14 +2322,16 @@
         return new Date(unixS * 1000).toISOString().replace(".000Z", "Z");
       }
 
-      // Читаемые дата/длительность для списка аномальных участков (в отличие от formatTime,
-      // который возвращает ISO 8601 для записи в GPX и трогать его нельзя).
+      // Читаемые дата/длительность для списка аномальных участков и попапа
+      // (в отличие от formatTime, который возвращает ISO 8601 для записи в
+      // GPX и трогать его нельзя). Показываем в МЕСТНОМ времени браузера —
+      // так удобнее сопоставлять со своими часами, а не с UTC.
       function formatEpisodeTime(unixS) {
         const d = new Date(unixS * 1000);
         const pad = (v) => String(v).padStart(2, "0");
         return (
-          `${pad(d.getUTCDate())}.${pad(d.getUTCMonth() + 1)}.${d.getUTCFullYear()} ` +
-          `${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}:${pad(d.getUTCSeconds())}`
+          `${pad(d.getDate())}.${pad(d.getMonth() + 1)}.${d.getFullYear()} ` +
+          `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`
         );
       }
 
@@ -2251,9 +2741,9 @@
           : "";
 
         return `\t\t\t<trkpt lat="${fmtN(pt.lat)}" lon="${fmtN(pt.lon)}">
-\t\t\t\t<ele>${pt.ele.toFixed(2)}</ele>
-\t\t\t\t<time>${formatTime(pt.time)}</time>${extensions}
-\t\t\t</trkpt>`;
+      \t\t\t\t<ele>${pt.ele.toFixed(2)}</ele>
+      \t\t\t\t<time>${formatTime(pt.time)}</time>${extensions}
+      \t\t\t</trkpt>`;
       }
 
       // ─── Импорт TCX / FIT (конвертация в GPX) ────────────────────────────────────
@@ -3898,7 +4388,7 @@
             if (shown) {
               renderTrackStats(
                 document.getElementById("track-stats-before"),
-                computeTrackStats(lats, lons, eles, times),
+                computeTrackStats(lats, lons, eles, times, hrs),
               );
             }
           } catch (err) {
@@ -3951,6 +4441,14 @@
             setColorModeSelects(colorMode);
             redrawMapsForColorMode();
           });
+      }
+
+      // Чекбокс подложки-рельефа продублирован у обеих карт (до/после) —
+      // синхронизированы через общий reliefMode, как и раскраска трека.
+      for (const id of ["relief-toggle", "relief-toggle-after"]) {
+        const el = document.getElementById(id);
+        el.checked = reliefMode;
+        el.addEventListener("change", (e) => setReliefMode(e.target.checked));
       }
 
       btnFix.addEventListener("click", () => {
@@ -4027,7 +4525,13 @@
               updateColorModeAvailability("map-after", afterHrs);
               renderTrackStats(
                 document.getElementById("track-stats-after"),
-                computeTrackStats(afterLats, afterLons, afterEles, afterTimes),
+                computeTrackStats(
+                  afterLats,
+                  afterLons,
+                  afterEles,
+                  afterTimes,
+                  afterHrs,
+                ),
               );
             }
           } catch (err) {
