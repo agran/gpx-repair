@@ -332,6 +332,22 @@
         font-size: 0.78rem;
         color: #a3adc2;
       }
+      .color-legend-mode {
+        font-weight: 600;
+        color: #d5dae6;
+        white-space: nowrap;
+      }
+      .color-legend--overlay {
+        position: absolute;
+        top: 8px;
+        left: 50%;
+        transform: translateX(-50%);
+        z-index: 600;
+        background: rgba(13, 27, 53, 0.88);
+        padding: 6px 12px;
+        border-radius: 8px;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
+      }
       .color-legend-bar {
         display: inline-block;
         width: 90px;
@@ -476,6 +492,141 @@
       }
       .track-map .leaflet-tile-pane {
         filter: saturate(0.9) brightness(0.95);
+      }
+      .track-map-wrap {
+        position: relative;
+      }
+      .map-maximize-btn {
+        display: none;
+        position: absolute;
+        top: 8px;
+        right: 8px;
+        z-index: 500;
+        width: 32px;
+        height: 32px;
+        border: none;
+        border-radius: 6px;
+        background: rgba(13, 27, 53, 0.85);
+        color: #e5e7eb;
+        font-size: 1.05rem;
+        line-height: 1;
+        cursor: pointer;
+      }
+      .map-maximize-btn:hover {
+        background: rgba(13, 27, 53, 0.98);
+      }
+      .track-map-wrap.has-map .map-maximize-btn {
+        display: block;
+      }
+      .map-fit-btn {
+        position: absolute;
+        top: 46px;
+        right: 8px;
+        z-index: 500;
+        width: 32px;
+        height: 32px;
+        border: none;
+        border-radius: 6px;
+        background: rgba(13, 27, 53, 0.85);
+        color: #e5e7eb;
+        font-size: 1.05rem;
+        line-height: 1;
+        cursor: pointer;
+      }
+      .map-fit-btn:hover {
+        background: rgba(13, 27, 53, 0.98);
+      }
+      .track-map-wrap--maximized .map-fit-btn {
+        top: 50px;
+        right: 12px;
+      }
+      .track-map-wrap--maximized {
+        position: fixed;
+        inset: 0;
+        z-index: 9999;
+        background: #0d1b35;
+      }
+      .track-map-wrap--maximized .track-map {
+        width: 100%;
+        height: 100%;
+        margin-top: 0;
+        border-radius: 0;
+      }
+      .track-map-wrap--maximized .map-maximize-btn {
+        top: 12px;
+        right: 12px;
+      }
+      body.map-maximized-active {
+        overflow: hidden;
+      }
+      .elevation-profile-wrap {
+        display: none;
+        align-items: stretch;
+        gap: 0;
+        height: 11.4em;
+        margin-top: 10px;
+        background: #0d1b35;
+        border: 1px solid #0f3460;
+        border-radius: 8px;
+        padding: 4px 0 2px;
+      }
+      .elevation-profile {
+        display: block;
+        flex: 1 1 auto;
+        min-width: 0;
+        height: 100%;
+        cursor: crosshair;
+        touch-action: none;
+      }
+      /* Курсор-крестик над уже закреплённой точкой (на профиле или на карте) —
+         подсказывает, что клик по ней открепит точку. */
+      .elevation-profile-unpin-cursor,
+      .elevation-profile-unpin-cursor .leaflet-interactive {
+        cursor:
+          url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='22' height='22'><line x1='5' y1='5' x2='17' y2='17' stroke='white' stroke-width='4' stroke-linecap='round'/><line x1='17' y1='5' x2='5' y2='17' stroke='white' stroke-width='4' stroke-linecap='round'/><line x1='5' y1='5' x2='17' y2='17' stroke='black' stroke-width='2' stroke-linecap='round'/><line x1='17' y1='5' x2='5' y2='17' stroke='black' stroke-width='2' stroke-linecap='round'/></svg>")
+            11 11,
+          pointer !important;
+      }
+      .elevation-profile-info {
+        position: relative;
+        flex: 0 0 190px;
+        max-width: 42%;
+        height: 100%;
+        overflow: auto;
+        border-left: 1px solid #0f3460;
+        padding: 4px 10px;
+        font-size: 0.78rem;
+      }
+      .elevation-profile-info .track-popup {
+        color: #cbd3e6;
+        line-height: 1.55;
+      }
+      .elevation-profile-info .track-popup b {
+        color: #e5e7eb;
+      }
+      .elevation-profile-info-empty {
+        color: #6b7385;
+        font-style: italic;
+        line-height: 1.4;
+      }
+      .elevation-profile-info-close {
+        position: absolute;
+        top: 2px;
+        right: 4px;
+        width: 20px;
+        height: 20px;
+        line-height: 18px;
+        padding: 0;
+        border: 1px solid #0f3460;
+        border-radius: 50%;
+        background: #16213e;
+        color: #a3adc2;
+        font-size: 0.9rem;
+        cursor: pointer;
+      }
+      .elevation-profile-info-close:hover {
+        color: #e5e7eb;
+        border-color: #7eb8f7;
       }
       .track-label {
         display: none;
@@ -694,6 +845,7 @@
           </option>
         </select>
         <div class="color-legend" id="color-legend" style="display: none">
+          <span class="color-legend-mode" id="color-legend-mode"></span>
           <span class="color-legend-bar"></span>
           <span id="color-legend-min"></span>
           <span class="color-legend-sep">—</span>
@@ -701,10 +853,41 @@
         </div>
         <label class="relief-toggle">
           <input type="checkbox" id="relief-toggle" />
-          <span data-i18n="relief_label">Рельеф (изолинии)</span>
+          <span data-i18n="relief_label">Изолинии</span>
         </label>
       </div>
-      <div id="map-before" class="track-map"></div>
+      <div class="track-map-wrap">
+        <div id="map-before" class="track-map"></div>
+        <button
+          type="button"
+          class="map-maximize-btn"
+          data-target="map-before"
+          title="Развернуть карту"
+          aria-label="Развернуть карту"
+        >
+          ⛶
+        </button>
+        <button
+          type="button"
+          class="map-fit-btn"
+          data-target="map-before"
+          title="Показать весь трек"
+          aria-label="Показать весь трек"
+          style="display: none"
+        >
+          ⬚
+        </button>
+      </div>
+      <div class="elevation-profile-wrap" id="elevation-profile-wrap-before">
+        <canvas
+          class="elevation-profile"
+          id="elevation-profile-before"
+        ></canvas>
+        <div
+          class="elevation-profile-info"
+          id="elevation-profile-info-before"
+        ></div>
+      </div>
       <div
         class="track-label"
         id="track-label-before"
@@ -891,6 +1074,7 @@
           </option>
         </select>
         <div class="color-legend" id="color-legend-after" style="display: none">
+          <span class="color-legend-mode" id="color-legend-mode-after"></span>
           <span class="color-legend-bar"></span>
           <span id="color-legend-min-after"></span>
           <span class="color-legend-sep">—</span>
@@ -898,10 +1082,38 @@
         </div>
         <label class="relief-toggle">
           <input type="checkbox" id="relief-toggle-after" />
-          <span data-i18n="relief_label">Рельеф (изолинии)</span>
+          <span data-i18n="relief_label">Изолинии</span>
         </label>
       </div>
-      <div id="map-after" class="track-map"></div>
+      <div class="track-map-wrap">
+        <div id="map-after" class="track-map"></div>
+        <button
+          type="button"
+          class="map-maximize-btn"
+          data-target="map-after"
+          title="Развернуть карту"
+          aria-label="Развернуть карту"
+        >
+          ⛶
+        </button>
+        <button
+          type="button"
+          class="map-fit-btn"
+          data-target="map-after"
+          title="Показать весь трек"
+          aria-label="Показать весь трек"
+          style="display: none"
+        >
+          ⬚
+        </button>
+      </div>
+      <div class="elevation-profile-wrap" id="elevation-profile-wrap-after">
+        <canvas class="elevation-profile" id="elevation-profile-after"></canvas>
+        <div
+          class="elevation-profile-info"
+          id="elevation-profile-info-after"
+        ></div>
+      </div>
       <div
         class="track-label"
         id="track-label-after"
@@ -1773,6 +1985,63 @@
         }
       }
 
+      // Разворачивает карту на весь экран (position: fixed поверх всего) и
+      // возвращает обратно тем же переключателем. Leaflet кэширует размер
+      // контейнера, поэтому после смены класса нужен invalidateSize() —
+      // иначе после разворота карта отрисуется только в старых границах.
+      function toggleMapMaximize(mapId) {
+        const mapEl = document.getElementById(mapId);
+        const wrap = mapEl && mapEl.closest(".track-map-wrap");
+        if (!wrap) return;
+        const btn = wrap.querySelector(".map-maximize-btn");
+        const maximized = wrap.classList.toggle("track-map-wrap--maximized");
+        document.body.classList.toggle("map-maximized-active", maximized);
+        if (btn) updateMapMaximizeButton(btn, maximized);
+        moveLegendForMaximize(mapId, wrap, maximized);
+        const inst = mapInstances[mapId];
+        if (inst && inst.map) {
+          requestAnimationFrame(() => {
+            inst.map.invalidateSize();
+            updateFitButtonVisibility(mapId);
+          });
+        }
+      }
+
+      // Пока карта развёрнута на весь экран, легенда раскраски физически
+      // переносится оверлеем поверх неё — иначе она осталась бы в панели
+      // управления, скрытой под position:fixed картой. Сама легенда
+      // по-прежнему показывается/скрывается через updateColorLegend в
+      // зависимости от режима раскраски (plain — её вообще нет).
+      function moveLegendForMaximize(mapId, wrap, maximized) {
+        const ui = COLOR_MODE_UI[mapId];
+        if (!ui) return;
+        const legendEl = document.getElementById(ui.legend);
+        if (!legendEl) return;
+        if (maximized) {
+          legendEl._maxOriginalParent = legendEl.parentNode;
+          legendEl._maxOriginalNext = legendEl.nextSibling;
+          legendEl.classList.add("color-legend--overlay");
+          wrap.appendChild(legendEl);
+        } else if (legendEl._maxOriginalParent) {
+          legendEl.classList.remove("color-legend--overlay");
+          legendEl._maxOriginalParent.insertBefore(
+            legendEl,
+            legendEl._maxOriginalNext,
+          );
+          legendEl._maxOriginalParent = null;
+          legendEl._maxOriginalNext = null;
+        }
+      }
+
+      function updateMapMaximizeButton(btn, maximized) {
+        const label = t(
+          maximized ? "map_minimize_title" : "map_maximize_title",
+        );
+        btn.title = label;
+        btn.setAttribute("aria-label", label);
+        btn.textContent = maximized ? "✕" : "⛶";
+      }
+
       // Пятиточечная градиентная шкала (синий→зелёный→жёлтый→оранжевый→красный),
       // используется для всех метрик — интуитивно "холодный→горячий".
       const COLOR_SCALE_STOPS = [
@@ -1813,45 +2082,224 @@
         return { min: lo, max: hi === lo ? lo + 1 : hi };
       }
 
-      // Метрика раскраски для одного отрезка между двумя точками
-      // ({lat, lon, ele, time, hr}) — переиспользуется и для основного трека,
-      // и для вставленных (интерполированных) участков.
-      function metricForSegment(mode, p0, p1) {
-        if (mode === "speed") {
-          const d = haversine(p0.lat, p0.lon, p1.lat, p1.lon);
+      // ─── Сглаженные метрики раскраски ───────────────────────────────────────
+      // Раньше цвет каждого отрезка трека считался по МГНОВЕННОМУ значению
+      // между двумя соседними точками (см. историю в git) — на GPS/барометр-
+      // шуме и коротких интервалах записи это давало резкие "вспышки" не в
+      // тему на 1 отрезок. Теперь для каждой точки трека считается ОДНО
+      // сглаженное значение метрики (окно по времени/дистанции, не по
+      // количеству точек — треки бывают с шагом записи и 1с, и 5с), и именно
+      // оно используется и для цвета, и для попапа — расхождений между ними
+      // больше нет.
+      const PAUSE_GAP_S = 60; // dt между соседними точками больше — это пауза записи, окно её не пересекает
+      const SPEED_HALF_S = 5; // скорость: полуокно ±5с, взвешенное по времени (Σdist/Σdt)
+      const ELE_HALF_S = 5; // высота (и сглаженная высота для уклона): полуокно ±5с
+      const GRADE_MIN_DIST_M = 20; // уклон: целевая дистанция окна
+      const GRADE_MIN_DIST_FLOOR_M = 5; // меньше этого при упоре в потолок по времени — стоянка, NaN
+      const GRADE_MAX_HALF_S = 60; // уклон: окно не шире ±60с от точки, даже если 20м не набралось
+      const HR_HALF_POINTS = 2; // пульс и так гладкий — окно всего ±2 точки
+
+      // Медианный интервал записи (без учёта пауз >PAUSE_GAP_S) — переводит
+      // "окно в секундах" в "окно в точках" независимо от частоты записи трека.
+      function medianPositiveInterval(times) {
+        if (!times) return 1;
+        const dts = [];
+        for (let i = 1; i < times.length; i++) {
+          if (Number.isFinite(times[i]) && Number.isFinite(times[i - 1])) {
+            const dt = times[i] - times[i - 1];
+            if (dt > 0 && dt <= PAUSE_GAP_S) dts.push(dt);
+          }
+        }
+        if (!dts.length) return 1;
+        dts.sort((a, b) => a - b);
+        return dts[Math.floor(dts.length / 2)];
+      }
+
+      function pointRadiusForHalfSeconds(times, halfSeconds) {
+        const medianDt = medianPositiveInterval(times) || 1;
+        return Math.max(1, Math.round(halfSeconds / medianDt));
+      }
+
+      // Границы окна вокруг точки i по времени: не дальше halfSeconds в обе
+      // стороны и не пересекая паузу записи (dt между соседними точками > PAUSE_GAP_S).
+      function timeWindowBounds(times, i, halfSeconds) {
+        let lo = i,
+          hi = i;
+        if (!times || !Number.isFinite(times[i])) return { lo, hi };
+        const t0 = times[i];
+        while (lo > 0) {
+          const dt = times[lo] - times[lo - 1];
+          if (!Number.isFinite(dt) || dt <= 0 || dt > PAUSE_GAP_S) break;
+          if (t0 - times[lo - 1] > halfSeconds) break;
+          lo--;
+        }
+        while (hi < times.length - 1) {
+          const dt = times[hi + 1] - times[hi];
+          if (!Number.isFinite(dt) || dt <= 0 || dt > PAUSE_GAP_S) break;
+          if (times[hi + 1] - t0 > halfSeconds) break;
+          hi++;
+        }
+        return { lo, hi };
+      }
+
+      // Скорость — НЕ среднее мгновенных скоростей окна (короткий шумовой
+      // отрезок весил бы наравне с длинным), а Σdist/Σdt по всем маленьким
+      // отрезкам внутри окна — честное взвешенное по времени среднее.
+      function smoothedSpeedSeries(lats, lons, times) {
+        const n = lats.length;
+        const out = new Array(n).fill(NaN);
+        if (!times) return out;
+        for (let i = 0; i < n; i++) {
+          const { lo, hi } = timeWindowBounds(times, i, SPEED_HALF_S);
+          if (hi <= lo) continue;
+          let sumDist = 0,
+            sumDt = 0;
+          for (let j = lo; j < hi; j++) {
+            if (!Number.isFinite(times[j]) || !Number.isFinite(times[j + 1]))
+              continue;
+            const dt = times[j + 1] - times[j];
+            if (dt <= 0) continue;
+            sumDist += haversine(lats[j], lons[j], lats[j + 1], lons[j + 1]);
+            sumDt += dt;
+          }
+          out[i] = sumDt > 0 ? (sumDist / sumDt) * 3.6 : NaN;
+        }
+        return out;
+      }
+
+      function smoothedElevationSeries(eles, times) {
+        const filled = fillMissingEle(eles);
+        const radius = pointRadiusForHalfSeconds(times, ELE_HALF_S);
+        return smoothSeries(filled, radius);
+      }
+
+      function buildCumDist(lats, lons) {
+        const n = lats.length;
+        const cum = new Array(n).fill(0);
+        for (let i = 1; i < n; i++) {
+          cum[i] =
+            cum[i - 1] + haversine(lats[i - 1], lons[i - 1], lats[i], lons[i]);
+        }
+        return cum;
+      }
+
+      // Уклон — окно по ПРОЙДЕННОЙ (не хордовой) дистанции: расширяем от
+      // точки i симметрично, пока между концами окна не наберётся
+      // GRADE_MIN_DIST_M, не пересекая паузы записи и не выходя за
+      // ±GRADE_MAX_HALF_S от точки. Если у потолка по времени набралось
+      // меньше GRADE_MIN_DIST_FLOOR_M — это стоянка (уклон NaN → серый).
+      function gradeWindowBounds(cumDist, times, i) {
+        let lo = i,
+          hi = i;
+        const t0 = times ? times[i] : NaN;
+        const canExpandLo = () => {
+          if (lo <= 0) return false;
           const dt =
-            Number.isFinite(p1.time) && Number.isFinite(p0.time)
-              ? p1.time - p0.time
+            times &&
+            Number.isFinite(times[lo]) &&
+            Number.isFinite(times[lo - 1])
+              ? times[lo] - times[lo - 1]
               : NaN;
-          return dt > 0 ? (d / dt) * 3.6 : NaN;
-        }
-        if (mode === "grade") {
-          const d = haversine(p0.lat, p0.lon, p1.lat, p1.lon);
-          const de =
-            Number.isFinite(p1.ele) && Number.isFinite(p0.ele)
-              ? p1.ele - p0.ele
+          if (!Number.isFinite(dt) || dt <= 0 || dt > PAUSE_GAP_S) return false;
+          if (
+            Number.isFinite(t0) &&
+            times &&
+            Number.isFinite(times[lo - 1]) &&
+            t0 - times[lo - 1] > GRADE_MAX_HALF_S
+          )
+            return false;
+          return true;
+        };
+        const canExpandHi = () => {
+          if (hi >= cumDist.length - 1) return false;
+          const dt =
+            times &&
+            Number.isFinite(times[hi]) &&
+            Number.isFinite(times[hi + 1])
+              ? times[hi + 1] - times[hi]
               : NaN;
-          return d > 1 && Number.isFinite(de) ? (de / d) * 100 : NaN;
+          if (!Number.isFinite(dt) || dt <= 0 || dt > PAUSE_GAP_S) return false;
+          if (
+            Number.isFinite(t0) &&
+            times &&
+            Number.isFinite(times[hi + 1]) &&
+            times[hi + 1] - t0 > GRADE_MAX_HALF_S
+          )
+            return false;
+          return true;
+        };
+        while (cumDist[hi] - cumDist[lo] < GRADE_MIN_DIST_M) {
+          const canLo = canExpandLo();
+          const canHi = canExpandHi();
+          if (!canLo && !canHi) break;
+          if (canLo) lo--;
+          if (cumDist[hi] - cumDist[lo] < GRADE_MIN_DIST_M && canHi) hi++;
         }
-        if (mode === "elevation") {
-          const e0 = p0.ele,
-            e1 = p1.ele;
-          return Number.isFinite(e0) && Number.isFinite(e1)
-            ? (e0 + e1) / 2
-            : Number.isFinite(e0)
-              ? e0
-              : e1;
+        return { lo, hi };
+      }
+
+      function smoothedGradeSeries(lats, lons, eles, times) {
+        const n = lats.length;
+        const out = new Array(n).fill(NaN);
+        const hasEle = eles && eles.some((e) => Number.isFinite(e));
+        if (!hasEle || !times) return out;
+        const smoothedEle = smoothedElevationSeries(eles, times);
+        const cumDist = buildCumDist(lats, lons);
+        for (let i = 0; i < n; i++) {
+          const { lo, hi } = gradeWindowBounds(cumDist, times, i);
+          const d = cumDist[hi] - cumDist[lo];
+          if (d < GRADE_MIN_DIST_FLOOR_M) continue;
+          const de = smoothedEle[hi] - smoothedEle[lo];
+          out[i] = (de / d) * 100;
         }
-        if (mode === "hr") {
-          const h0 = p0.hr,
-            h1 = p1.hr;
-          return Number.isFinite(h0) && Number.isFinite(h1)
-            ? (h0 + h1) / 2
-            : Number.isFinite(h0)
-              ? h0
-              : h1;
+        return out;
+      }
+
+      // Пульс и так довольно гладкий сигнал — небольшое усреднение ±2 точки.
+      function smoothedHrSeries(hrs) {
+        if (!hrs) return [];
+        const n = hrs.length;
+        const out = new Array(n).fill(NaN);
+        for (let i = 0; i < n; i++) {
+          let sum = 0,
+            count = 0;
+          for (
+            let j = Math.max(0, i - HR_HALF_POINTS);
+            j <= Math.min(n - 1, i + HR_HALF_POINTS);
+            j++
+          ) {
+            if (Number.isFinite(hrs[j])) {
+              sum += hrs[j];
+              count++;
+            }
+          }
+          out[i] = count ? sum / count : NaN;
         }
-        return NaN;
+        return out;
+      }
+
+      // Считает сглаженные значения ВСЕХ 4 метрик сразу (по точке) — общий
+      // источник и для цвета трека, и для попапа, чтобы они не расходились.
+      function computeAllSmoothedSeries(lats, lons, eles, times, hrs) {
+        return {
+          speed: smoothedSpeedSeries(lats, lons, times),
+          grade: smoothedGradeSeries(lats, lons, eles, times),
+          elevation: smoothedElevationSeries(eles, times),
+          hr: smoothedHrSeries(hrs),
+        };
+      }
+
+      const COLOR_QUANTIZE_LEVELS = 24;
+
+      // Квантует нормированное значение в фиксированное число уровней —
+      // соседние отрезки одного уровня после этого можно склеить в одну
+      // полилинию (см. showTrackMap), что на треках в тысячи точек резко
+      // сокращает число SVG-слоёв без заметной потери плавности градиента.
+      function quantizeLevel(value, legend, levels) {
+        if (!legend || !Number.isFinite(value)) return null;
+        const range = legend.max - legend.min || 1;
+        const t = Math.max(0, Math.min(1, (value - legend.min) / range));
+        return Math.min(levels - 1, Math.floor(t * levels));
       }
 
       // Переводит значение метрики в цвет по уже посчитанной легенде
@@ -1864,8 +2312,9 @@
 
       // ─── Всплывающая подсказка по клику/тапу на трек ────────────────────────
       // Показывает все данные точки трека: координаты, время (по треку и с
-      // начала маршрута), высоту, пульс и мгновенные скорость/уклон — то есть
-      // всё, что вообще может быть показано цветом трека (см. metricForSegment).
+      // начала маршрута), высоту, пульс и сглаженные скорость/уклон — то есть
+      // всё, что вообще может быть показано цветом трека (см. computeAllSmoothedSeries).
+      // Значения ТЕ ЖЕ, что определили цвет отрезка — единая логика.
 
       // Ищет ближайшую точку среди n точек (по функции доступа getLatLon(i))
       // к месту клика — простая линейная метрика в градусах достаточно точна
@@ -1889,33 +2338,146 @@
         return best;
       }
 
-      // Мгновенная метрика В ТОЧКЕ (а не на отрезке) — среднее значений на
-      // соседних отрезках (до и после точки), либо то из них, что доступно.
-      function metricAtIdxFromArrays(mode, lats, lons, eles, times, hrs, i) {
-        const mk = (j) => ({
-          lat: lats[j],
-          lon: lons[j],
-          ele: eles ? eles[j] : NaN,
-          time: times ? times[j] : NaN,
-          hr: hrs ? hrs[j] : NaN,
-        });
-        const n = lats.length;
-        const prev = i > 0 ? metricForSegment(mode, mk(i - 1), mk(i)) : NaN;
-        const next = i < n - 1 ? metricForSegment(mode, mk(i), mk(i + 1)) : NaN;
-        if (Number.isFinite(prev) && Number.isFinite(next))
-          return (prev + next) / 2;
-        return Number.isFinite(prev) ? prev : next;
+      // Ищет индекс ближайшего по времени элемента в отсортированном по
+      // возрастанию массиве times — двоичный поиск. Используется, чтобы найти
+      // точку вставки (seg.points[i]) среди точек ПОЛНОГО (после fix) трека:
+      // это те же самые точки (те же lat/lon/ele/time), просто смерженные в
+      // общую последовательность, поэтому у них те же самые time-значения.
+      function nearestTimeIndex(times, t) {
+        if (!times || !times.length || !Number.isFinite(t)) return -1;
+        let lo = 0,
+          hi = times.length - 1;
+        while (lo < hi) {
+          const mid = (lo + hi) >> 1;
+          if (times[mid] < t) lo = mid + 1;
+          else hi = mid;
+        }
+        if (lo > 0 && Math.abs(times[lo - 1] - t) <= Math.abs(times[lo] - t)) {
+          return lo - 1;
+        }
+        return lo;
       }
 
-      function metricAtIdxFromPoints(mode, points, i) {
+      // Сглаженные значения метрик для точек вставки (seg.points) — берём НЕ
+      // изолированный расчёт по крошечному массиву самой вставки (там окну
+      // сглаживания часто некуда расширяться: у короткой вставки, чинящей
+      // всего пару секунд GPS-скачка, не набирается даже 5м на уклон — весь
+      // кусок стабильно уходил в серый), а те же значения, что и у основного
+      // трека в этих же точках (mapTrackData[containerId].series), потому что
+      // после fix-а точки вставки уже смержены в общую последовательность
+      // точек трека и посчитаны с полным контекстом окна. Совпадение точки
+      // ищем по времени (двоичный поиск, точки идентичны основному треку).
+      // Резервный вариант (если основной трек недоступен или точка не
+      // нашлась) — старый локальный расчёт по точкам самой вставки.
+      function getInterpSegSeries(containerId, seg) {
+        if (seg._series) return seg._series;
+        let series = null;
+        const data = mapTrackData[containerId];
+        if (data && data.series && data.times && data.times.length) {
+          const n = seg.points.length;
+          const matched = { speed: [], grade: [], elevation: [], hr: [] };
+          let allMatched = true;
+          for (let i = 0; i < n; i++) {
+            const idx = nearestTimeIndex(data.times, seg.points[i].time);
+            if (
+              idx < 0 ||
+              !Number.isFinite(data.times[idx]) ||
+              Math.abs(data.times[idx] - seg.points[i].time) > 0.5
+            ) {
+              allMatched = false;
+              break;
+            }
+            matched.speed.push(data.series.speed[idx]);
+            matched.grade.push(data.series.grade[idx]);
+            matched.elevation.push(data.series.elevation[idx]);
+            matched.hr.push(data.series.hr ? data.series.hr[idx] : NaN);
+          }
+          if (allMatched) series = matched;
+        }
+        if (!series) {
+          const arrs = arraysFromPoints(seg.points);
+          series = computeAllSmoothedSeries(
+            arrs.lats,
+            arrs.lons,
+            arrs.eles,
+            arrs.times,
+            arrs.hrs,
+          );
+        }
+        // Длинные вставки "по глушению GPS" чинят реальный разрыв во времени
+        // (минуты-часы), но реальное расстояние внутри вставки при этом может
+        // быть исчезающе малым (маршрут короткий/почти на месте) — тогда
+        // окно уклона (не шире ±60с) никогда не наберёт даже 5м, и уклон
+        // на каждой точке честно уходит в NaN (как и должно быть для
+        // настоящей остановки). Но для СИНТЕТИЧЕСКОЙ вставки это неверно:
+        // реальный набор/сброс высоты за весь эпизод мог быть значительным —
+        // такие NaN-точки красим средним уклоном по ВСЕЙ вставке (Δвысоты
+        // между концами / пройденная дистанция), а не серым, чтобы длинные
+        // подъёмы/спуски внутри глушения были видны. Точки, где уклон уже
+        // посчитался нормально (частично удачное окно), не трогаем.
+        if (
+          seg.points.length >= 2 &&
+          series.grade.some((v) => !Number.isFinite(v))
+        ) {
+          // Высоту концов берём НЕ у крайних точек seg.points (это реальные
+          // "сырые" точки трека до/после эпизода — их записанная высота
+          // может быть заведомо шумной, отсюда и калибровка по DEM при
+          // построении самой вставки), а у первой/последней СИНТЕТИЧЕСКОЙ
+          // точки внутри неё — их высота уже посчитана как раз с той самой
+          // калибровкой (плавный переход к настоящей высоте на другом конце),
+          // поэтому даёт куда более честную оценку реального перепада на
+          // самой вставке. Если синтетических точек нет (совсем короткая
+          // вставка) — используем как есть крайние точки.
+          const hasInner = seg.points.length >= 4;
+          const startPt = hasInner ? seg.points[1] : seg.points[0];
+          const endPt = hasInner
+            ? seg.points[seg.points.length - 2]
+            : seg.points[seg.points.length - 1];
+          let dist = 0;
+          for (let i = 1; i < seg.points.length; i++) {
+            dist += haversine(
+              seg.points[i - 1].lat,
+              seg.points[i - 1].lon,
+              seg.points[i].lat,
+              seg.points[i].lon,
+            );
+          }
+          if (
+            dist >= GRADE_MIN_DIST_FLOOR_M &&
+            Number.isFinite(startPt.ele) &&
+            Number.isFinite(endPt.ele)
+          ) {
+            const avgGrade = ((endPt.ele - startPt.ele) / dist) * 100;
+            series = {
+              ...series,
+              grade: series.grade.map((v) =>
+                Number.isFinite(v) ? v : avgGrade,
+              ),
+            };
+          }
+        }
+        seg._series = series;
+        return seg._series;
+      }
+
+      // Извлекает параллельные массивы lat/lon/ele/time/hr из массива точек
+      // ({lat,lon,ele,time,hr}) — вставленные (интерполированные) участки
+      // хранятся именно так, а не параллельными массивами, как основной трек.
+      function arraysFromPoints(points) {
         const n = points.length;
-        const prev =
-          i > 0 ? metricForSegment(mode, points[i - 1], points[i]) : NaN;
-        const next =
-          i < n - 1 ? metricForSegment(mode, points[i], points[i + 1]) : NaN;
-        if (Number.isFinite(prev) && Number.isFinite(next))
-          return (prev + next) / 2;
-        return Number.isFinite(prev) ? prev : next;
+        const lats = new Array(n),
+          lons = new Array(n),
+          eles = new Array(n),
+          times = new Array(n),
+          hrs = new Array(n);
+        for (let i = 0; i < n; i++) {
+          lats[i] = points[i].lat;
+          lons[i] = points[i].lon;
+          eles[i] = points[i].ele;
+          times[i] = points[i].time;
+          hrs[i] = points[i].hr;
+        }
+        return { lats, lons, eles, times, hrs };
       }
 
       // Процент прохождения ВСЕГО трека в этой точке — по времени (точка/весь
@@ -1992,128 +2554,71 @@
       }
 
       // Обработчик клика по любому слою ОСНОВНОГО трека (обводка/сплошная
-      // линия/цветные отрезки) — находит ближайшую РЕАЛЬНУЮ (несглаженную)
-      // точку трека и показывает по ней всплывающую подсказку.
+      // линия/цветные отрезки) — находит ближайшую РЕАЛЬНУЮ (несглаженную по
+      // координатам) точку трека и закрепляет её в инфо-панели профиля высот
+      // (см. togglePinAt) вместо всплывающего Leaflet-попапа. Если клик попал
+      // рядом (в пикселях) с уже закреплённой точкой — просто открепляем её,
+      // не полагаясь на точное совпадение индекса (клик редко приходится
+      // ровно на ту же вершину трека, что была закреплена).
       function onMainTrackClick(containerId) {
         return function (e) {
+          const inst = mapInstances[containerId];
           const data = mapTrackData[containerId];
           if (!data || !data.lats.length) return;
+          if (inst && inst.pinnedIdx != null) {
+            const pinnedPt = pinnedMapPoint(containerId);
+            const clickPt = inst.map.latLngToLayerPoint(e.latlng);
+            if (pinnedPt != null && pinnedPt.distanceTo(clickPt) <= 14) {
+              unpinTrackCursor(containerId);
+              return;
+            }
+          }
           const idx = nearestIndexBy(
             data.lats.length,
             (i) => [data.lats[i], data.lons[i]],
             e.latlng.lat,
             e.latlng.lng,
           );
-          const lat = data.lats[idx],
-            lon = data.lons[idx];
-          const ele = data.eles ? data.eles[idx] : NaN;
-          const hr = data.hrs ? data.hrs[idx] : NaN;
-          const timeUnix = data.times ? data.times[idx] : NaN;
-          const startTime =
-            data.times && data.times.length ? data.times[0] : NaN;
-          const speedVal = metricAtIdxFromArrays(
-            "speed",
-            data.lats,
-            data.lons,
-            data.eles,
-            data.times,
-            data.hrs,
-            idx,
-          );
-          const gradeVal = metricAtIdxFromArrays(
-            "grade",
-            data.lats,
-            data.lons,
-            data.eles,
-            data.times,
-            data.hrs,
-            idx,
-          );
-          const percentVal = computeTrackPercent(
-            data,
-            timeUnix,
-            idx,
-            data.lats.length,
-          );
-          const html = buildPointPopupHtml(
-            lat,
-            lon,
-            ele,
-            hr,
-            timeUnix,
-            startTime,
-            speedVal,
-            gradeVal,
-            percentVal,
-          );
-          mapInstances[containerId].map.openPopup(html, [lat, lon]);
+          togglePinAt(containerId, idx, { centerMap: false });
         };
       }
 
       // Обработчик клика по слоям ВСТАВЛЕННОГО (интерполированного) участка —
-      // те же данные, но по точкам конкретной вставки (seg.points).
+      // вставленные точки после fix-а уже смержены в основную последовательность
+      // (см. комментарий у getInterpSegSeries), поэтому достаточно того же
+      // поиска ближайшей точки по координатам клика, что и на основном треке.
       function onInterpSegClick(containerId, seg) {
-        return function (e) {
-          const data = mapTrackData[containerId];
-          const startTime =
-            data && data.times && data.times.length ? data.times[0] : NaN;
-          const idx = nearestIndexBy(
-            seg.points.length,
-            (i) => [seg.points[i].lat, seg.points[i].lon],
-            e.latlng.lat,
-            e.latlng.lng,
-          );
-          const p = seg.points[idx];
-          const speedVal = metricAtIdxFromPoints("speed", seg.points, idx);
-          const gradeVal = metricAtIdxFromPoints("grade", seg.points, idx);
-          const percentVal = computeTrackPercent(data, p.time, NaN, NaN);
-          const html = buildPointPopupHtml(
-            p.lat,
-            p.lon,
-            p.ele,
-            p.hr,
-            p.time,
-            startTime,
-            speedVal,
-            gradeVal,
-            percentVal,
-          );
-          mapInstances[containerId].map.openPopup(html, [p.lat, p.lon]);
-        };
+        return onMainTrackClick(containerId);
       }
 
-      // Считает метрику раскраски на каждом отрезке между соседними точками
-      // (из уже прореженного списка индексов idxs) и переводит её в цвет.
-      function computeColorSegments(mode, lats, lons, eles, times, hrs, idxs) {
-        if (mode === "plain" || !idxs || idxs.length < 2)
-          return { segColors: null, legend: null };
+      // Считает сглаженную метрику раскраски на каждом отрезке между соседними
+      // точками (из уже прореженного списка индексов idxs) — как среднее
+      // сглаженных точечных значений двух концов отрезка (series строится
+      // computeAllSmoothedSeries по ПОЛНЫМ, не прореженным массивам) — и
+      // переводит её в цвет через квантованные уровни (см. quantizeLevel).
+      function computeColorSegments(mode, series, idxs) {
+        if (mode === "plain" || !idxs || idxs.length < 2 || !series)
+          return { segColors: null, segLevels: null, legend: null };
+
+        const vals = series[mode];
+        if (!vals) return { segColors: null, segLevels: null, legend: null };
 
         const n = idxs.length;
         const raw = new Array(n - 1);
         for (let k = 0; k < n - 1; k++) {
-          const i0 = idxs[k],
-            i1 = idxs[k + 1];
-          raw[k] = metricForSegment(
-            mode,
-            {
-              lat: lats[i0],
-              lon: lons[i0],
-              ele: eles ? eles[i0] : NaN,
-              time: times ? times[i0] : NaN,
-              hr: hrs ? hrs[i0] : NaN,
-            },
-            {
-              lat: lats[i1],
-              lon: lons[i1],
-              ele: eles ? eles[i1] : NaN,
-              time: times ? times[i1] : NaN,
-              hr: hrs ? hrs[i1] : NaN,
-            },
-          );
+          const v0 = vals[idxs[k]];
+          const v1 = vals[idxs[k + 1]];
+          raw[k] =
+            Number.isFinite(v0) && Number.isFinite(v1)
+              ? (v0 + v1) / 2
+              : Number.isFinite(v0)
+                ? v0
+                : v1;
         }
 
         const finite = raw.filter(Number.isFinite);
-        if (!finite.length) return { segColors: null, legend: null };
+        if (!finite.length)
+          return { segColors: null, segLevels: null, legend: null };
 
         let min, max;
         if (mode === "grade") {
@@ -2129,7 +2634,14 @@
         }
 
         const legendForColor = { min, max };
-        const segColors = raw.map((v) => colorForValue(v, legendForColor));
+        const segLevels = raw.map((v) =>
+          quantizeLevel(v, legendForColor, COLOR_QUANTIZE_LEVELS),
+        );
+        const segColors = segLevels.map((lvl) =>
+          lvl === null
+            ? "#5b6478"
+            : colorScale((lvl + 0.5) / COLOR_QUANTIZE_LEVELS),
+        );
 
         const unit =
           mode === "speed"
@@ -2140,7 +2652,7 @@
                 ? t("unit_m")
                 : t("unit_bpm");
 
-        return { segColors, legend: { min, max, unit } };
+        return { segColors, segLevels, legend: { min, max, unit } };
       }
 
       // Каждая карта ("до"/"после") имеет свой переключатель и свою легенду —
@@ -2152,6 +2664,7 @@
           select: "color-mode-select",
           hrOption: "color-mode-hr-option",
           legend: "color-legend",
+          legendMode: "color-legend-mode",
           legendMin: "color-legend-min",
           legendMax: "color-legend-max",
         },
@@ -2160,6 +2673,7 @@
           select: "color-mode-select-after",
           hrOption: "color-mode-hr-option-after",
           legend: "color-legend-after",
+          legendMode: "color-legend-mode-after",
           legendMin: "color-legend-min-after",
           legendMax: "color-legend-max-after",
         },
@@ -2182,11 +2696,26 @@
           return;
         }
         el.style.display = "flex";
+        const modeEl = document.getElementById(ui.legendMode);
+        if (modeEl) modeEl.textContent = t("color_mode_" + colorMode);
         const fmt = (v) => (Math.abs(v) >= 100 ? Math.round(v) : v.toFixed(1));
         document.getElementById(ui.legendMin).textContent =
           `${fmt(legend.min)} ${legend.unit}`;
         document.getElementById(ui.legendMax).textContent =
           `${fmt(legend.max)} ${legend.unit}`;
+      }
+
+      // Показывает/прячет кнопку "показать весь трек" в зависимости от того,
+      // помещаются ли границы трека целиком в текущую видимую область карты.
+      function updateFitButtonVisibility(containerId) {
+        const inst = mapInstances[containerId];
+        if (!inst || !inst.trackBounds) return;
+        const btn = document.querySelector(
+          `.map-fit-btn[data-target="${containerId}"]`,
+        );
+        if (!btn) return;
+        const fits = inst.map.getBounds().contains(inst.trackBounds);
+        btn.style.display = fits ? "none" : "block";
       }
 
       // Перерисовывает уже показанные карты в текущем режиме раскраски —
@@ -2224,9 +2753,20 @@
         const el = document.getElementById(containerId);
         if (!lats.length) {
           el.style.display = "none";
+          const wrap0 = el.closest(".track-map-wrap");
+          if (wrap0) wrap0.classList.remove("has-map");
+          const fitBtn0 = wrap0 && wrap0.querySelector(".map-fit-btn");
+          if (fitBtn0) fitBtn0.style.display = "none";
+          const profUi0 = ELEVATION_PROFILE_UI[containerId];
+          if (profUi0) {
+            const profWrap0 = document.getElementById(profUi0.wrap);
+            if (profWrap0) profWrap0.style.display = "none";
+          }
           return;
         }
         el.style.display = "block";
+        const wrap = el.closest(".track-map-wrap");
+        if (wrap) wrap.classList.add("has-map");
 
         // Лёгкое скользящее сглаживание убирает мелкое дрожание GPS
         // (шум в 1-2 точки), но не "съедает" крупные выбросы/артефакты —
@@ -2245,17 +2785,42 @@
         if (idxs[idxs.length - 1] !== lastIdx) idxs.push(lastIdx);
         const latlngs = idxs.map((i) => [smoothLats[i], smoothLons[i]]);
 
-        mapTrackData[containerId] = { lats, lons, eles, times, hrs, color };
+        mapTrackData[containerId] = {
+          lats,
+          lons,
+          eles,
+          times,
+          hrs,
+          color,
+          cumDist: buildCumDist(lats, lons),
+          series: computeAllSmoothedSeries(lats, lons, eles, times, hrs),
+        };
         // interpSegments передаётся явно только при первой отрисовке после
         // обработки — при перерисовке из-за смены режима раскраски (undefined)
         // используется уже сохранённый набор.
         if (interpSegments !== undefined) {
           mapInterpData[containerId] = interpSegments;
         }
+        // Маска "эта точка основного трека попадает во вставленный участок" —
+        // нужна только для приглушённой штриховки на профиле высоты, к самой
+        // карте отношения не имеет.
+        mapTrackData[containerId].interpMask = buildInterpMask(
+          containerId,
+          times,
+        );
 
         let inst = mapInstances[containerId];
         if (!inst) {
-          const map = L.map(containerId, { attributionControl: true });
+          // zoomSnap/zoomDelta дробные — иначе Leaflet держит карту только на
+          // целых уровнях зума, и fitBounds (и загрузка, и кнопка "показать
+          // весь трек") вынужден округлять зум ВНИЗ до ближайшего целого,
+          // теряя запас, на который трек мог бы быть крупнее и всё равно
+          // помещаться целиком.
+          const map = L.map(containerId, {
+            attributionControl: true,
+            zoomSnap: 0.1,
+            zoomDelta: 0.5,
+          });
           map.attributionControl.setPrefix(
             '<a href="https://leafletjs.com" target="_blank">Leaflet</a>',
           );
@@ -2273,8 +2838,14 @@
             endMarker: null,
             interpLayers: [],
             lastLegend: null,
+            idxs: null,
+            hoverMarker: null,
           };
           mapInstances[containerId] = inst;
+          wireMapHoverSync(containerId);
+          // Кнопка "показать весь трек" появляется, только когда трек (хотя
+          // бы частично) не помещается в текущую видимую область карты.
+          map.on("moveend", () => updateFitButtonVisibility(containerId));
           // При зуме пиксельная длина реальных метров меняется, а вместе с
           // ней и фаза пунктира на вставке (см. drawInterpSegments) — без
           // этой подписки на стыках цветных кусочков после зума мог бы
@@ -2308,6 +2879,18 @@
         if (inst.startMarker) inst.map.removeLayer(inst.startMarker);
         if (inst.endMarker) inst.map.removeLayer(inst.endMarker);
         clearInterpSegments(containerId);
+        inst.idxs = idxs;
+
+        // Загрузка/пересчёт трека делает старые индексы недействительными —
+        // снимаем закреплённую точку (если была) вместе с её маркером, чтобы
+        // не показывать данные по индексу, который теперь указывает на другую
+        // точку (или не существует вовсе).
+        if (inst.pinnedIdx != null) {
+          inst.pinnedIdx = null;
+          if (inst.hoverMarker && inst.map.hasLayer(inst.hoverMarker)) {
+            inst.map.removeLayer(inst.hoverMarker);
+          }
+        }
 
         // Белая "подложка" под линией трека даёт контраст на любом фоне карты
         // (светлом, тёмном, зелёном лесном и т.п.), где сам цвет трека может теряться.
@@ -2318,24 +2901,34 @@
         }).addTo(inst.map);
         inst.casing.on("click", onMainTrackClick(containerId));
 
-        const { segColors, legend } = computeColorSegments(
+        const { segColors, segLevels, legend } = computeColorSegments(
           colorMode,
-          lats,
-          lons,
-          eles,
-          times,
-          hrs,
+          mapTrackData[containerId].series,
           idxs,
         );
         if (segColors) {
           inst.polyline = null;
-          for (let k = 0; k < latlngs.length - 1; k++) {
-            const seg = L.polyline([latlngs[k], latlngs[k + 1]], {
-              color: segColors[k],
+          // Соседние отрезки одного квантованного уровня (см. quantizeLevel)
+          // склеиваем в одну полилинию — после сглаживания метрики соседние
+          // значения и так почти всегда попадают в один уровень, поэтому
+          // на треке в тысячи точек это даёт сотни полилиний вместо тысяч,
+          // без заметной потери плавности градиента (24 уровня).
+          let k = 0;
+          while (k < latlngs.length - 1) {
+            const level = segLevels[k];
+            const color = segColors[k];
+            let j = k;
+            while (j + 1 < latlngs.length - 1 && segLevels[j + 1] === level) {
+              j++;
+            }
+            const groupPoints = latlngs.slice(k, j + 2);
+            const seg = L.polyline(groupPoints, {
+              color,
               weight: 3.5,
             }).addTo(inst.map);
             seg.on("click", onMainTrackClick(containerId));
             inst.colorSegments.push(seg);
+            k = j + 1;
           }
         } else {
           inst.polyline = L.polyline(latlngs, { color, weight: 3.5 }).addTo(
@@ -2367,14 +2960,19 @@
           fillOpacity: 1,
         }).addTo(inst.map);
 
+        inst.trackBounds = L.latLngBounds(latlngs);
         if (!keepView) {
           setTimeout(() => {
             inst.map.invalidateSize();
-            inst.map.fitBounds(L.latLngBounds(latlngs), {
+            inst.map.fitBounds(inst.trackBounds, {
               padding: [20, 20],
             });
+            updateFitButtonVisibility(containerId);
           }, 0);
+        } else {
+          updateFitButtonVisibility(containerId);
         }
+        renderElevationProfile(containerId);
       }
 
       // Пунктирные полилинии поверх основного трека, показывающие как именно
@@ -2470,6 +3068,11 @@
                   pxPts[cursor].y + (pxPts[cursor + 1].y - pxPts[cursor].y) * t,
                 );
               };
+              // Сглаженные точечные значения метрик для точек этой вставки —
+              // берём из основного трека (см. getInterpSegSeries) — там окно
+              // сглаживания посчитано с полным контекстом, а не только по
+              // короткому куску самой вставки.
+              const modeVals = getInterpSegSeries(containerId, seg)[mode];
               for (let pos = 0; pos < total; pos += cycle) {
                 const onEnd = Math.min(pos + dashOn, total);
                 const p0 = pointAtDist(pos);
@@ -2479,49 +3082,23 @@
                 const pxChunk = [p0];
                 for (let i = idx0 + 1; i <= idx1; i++) pxChunk.push(pxPts[i]);
                 pxChunk.push(p1);
-                // Для метрики берём не соседние (idx1, idx1+1) точки, а
-                // растягиваем окно замера в обе стороны, пока между его
-                // концами не наберётся хотя бы ~2м реальной дистанции.
-                // Иначе на медленных участках, где точки интерполяции стоят
-                // раз в секунду в считанных сантиметрах друг от друга,
-                // metricForSegment для Уклона почти всегда получает d<=1м и
-                // возвращает NaN — весь пунктир окрашивается серым
-                // (нет данных), хотя уклон на самом деле есть.
-                let mIdx0 = idx0;
-                let mIdx1 = Math.max(idx1, idx0 + 1);
-                while (
-                  mIdx1 < seg.points.length - 1 &&
-                  haversine(
-                    seg.points[mIdx0].lat,
-                    seg.points[mIdx0].lon,
-                    seg.points[mIdx1].lat,
-                    seg.points[mIdx1].lon,
-                  ) < 2
-                ) {
-                  mIdx1++;
-                }
-                while (
-                  mIdx0 > 0 &&
-                  haversine(
-                    seg.points[mIdx0].lat,
-                    seg.points[mIdx0].lon,
-                    seg.points[mIdx1].lat,
-                    seg.points[mIdx1].lon,
-                  ) < 2
-                ) {
-                  mIdx0--;
-                }
-                const value = metricForSegment(
-                  mode,
-                  seg.points[mIdx0],
-                  seg.points[mIdx1],
-                );
+                const v0 = modeVals ? modeVals[idx0] : NaN;
+                const v1 = modeVals
+                  ? modeVals[Math.min(idx1, modeVals.length - 1)]
+                  : NaN;
+                const value =
+                  Number.isFinite(v0) && Number.isFinite(v1)
+                    ? (v0 + v1) / 2
+                    : Number.isFinite(v0)
+                      ? v0
+                      : v1;
                 const layer = L.polyline(
                   pxChunk.map((pt) => inst.map.layerPointToLatLng(pt)),
                   {
                     color: colorForValue(value, legend),
                     weight: 4,
                     opacity: 1,
+                    smoothFactor: 0,
                   },
                 ).addTo(inst.map);
                 layer.on("click", onInterpSegClick(containerId, seg));
@@ -2543,6 +3120,626 @@
             // здесь не должна ломать уже готовый результат обработки.
           }
         }
+      }
+
+      // ─── Профиль высоты под картой ──────────────────────────────────────────
+      // Отдельный <canvas> на голом 2D-контексте, без зависимостей: ось X —
+      // пройденная дистанция, Y — сглаженная высота (та же series.elevation,
+      // что и у раскраски трека). Заливка окрашена той же метрикой/шкалой,
+      // что выбрана для карты (colorMode + lastLegend), восстановленные
+      // (вставленные) участки — приглушены и заштрихованы. Курсор мыши по
+      // профилю двигает маркер на карте и наоборот (см. wireMapHoverSync).
+      const ELEVATION_PROFILE_UI = {
+        "map-before": {
+          wrap: "elevation-profile-wrap-before",
+          canvas: "elevation-profile-before",
+          info: "elevation-profile-info-before",
+        },
+        "map-after": {
+          wrap: "elevation-profile-wrap-after",
+          canvas: "elevation-profile-after",
+          info: "elevation-profile-info-after",
+        },
+      };
+
+      // Помечает точки ОСНОВНОГО трека, попадающие во временной диапазон
+      // какого-либо вставленного (интерполированного) участка — используется
+      // только для приглушённой штриховки на профиле высоты. Точки вставки
+      // после fix-а уже смержены в общую последовательность (см. комментарий
+      // у getInterpSegSeries), поэтому совпадение ищем по времени.
+      function buildInterpMask(containerId, times) {
+        const n = times.length;
+        const mask = new Uint8Array(n);
+        const segs = mapInterpData[containerId];
+        if (!segs || !segs.length || !times.length) return mask;
+        for (const seg of segs) {
+          if (!seg.points.length) continue;
+          const t0 = seg.points[0].time;
+          const t1 = seg.points[seg.points.length - 1].time;
+          if (!Number.isFinite(t0) || !Number.isFinite(t1)) continue;
+          let lo = nearestTimeIndex(times, t0);
+          let hi = nearestTimeIndex(times, t1);
+          if (lo < 0 || hi < 0) continue;
+          if (lo > hi) [lo, hi] = [hi, lo];
+          for (let i = lo; i <= hi; i++) mask[i] = 1;
+        }
+        return mask;
+      }
+
+      // Диагональная штриховка, отсекаемая по уже построенному пути (quad
+      // текущего отрезка профиля) — используется для восстановленных участков.
+      function hatchClippedRegion(ctx, pathFn, minX, maxX, height) {
+        ctx.save();
+        ctx.beginPath();
+        pathFn(ctx);
+        ctx.clip();
+        ctx.globalAlpha = 0.4;
+        ctx.strokeStyle = "rgba(255, 255, 255, 0.65)";
+        ctx.lineWidth = 1;
+        const step = 6;
+        for (let sx = minX - height; sx < maxX + height; sx += step) {
+          ctx.beginPath();
+          ctx.moveTo(sx, 0);
+          ctx.lineTo(sx + height, height);
+          ctx.stroke();
+        }
+        ctx.restore();
+      }
+
+      // Полная (пере)отрисовка статичного профиля высоты для одной карты —
+      // вызывается из showTrackMap (первичный рендер/смена файла), из
+      // redrawMapsForColorMode (смена режима раскраски) и по ресайзу окна.
+      function renderElevationProfile(containerId) {
+        const ui = ELEVATION_PROFILE_UI[containerId];
+        if (!ui) return;
+        const wrapEl = document.getElementById(ui.wrap);
+        const canvas = document.getElementById(ui.canvas);
+        if (!wrapEl || !canvas) return;
+        const data = mapTrackData[containerId];
+        const inst = mapInstances[containerId];
+        const hasEle = data && data.eles && data.eles.some(Number.isFinite);
+        if (!data || !inst || !hasEle) {
+          wrapEl.style.display = "none";
+          return;
+        }
+        wrapEl.style.display = "flex";
+
+        const idxs =
+          inst.idxs && inst.idxs.length
+            ? inst.idxs
+            : data.lats.map((_, i) => i);
+        const cssWidth = canvas.clientWidth || wrapEl.clientWidth || 300;
+        const cssHeight = canvas.clientHeight || 92;
+        if (!cssWidth || !cssHeight) return;
+        const dpr = window.devicePixelRatio || 1;
+        canvas.width = Math.round(cssWidth * dpr);
+        canvas.height = Math.round(cssHeight * dpr);
+        const ctx = canvas.getContext("2d");
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.scale(dpr, dpr);
+
+        const total = data.cumDist[data.cumDist.length - 1] || 1;
+        const profDist = idxs.map((i) => data.cumDist[i]);
+        const profEle = idxs.map((i) => data.series.elevation[i]);
+        const finiteEle = profEle.filter(Number.isFinite);
+        const minEleRaw = finiteEle.length ? Math.min(...finiteEle) : 0;
+        const maxEleRaw = finiteEle.length ? Math.max(...finiteEle) : 1;
+        const elePad = Math.max(2, (maxEleRaw - minEleRaw) * 0.08);
+        const minEle = minEleRaw - elePad;
+        const maxEle = maxEleRaw + elePad;
+        const eleRange = maxEle - minEle || 1;
+
+        const padTop = 6;
+        const padBottom = 4;
+        const baseline = cssHeight - padBottom;
+        const plotH = cssHeight - padTop - padBottom;
+        const xAt = (k) => (profDist[k] / total) * cssWidth;
+        const yAt = (ele) =>
+          Number.isFinite(ele)
+            ? baseline - ((ele - minEle) / eleRange) * plotH
+            : baseline;
+
+        const modeVals =
+          colorMode !== "plain" && data.series[colorMode]
+            ? data.series[colorMode]
+            : null;
+        const legend = inst.lastLegend;
+
+        for (let k = 0; k < idxs.length - 1; k++) {
+          const x0 = xAt(k),
+            x1 = xAt(k + 1);
+          const y0 = yAt(profEle[k]),
+            y1 = yAt(profEle[k + 1]);
+          const interp =
+            data.interpMask[idxs[k]] || data.interpMask[idxs[k + 1]];
+          let fillColor = data.color;
+          if (modeVals && legend) {
+            const v0 = modeVals[idxs[k]],
+              v1 = modeVals[idxs[k + 1]];
+            const avg =
+              Number.isFinite(v0) && Number.isFinite(v1)
+                ? (v0 + v1) / 2
+                : Number.isFinite(v0)
+                  ? v0
+                  : v1;
+            fillColor = colorForValue(avg, legend);
+          }
+          // Заливку каждого отрезка чуть-чуть "нахлёстываем" на соседний
+          // (xEnd правее реального x1) — иначе при большом числе узких
+          // сегментов антиалиасинг canvas оставляет тонкие вертикальные щели
+          // фона на стыках соседних заливок (частая тёмная штриховка по всей
+          // ширине графика).
+          const xEnd = x1 + (x1 >= x0 ? 1 : -1);
+          const quadPath = (c) => {
+            c.moveTo(x0, y0);
+            c.lineTo(xEnd, y1);
+            c.lineTo(xEnd, baseline);
+            c.lineTo(x0, baseline);
+            c.closePath();
+          };
+          ctx.globalAlpha = interp ? 0.4 : 0.85;
+          ctx.fillStyle = fillColor;
+          ctx.beginPath();
+          quadPath(ctx);
+          ctx.fill();
+          ctx.globalAlpha = 1;
+          if (interp) {
+            hatchClippedRegion(
+              ctx,
+              quadPath,
+              Math.min(x0, xEnd),
+              Math.max(x0, xEnd),
+              plotH,
+            );
+          }
+        }
+
+        // Контурная линия высоты поверх заливки — для чёткости силуэта.
+        ctx.beginPath();
+        for (let k = 0; k < idxs.length; k++) {
+          const x = xAt(k),
+            y = yAt(profEle[k]);
+          if (k === 0) ctx.moveTo(x, y);
+          else ctx.lineTo(x, y);
+        }
+        ctx.strokeStyle = "rgba(255, 255, 255, 0.85)";
+        ctx.lineWidth = 1.4;
+        ctx.stroke();
+
+        // Подписи диапазона высоты и полной дистанции — как в легенде карты.
+        ctx.font =
+          "11px -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif";
+        ctx.fillStyle = "#a3adc2";
+        ctx.textBaseline = "top";
+        ctx.fillText(`${Math.round(maxEleRaw)} ${t("unit_m")}`, 6, 2);
+        ctx.textBaseline = "bottom";
+        ctx.fillText(
+          `${Math.round(minEleRaw)} ${t("unit_m")}`,
+          6,
+          cssHeight - 2,
+        );
+        ctx.textAlign = "right";
+        ctx.textBaseline = "bottom";
+        ctx.fillText(
+          `${(total / 1000).toFixed(1)} ${t("unit_km")}`,
+          cssWidth - 6,
+          cssHeight - 2,
+        );
+        ctx.textAlign = "left";
+
+        // Кэш для курсора: полный снимок отрисованного графика (device-pixel
+        // 1:1), чтобы при наведении не перестраивать весь профиль заново —
+        // только восстановить снимок и дорисовать поверх линию/точку курсора.
+        if (!inst.profileBase)
+          inst.profileBase = document.createElement("canvas");
+        inst.profileBase.width = canvas.width;
+        inst.profileBase.height = canvas.height;
+        inst.profileBase.getContext("2d").drawImage(canvas, 0, 0);
+        inst.profile = {
+          idxs,
+          profDist,
+          profEle,
+          total,
+          cssWidth,
+          cssHeight,
+          dpr,
+          baseline,
+          minEle,
+          maxEle,
+          eleRange,
+          padTop,
+          plotH,
+        };
+
+        wireProfileInteractions(containerId);
+
+        // Полная перерисовка могла сдвинуть позиции точек/легенду — если есть
+        // закреплённая точка, перерисовываем курсор на новом графике по ней же,
+        // иначе показываем подсказку "наведите", пока не придёт новое событие.
+        if (inst.pinnedIdx != null) {
+          setTrackCursor(
+            containerId,
+            mapIdxToProfileK(containerId, inst.pinnedIdx),
+            "pin",
+          );
+          markInfoAsPinned(containerId);
+        } else {
+          showProfileInfoPlaceholder(containerId);
+        }
+      }
+
+      // Находит ближайший (по дистанции) индекс k внутри массива profDist —
+      // используется и наведением мыши по самому профилю, и синхронизацией
+      // с наведением на карту (см. wireMapHoverSync).
+      function nearestProfileIndexByDist(profDist, dist) {
+        let lo = 0,
+          hi = profDist.length - 1;
+        while (lo < hi) {
+          const mid = (lo + hi) >> 1;
+          if (profDist[mid] < dist) lo = mid + 1;
+          else hi = mid;
+        }
+        if (
+          lo > 0 &&
+          Math.abs(profDist[lo - 1] - dist) <= Math.abs(profDist[lo] - dist)
+        ) {
+          return lo - 1;
+        }
+        return lo;
+      }
+
+      // Инфо-панель справа от профиля — та же разметка/данные, что и попап
+      // по клику на трек (buildPointPopupHtml): координаты, время, высота,
+      // скорость, уклон, пульс — только обновляется по наведению, а не клику.
+      function buildProfileInfoHtml(containerId, idx) {
+        const data = mapTrackData[containerId];
+        const lat = data.lats[idx];
+        const lon = data.lons[idx];
+        const ele = data.eles ? data.eles[idx] : NaN;
+        const hr = data.hrs ? data.hrs[idx] : NaN;
+        const timeUnix = data.times ? data.times[idx] : NaN;
+        const startTime = data.times && data.times.length ? data.times[0] : NaN;
+        const speedVal = data.series.speed ? data.series.speed[idx] : NaN;
+        const gradeVal = data.series.grade ? data.series.grade[idx] : NaN;
+        const percentVal = computeTrackPercent(
+          data,
+          timeUnix,
+          idx,
+          data.lats.length,
+        );
+        return buildPointPopupHtml(
+          lat,
+          lon,
+          ele,
+          hr,
+          timeUnix,
+          startTime,
+          speedVal,
+          gradeVal,
+          percentVal,
+        );
+      }
+
+      // Плейсхолдер в инфо-панели, пока мышь не наведена ни на профиль, ни на трек.
+      function showProfileInfoPlaceholder(containerId) {
+        const ui = ELEVATION_PROFILE_UI[containerId];
+        const infoEl = document.getElementById(ui.info);
+        if (infoEl) {
+          infoEl.innerHTML = `<div class="elevation-profile-info-empty">${t("profile_hover_hint")}</div>`;
+        }
+      }
+
+      // Переводит индекс ТОЧКИ ОСНОВНОГО ТРЕКА (полное разрешение) в индекс k
+      // внутри прореженного массива inst.profile.idxs/profDist — по ближайшей
+      // дистанции вдоль трека. Нужно, чтобы клик по карте (полное разрешение)
+      // мог показать курсор в правильном месте графика профиля.
+      function mapIdxToProfileK(containerId, idx) {
+        const inst = mapInstances[containerId];
+        const data = mapTrackData[containerId];
+        if (!inst || !inst.profile || !data) return 0;
+        return nearestProfileIndexByDist(
+          inst.profile.profDist,
+          data.cumDist[idx],
+        );
+      }
+
+      // Добавляет в инфо-панель кнопку-крестик для открепления точки — только
+      // если её там ещё нет (setTrackCursor каждый раз перезаписывает innerHTML,
+      // поэтому кнопка добавляется отдельным вызовом ПОСЛЕ отрисовки данных).
+      function markInfoAsPinned(containerId) {
+        const ui = ELEVATION_PROFILE_UI[containerId];
+        const infoEl = document.getElementById(ui.info);
+        if (!infoEl || infoEl.querySelector(".elevation-profile-info-close"))
+          return;
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "elevation-profile-info-close";
+        btn.setAttribute("aria-label", t("profile_unpin"));
+        btn.title = t("profile_unpin");
+        btn.textContent = "×";
+        btn.addEventListener("click", () => unpinTrackCursor(containerId));
+        infoEl.appendChild(btn);
+      }
+
+      // Закрепляет точку (по клику на карте/треке/профиле) — инфо-панель
+      // перестаёт обновляться по наведению, пока не будет откреплена повторным
+      // кликом по той же точке или крестиком в самой панели. При centerMap
+      // (клик по профилю) — если точка не видна на карте, центрируем карту на ней.
+      function togglePinAt(containerId, idx, opts) {
+        const inst = mapInstances[containerId];
+        const data = mapTrackData[containerId];
+        if (!inst || !data) return;
+        if (inst.pinnedIdx === idx) {
+          unpinTrackCursor(containerId);
+          return;
+        }
+        inst.pinnedIdx = idx;
+        setTrackCursor(containerId, mapIdxToProfileK(containerId, idx), "pin");
+        markInfoAsPinned(containerId);
+        if (opts && opts.centerMap) {
+          const latlng = L.latLng(data.lats[idx], data.lons[idx]);
+          if (!inst.map.getBounds().contains(latlng)) {
+            inst.map.panTo(latlng);
+          }
+        }
+      }
+
+      // Открепляет точку — сбрасывает состояние и прячет курсор/маркер.
+      function unpinTrackCursor(containerId) {
+        const inst = mapInstances[containerId];
+        if (!inst) return;
+        inst.pinnedIdx = null;
+        clearTrackCursor(containerId);
+        const ui = ELEVATION_PROFILE_UI[containerId];
+        const canvas = ui && document.getElementById(ui.canvas);
+        if (canvas) canvas.classList.remove("elevation-profile-unpin-cursor");
+        const mapContainer = inst.map && inst.map.getContainer();
+        if (mapContainer)
+          mapContainer.classList.remove("elevation-profile-unpin-cursor");
+      }
+
+      // X-координата (в CSS-пикселях canvas) закреплённой точки на графике
+      // профиля — используется, чтобы понять, наведена ли мышь именно на неё.
+      function pinnedProfileX(containerId) {
+        const inst = mapInstances[containerId];
+        if (!inst || inst.pinnedIdx == null || !inst.profile) return null;
+        const k = mapIdxToProfileK(containerId, inst.pinnedIdx);
+        return (
+          (inst.profile.profDist[k] / inst.profile.total) *
+          inst.profile.cssWidth
+        );
+      }
+
+      // Экранная (layer point) позиция закреплённой точки на карте.
+      function pinnedMapPoint(containerId) {
+        const inst = mapInstances[containerId];
+        const data = mapTrackData[containerId];
+        if (!inst || !data || inst.pinnedIdx == null) return null;
+        return inst.map.latLngToLayerPoint([
+          data.lats[inst.pinnedIdx],
+          data.lons[inst.pinnedIdx],
+        ]);
+      }
+
+      // Показывает курсор (вертикальная линия + точка на профиле, маркер на
+      // карте, инфо-панель) для точки идентифицированной по индексу k в массиве
+      // inst.profile.idxs. Источник наведения ("profile"/"map") не влияет на
+      // результат — используется только чтобы не дёргать координаты карты,
+      // когда наведение и так пришло с самой карты.
+      function setTrackCursor(containerId, k, source) {
+        const inst = mapInstances[containerId];
+        const data = mapTrackData[containerId];
+        if (!inst || !inst.profile || !data) return;
+        const prof = inst.profile;
+        k = Math.max(0, Math.min(prof.idxs.length - 1, k));
+        const idx = prof.idxs[k];
+        const x = (prof.profDist[k] / prof.total) * prof.cssWidth;
+        const y = Number.isFinite(prof.profEle[k])
+          ? prof.baseline -
+            ((prof.profEle[k] - prof.minEle) / prof.eleRange) * prof.plotH
+          : prof.baseline;
+
+        // Профиль: восстановить статичный снимок + дорисовать курсор. Точка
+        // курсора — простая белая (наведение), закреплённая точка — жёлтая
+        // с белой обводкой (тот же стиль, что и маркер на карте).
+        const isPinned = source === "pin";
+        const canvas = document.getElementById(
+          ELEVATION_PROFILE_UI[containerId].canvas,
+        );
+        if (canvas && inst.profileBase) {
+          const ctx = canvas.getContext("2d");
+          ctx.setTransform(1, 0, 0, 1, 0, 0);
+          ctx.clearRect(0, 0, canvas.width, canvas.height);
+          ctx.drawImage(inst.profileBase, 0, 0);
+          ctx.scale(prof.dpr, prof.dpr);
+          ctx.beginPath();
+          ctx.moveTo(x, prof.padTop);
+          ctx.lineTo(x, prof.baseline);
+          ctx.strokeStyle = "rgba(255, 255, 255, 0.9)";
+          ctx.lineWidth = 1;
+          ctx.stroke();
+          ctx.beginPath();
+          ctx.arc(x, y, isPinned ? 4.5 : 3.5, 0, Math.PI * 2);
+          ctx.fillStyle = isPinned ? "#facc15" : "#ffffff";
+          ctx.fill();
+          if (isPinned) {
+            ctx.lineWidth = 1.5;
+            ctx.strokeStyle = "#ffffff";
+            ctx.stroke();
+          }
+        }
+
+        // Инфо-панель справа от профиля — те же данные, что и попап по клику.
+        const infoEl = document.getElementById(
+          ELEVATION_PROFILE_UI[containerId].info,
+        );
+        if (infoEl) {
+          infoEl.innerHTML = buildProfileInfoHtml(containerId, idx);
+        }
+
+        // Маркер на карте. interactive: false — чтобы клик по маркеру
+        // (например, по закреплённой точке) проходил насквозь к треку под
+        // ним и срабатывал обычный обработчик клика (открепление точки).
+        // Закреплённая точка — жёлтая с белой обводкой, обычное наведение —
+        // просто белая точка (рисуется независимо от того, откуда пришло
+        // наведение — с профиля или с самой карты).
+        const style = isPinned
+          ? { radius: 6, color: "#ffffff", weight: 2, fillColor: "#facc15" }
+          : { radius: 5, color: "#ffffff", weight: 0, fillColor: "#ffffff" };
+        if (!inst.hoverMarker) {
+          inst.hoverMarker = L.circleMarker([data.lats[idx], data.lons[idx]], {
+            ...style,
+            fillOpacity: 1,
+            interactive: false,
+          });
+        } else {
+          inst.hoverMarker.setLatLng([data.lats[idx], data.lons[idx]]);
+          inst.hoverMarker.setStyle(style);
+        }
+        if (!inst.map.hasLayer(inst.hoverMarker)) {
+          inst.hoverMarker.addTo(inst.map);
+        }
+      }
+
+      // Прячет курсор/маркер, возвращает инфо-панель к плейсхолдеру — по уходу
+      // мыши с профиля или с карты.
+      function clearTrackCursor(containerId) {
+        const inst = mapInstances[containerId];
+        if (!inst) return;
+        const canvas = document.getElementById(
+          ELEVATION_PROFILE_UI[containerId].canvas,
+        );
+        if (canvas && inst.profileBase) {
+          const ctx = canvas.getContext("2d");
+          ctx.setTransform(1, 0, 0, 1, 0, 0);
+          ctx.clearRect(0, 0, canvas.width, canvas.height);
+          ctx.drawImage(inst.profileBase, 0, 0);
+        }
+        showProfileInfoPlaceholder(containerId);
+        if (inst.hoverMarker && inst.map.hasLayer(inst.hoverMarker)) {
+          inst.map.removeLayer(inst.hoverMarker);
+        }
+      }
+
+      // Подписывает события наведения на сам canvas профиля — курсор мышью/
+      // пальцем по графику высоты двигает маркер на карте. Слушатели вешаются
+      // один раз на элемент (idempotent через dataset-флаг), данные всегда
+      // берутся из актуального inst.profile на момент события.
+      function wireProfileInteractions(containerId) {
+        const ui = ELEVATION_PROFILE_UI[containerId];
+        const canvas = document.getElementById(ui.canvas);
+        if (!canvas || canvas.dataset.wired) return;
+        canvas.dataset.wired = "1";
+        const kFromClientX = (clientX) => {
+          const inst = mapInstances[containerId];
+          if (!inst || !inst.profile) return null;
+          const rect = canvas.getBoundingClientRect();
+          const frac = Math.max(
+            0,
+            Math.min(1, (clientX - rect.left) / rect.width),
+          );
+          const dist = frac * inst.profile.total;
+          return nearestProfileIndexByDist(inst.profile.profDist, dist);
+        };
+        // Наведение точно на уже закреплённую точку — курсор-крестик вместо
+        // обычного прицела, подсказывающий, что клик её открепит.
+        const isNearPinned = (clientX) => {
+          const px = pinnedProfileX(containerId);
+          if (px == null) return false;
+          const rect = canvas.getBoundingClientRect();
+          return Math.abs(clientX - rect.left - px) <= 8;
+        };
+        canvas.addEventListener("pointermove", (e) => {
+          const inst = mapInstances[containerId];
+          if (!inst) return;
+          if (inst.pinnedIdx != null) {
+            canvas.classList.toggle(
+              "elevation-profile-unpin-cursor",
+              isNearPinned(e.clientX),
+            );
+            return;
+          }
+          canvas.classList.remove("elevation-profile-unpin-cursor");
+          const k = kFromClientX(e.clientX);
+          if (k != null) setTrackCursor(containerId, k, "profile");
+        });
+        canvas.addEventListener("pointerleave", () => {
+          canvas.classList.remove("elevation-profile-unpin-cursor");
+          const inst = mapInstances[containerId];
+          if (!inst || inst.pinnedIdx != null) return;
+          clearTrackCursor(containerId);
+        });
+        // Клик/тап по профилю закрепляет точку — и центрирует карту на ней,
+        // если она сейчас вне видимой области. Клик по уже закреплённой точке —
+        // открепляет её.
+        canvas.addEventListener("click", (e) => {
+          const inst = mapInstances[containerId];
+          if (!inst || !inst.profile) return;
+          if (inst.pinnedIdx != null && isNearPinned(e.clientX)) {
+            unpinTrackCursor(containerId);
+            return;
+          }
+          const k = kFromClientX(e.clientX);
+          if (k == null) return;
+          togglePinAt(containerId, inst.profile.idxs[k], { centerMap: true });
+        });
+      }
+
+      // Подписывает наведение мышью на саму карту — обратное направление
+      // синхронизации (движение по карте двигает курсор на профиле). Вешается
+      // один раз при создании инстанса карты (см. showTrackMap). Throttled
+      // через requestAnimationFrame, потому что 'mousemove' у Leaflet может
+      // стрелять чаще, чем нужно перестраивать курсор.
+      function wireMapHoverSync(containerId) {
+        const inst = mapInstances[containerId];
+        if (!inst) return;
+        inst.map.on("mousemove", (e) => {
+          if (inst.pinnedIdx != null) {
+            const pinnedPt = pinnedMapPoint(containerId);
+            const mousePt = inst.map.latLngToLayerPoint(e.latlng);
+            const near = pinnedPt != null && pinnedPt.distanceTo(mousePt) <= 14;
+            inst.map
+              .getContainer()
+              .classList.toggle("elevation-profile-unpin-cursor", near);
+            return;
+          }
+          if (inst._hoverPending) return;
+          inst._hoverPending = true;
+          requestAnimationFrame(() => {
+            inst._hoverPending = false;
+            if (inst.pinnedIdx != null) return;
+            const data = mapTrackData[containerId];
+            if (!data || !inst.idxs || !inst.profile) return;
+            const idxs = inst.idxs;
+            const nearestPos = nearestIndexBy(
+              idxs.length,
+              (i) => [data.lats[idxs[i]], data.lons[idxs[i]]],
+              e.latlng.lat,
+              e.latlng.lng,
+            );
+            // Отсекаем наведение слишком далеко от самого трека (иначе курсор
+            // на профиле дёргался бы при движении мыши по всей карте).
+            const candidatePt = inst.map.latLngToLayerPoint([
+              data.lats[idxs[nearestPos]],
+              data.lons[idxs[nearestPos]],
+            ]);
+            const mousePt = inst.map.latLngToLayerPoint(e.latlng);
+            const pxDist = candidatePt.distanceTo(mousePt);
+            if (pxDist > 25) {
+              clearTrackCursor(containerId);
+              return;
+            }
+            setTrackCursor(containerId, nearestPos, "map");
+          });
+        });
+        inst.map.on("mouseout", () => {
+          inst.map
+            .getContainer()
+            .classList.remove("elevation-profile-unpin-cursor");
+          if (inst.pinnedIdx != null) return;
+          clearTrackCursor(containerId);
+        });
       }
 
       function formatTime(unixS) {
@@ -4499,6 +5696,30 @@
           const label = document.querySelector("#btn-download .dl-label");
           if (label) label.textContent = t("btn_download_label_done");
         }
+
+        document.querySelectorAll(".map-maximize-btn").forEach((btn) => {
+          const wrap = btn.closest(".track-map-wrap");
+          const maximized = !!(
+            wrap && wrap.classList.contains("track-map-wrap--maximized")
+          );
+          updateMapMaximizeButton(btn, maximized);
+        });
+
+        document.querySelectorAll(".map-fit-btn").forEach((btn) => {
+          const label = t("map_fit_title");
+          btn.title = label;
+          btn.setAttribute("aria-label", label);
+        });
+
+        // Подписи (высота/дистанция) на профиле нарисованы прямо на canvas —
+        // при смене языка их надо перерисовать, а не просто обновить DOM-текст.
+        for (const containerId of ["map-before", "map-after"]) {
+          const ui = ELEVATION_PROFILE_UI[containerId];
+          const wrapEl = document.getElementById(ui.wrap);
+          if (wrapEl && wrapEl.style.display !== "none") {
+            renderElevationProfile(containerId);
+          }
+        }
       }
 
       (function initProfileSelect() {
@@ -4710,6 +5931,35 @@
         el.addEventListener("change", (e) => setReliefMode(e.target.checked));
       }
 
+      document.querySelectorAll(".map-maximize-btn").forEach((btn) => {
+        updateMapMaximizeButton(btn, false);
+        btn.addEventListener("click", () =>
+          toggleMapMaximize(btn.dataset.target),
+        );
+      });
+
+      // Кнопка "показать весь трек целиком" — видна, только когда трек
+      // (частично) не помещается в текущую видимую область карты (см.
+      // updateFitButtonVisibility, вызывается по moveend/zoomend карты).
+      document.querySelectorAll(".map-fit-btn").forEach((btn) => {
+        btn.title = t("map_fit_title");
+        btn.setAttribute("aria-label", t("map_fit_title"));
+        btn.addEventListener("click", () => {
+          const inst = mapInstances[btn.dataset.target];
+          if (!inst || !inst.trackBounds) return;
+          inst.map.fitBounds(inst.trackBounds, { padding: [20, 20] });
+        });
+      });
+
+      // Esc сворачивает развёрнутую карту, как и ожидается от fullscreen-режима.
+      document.addEventListener("keydown", (e) => {
+        if (e.key !== "Escape") return;
+        const wrap = document.querySelector(".track-map-wrap--maximized");
+        if (!wrap) return;
+        const mapEl = wrap.querySelector(".track-map");
+        if (mapEl) toggleMapMaximize(mapEl.id);
+      });
+
       btnFix.addEventListener("click", () => {
         if (!gpxText) return;
         logLines = [];
@@ -4808,6 +6058,26 @@
         btn.addEventListener("click", () => setLang(btn.dataset.lang));
       });
       applyStaticI18n();
+
+      // Профиль высоты завязан на ширину canvas в CSS-пикселях — при ресайзе
+      // окна (или повороте экрана) перестраиваем его для обеих карт, если он
+      // сейчас показан. Debounce на requestAnimationFrame, чтобы не пересчитывать
+      // на каждое промежуточное событие resize.
+      let profileResizePending = false;
+      window.addEventListener("resize", () => {
+        if (profileResizePending) return;
+        profileResizePending = true;
+        requestAnimationFrame(() => {
+          profileResizePending = false;
+          for (const containerId of ["map-before", "map-after"]) {
+            const ui = ELEVATION_PROFILE_UI[containerId];
+            const wrapEl = document.getElementById(ui.wrap);
+            if (wrapEl && wrapEl.style.display !== "none") {
+              renderElevationProfile(containerId);
+            }
+          }
+        });
+      });
     </script>
     <script>
       // ─── Обновление PWA ─────────────────────────────────────────────────────
