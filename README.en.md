@@ -21,17 +21,19 @@ python fix_gpx_jammer.py input.gpx output.gpx
 
 | Parameter           | Default      | Description                                                                                                                                                                                                                                      |
 | ------------------- | ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `--max-speed`       | 20 m/s       | Maximum allowed speed; teleportation is detected above this                                                                                                                                                                                      |
-| `--min-distance`    | 1000 m       | Minimum distance of an anomalous jump                                                                                                                                                                                                            |
-| `--pre-jitter-dist` | 200 m        | Remove drift points before the main jump                                                                                                                                                                                                         |
-| `--max-vert-speed`  | 5 m/s        | Maximum allowed vertical speed                                                                                                                                                                                                                   |
-| `--interval`        | 1 s          | Interpolation step between points                                                                                                                                                                                                                |
+| `--profile`         | `hiking`     | Activity profile — sets defaults for the parameters below: `hiking`, `running`, `kayak`, `horse`, `mtb`, `road_bike`, `ski`, `enduro`, `boat`, `car`, `paraglider`, `train`. Explicitly passed flags below always override the profile's value   |
+| `--max-speed`       | from profile | Maximum allowed speed; teleportation is detected above this                                                                                                                                                                                      |
+| `--min-distance`    | from profile | Minimum distance of an anomalous jump                                                                                                                                                                                                            |
+| `--pre-jitter-dist` | from profile | Remove drift points before the main jump                                                                                                                                                                                                         |
+| `--max-vert-speed`  | from profile | Maximum allowed vertical speed                                                                                                                                                                                                                   |
+| `--interval`        | from profile | Interpolation step between points                                                                                                                                                                                                                |
 | `--no-interpolate`  | —            | Don't fill the gap, just remove it                                                                                                                                                                                                               |
 | `--gap-fill`        | from profile | Gap fill method: `line` — simple offline join, `foot`/`bike`/`car` — route along roads and trails via OSRM (routing.openstreetmap.de) with terrain elevation from Open-Meteo. Requires internet; silently falls back to `line` on network errors |
+| `--quiet`, `-q`     | —            | Don't print a detailed report                                                                                                                                                                                                                    |
 
 ## How it works
 
 1. Finds points where the speed between neighboring coordinates is physically impossible (teleportation)
 2. Determines the whole problematic section — from the first coordinate drift to the return to a normal trajectory
 3. Additionally trims anomalous elevation jumps at the section's boundaries
-4. Removes the problematic section and fills the gap with straight-line interpolation
+4. Removes the problematic section and fills the gap — with a straight line or a route along roads/trails (`--gap-fill`)
