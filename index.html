@@ -237,6 +237,24 @@
         padding-bottom: 16px;
         border-bottom: 1px solid #0f3460;
       }
+      /* Подсветка полей, которые только что были переставлены профилем
+         (тип активности) — чтобы было заметно, что значения изменились. */
+      @keyframes param-flash {
+        0% {
+          background-color: #2a5a9e;
+          border-color: #7eb8f7;
+          box-shadow: 0 0 0 3px rgba(126, 184, 247, 0.4);
+        }
+        100% {
+          background-color: #0d1b35;
+          border-color: #0f3460;
+          box-shadow: 0 0 0 3px rgba(126, 184, 247, 0);
+        }
+      }
+      .param-row input.param-flash,
+      .param-row select.param-flash {
+        animation: param-flash 1s ease-out;
+      }
 
       /* Список аномальных участков */
       .episode-row {
@@ -3109,7 +3127,10 @@
         const mode = PROFILE_INTERP_MODE[key];
         if (!mode) return; // "custom" — не трогаем выбор пользователя
         const sel = document.getElementById("p-interp-mode");
-        if (sel) sel.value = mode;
+        if (sel) {
+          sel.value = mode;
+          flashParams(["p-interp-mode"]);
+        }
       }
 
       function applyProfile(key) {
@@ -3121,6 +3142,20 @@
         document.getElementById("p-prejitter").value = p.preJitter;
         document.getElementById("p-vertspeed").value = p.maxVert;
         document.getElementById("p-interval").value = p.interval;
+        flashParams(PROFILE_PARAM_IDS);
+      }
+
+      // Кратко подсвечивает переданные поля — наглядно показывает, что их
+      // значения только что были переставлены автоматически (сменой профиля),
+      // а не введены пользователем вручную.
+      function flashParams(ids) {
+        for (const id of ids) {
+          const el = document.getElementById(id);
+          if (!el) continue;
+          el.classList.remove("param-flash");
+          void el.offsetWidth; // форсируем reflow, чтобы анимация перезапустилась
+          el.classList.add("param-flash");
+        }
       }
 
       // ─── Список аномальных участков с индивидуальным выбором заполнения ────────
