@@ -5856,10 +5856,18 @@
                   "none";
                 document.getElementById("color-mode-row-after").style.display =
                   "none";
+                // Профиль высоты "после" — отдельный элемент рядом с картой
+                // (не внутри map-after), поэтому его нужно скрывать явно,
+                // иначе после загрузки нового файла на странице остаётся
+                // профиль исправления ПРЕДЫДУЩЕГО трека.
+                document.getElementById(
+                  "elevation-profile-wrap-after",
+                ).style.display = "none";
                 // Новый файл — сбрасываем кэш вставок предыдущего исправления,
                 // иначе после загрузки следующего трека пунктир от старого может
                 // остаться закэшированным до первого нажатия "Исправить трек".
                 delete mapInterpData["map-after"];
+                delete mapTrackData["map-after"];
 
                 try {
                   const { lats, lons, eles, times, hrs } =
