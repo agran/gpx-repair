@@ -543,6 +543,35 @@
         background: #e5e7eb;
       }
 
+      .busy-overlay {
+        position: fixed;
+        inset: 0;
+        z-index: 10000;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 14px;
+        background: rgba(6, 12, 26, 0.6);
+      }
+      .busy-spinner {
+        width: 40px;
+        height: 40px;
+        border: 4px solid rgba(229, 231, 235, 0.25);
+        border-top-color: #7eb8f7;
+        border-radius: 50%;
+        animation: busy-spin 0.8s linear infinite;
+      }
+      @keyframes busy-spin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+      .busy-text {
+        color: #e5e7eb;
+        font-size: 0.9rem;
+      }
+
       .lang-switch {
         display: flex;
         gap: 4px;
@@ -945,16 +974,24 @@
           unit_kmh: "км/ч",
           unit_m: "м",
           unit_bpm: "уд/мин",
+          unit_pace: "мин/км",
           color_mode_label: "Раскраска трека",
           color_mode_plain: "Однотонный",
           color_mode_speed: "Скорость",
-          color_mode_grade: "Уклон (набор/сброс)",
+          color_mode_grade: "Уклон",
           color_mode_elevation: "Высота",
           color_mode_hr: "Пульс",
-          relief_label: "Рельеф (изолинии)",
+          relief_label: "Изолинии",
+          map_maximize_title: "Развернуть карту",
+          map_minimize_title: "Свернуть карту",
+          map_fit_title: "Показать весь трек",
           popup_time: "Время",
           popup_elapsed: "С начала трека",
           popup_percent: "Процент трека",
+          popup_distance: "Дистанция",
+          profile_hover_hint:
+            "Наведите на график или трек, чтобы увидеть значения точки",
+          profile_unpin: "Открепить точку",
           log_loaded_points: "Загружено точек: {n}",
           log_length_before: "Длина трека до исправления: {km} км",
           log_no_episodes: "Аномальных эпизодов не обнаружено.",
@@ -1060,8 +1097,17 @@
           stat_minhr: "Min heart rate",
           stat_maxhr: "Max heart rate",
           stat_avghr: "Avg heart rate",
+          stat_duration: "Duration",
+          stat_moving_time: "Moving time",
+          stat_stop_time: "Stopped time",
+          stat_avg_moving_speed: "Avg moving speed",
+          stat_pace: "Pace",
+          stat_start: "Start",
+          stat_finish: "Finish",
           alert_bad_filetype: "Please select a .gpx, .tcx or .fit file",
           alert_parse_fail: "Failed to parse file: {msg}",
+          busy_loading: "Processing track…",
+          busy_fixing: "Fixing track…",
           suffix_tcx: " (converted from TCX)",
           suffix_fit: " (converted from FIT)",
           update_available: "GPX Repair update available",
@@ -1090,16 +1136,24 @@
           unit_kmh: "km/h",
           unit_m: "m",
           unit_bpm: "bpm",
+          unit_pace: "min/km",
           color_mode_label: "Track coloring",
           color_mode_plain: "Plain",
           color_mode_speed: "Speed",
-          color_mode_grade: "Grade (climb/descent)",
+          color_mode_grade: "Grade",
           color_mode_elevation: "Elevation",
           color_mode_hr: "Heart rate",
           relief_label: "Relief (contour lines)",
+          map_maximize_title: "Maximize map",
+          map_minimize_title: "Restore map",
+          map_fit_title: "Fit whole track",
           popup_time: "Time",
           popup_elapsed: "Since track start",
           popup_percent: "Track progress",
+          popup_distance: "Distance",
+          profile_hover_hint:
+            "Hover over the chart or track to see point values",
+          profile_unpin: "Unpin point",
           log_loaded_points: "Loaded points: {n}",
           log_length_before: "Track length before fix: {km} km",
           log_no_episodes: "No anomalous episodes detected.",
@@ -1195,6 +1249,22 @@
         document.querySelectorAll(".lang-switch button").forEach((btn) => {
           btn.classList.toggle("active", btn.dataset.lang === currentLang);
         });
+      }
+
+      // Индикатор "думаю" на время тяжёлых синхронных вычислений (разбор
+      // файла, сглаживание/раскраска трека, сам алгоритм исправления) —
+      // без него на слабых устройствах вкладка на несколько секунд выглядит
+      // подвисшей без какой-либо обратной связи.
+      function showBusyOverlay(message) {
+        const el = document.getElementById("busy-overlay");
+        if (!el) return;
+        document.getElementById("busy-text").textContent = message;
+        el.style.display = "flex";
+      }
+
+      function hideBusyOverlay() {
+        const el = document.getElementById("busy-overlay");
+        if (el) el.style.display = "none";
       }
 
       function setLang(lang) {
@@ -4331,68 +4401,100 @@
         gpxFileName = file.name;
         lastFileSuffixKey = null;
         fileNameEl.textContent = "📄 " + file.name;
+        // Показываем оверлей сразу, пока файл ещё даже не прочитан —
+        // чтение больших файлов и последующий разбор/раскраска/отрисовка
+        // могут занять заметное время, а иначе браузер выглядит подвисшим.
+        showBusyOverlay(t("busy_loading"));
         const reader = new FileReader();
         reader.onload = (e) => {
-          try {
-            if (isGpx) {
-              gpxText = e.target.result;
-            } else if (isTcx) {
-              gpxText = convertTcxToGpx(e.target.result, file.name);
-              lastFileSuffixKey = "suffix_tcx";
-              fileNameEl.textContent = "📄 " + file.name + t("suffix_tcx");
-            } else {
-              gpxText = convertFitToGpx(e.target.result, file.name);
-              lastFileSuffixKey = "suffix_fit";
-              fileNameEl.textContent = "📄 " + file.name + t("suffix_fit");
-            }
-          } catch (err) {
-            alert(t("alert_parse_fail", { msg: err.message }));
-            btnFix.disabled = true;
-            gpxText = null;
-            document.getElementById("color-mode-row").style.display = "none";
-            document.getElementById("color-mode-row-after").style.display =
-              "none";
-            updateEpisodeList();
-            return;
-          }
-          log("");
-          logLines = [];
-          logEl.style.display = "none";
-          btnDl.style.display = "none";
-          document.getElementById("done-img").style.display = "none";
-          document.getElementById("map-after").style.display = "none";
-          document.getElementById("track-label-after").style.display = "none";
-          document.getElementById("track-stats-after").style.display = "none";
-          document.getElementById("track-stats-before").style.display = "none";
-          document.getElementById("color-mode-row-after").style.display =
-            "none";
-          // Новый файл — сбрасываем кэш вставок предыдущего исправления,
-          // иначе после загрузки следующего трека пунктир от старого может
-          // остаться закэшированным до первого нажатия "Исправить трек".
-          delete mapInterpData["map-after"];
+          // Ждём два кадра отрисовки, чтобы браузер гарантированно успел
+          // показать оверлей до начала тяжёлых блокирующих вычислений.
+          requestAnimationFrame(() => {
+            requestAnimationFrame(() => {
+              try {
+                try {
+                  if (isGpx) {
+                    gpxText = e.target.result;
+                  } else if (isTcx) {
+                    gpxText = convertTcxToGpx(e.target.result, file.name);
+                    lastFileSuffixKey = "suffix_tcx";
+                    fileNameEl.textContent =
+                      "📄 " + file.name + t("suffix_tcx");
+                  } else {
+                    gpxText = convertFitToGpx(e.target.result, file.name);
+                    lastFileSuffixKey = "suffix_fit";
+                    fileNameEl.textContent =
+                      "📄 " + file.name + t("suffix_fit");
+                  }
+                } catch (err) {
+                  alert(t("alert_parse_fail", { msg: err.message }));
+                  btnFix.disabled = true;
+                  gpxText = null;
+                  document.getElementById("color-mode-row").style.display =
+                    "none";
+                  document.getElementById(
+                    "color-mode-row-after",
+                  ).style.display = "none";
+                  updateEpisodeList();
+                  return;
+                }
+                log("");
+                logLines = [];
+                logEl.style.display = "none";
+                btnDl.style.display = "none";
+                document.getElementById("done-img").style.display = "none";
+                document.getElementById("map-after").style.display = "none";
+                document.getElementById("track-label-after").style.display =
+                  "none";
+                document.getElementById("track-stats-after").style.display =
+                  "none";
+                document.getElementById("track-stats-before").style.display =
+                  "none";
+                document.getElementById("color-mode-row-after").style.display =
+                  "none";
+                // Новый файл — сбрасываем кэш вставок предыдущего исправления,
+                // иначе после загрузки следующего трека пунктир от старого может
+                // остаться закэшированным до первого нажатия "Исправить трек".
+                delete mapInterpData["map-after"];
 
-          try {
-            const { lats, lons, eles, times, hrs } = extractTrackData(gpxText);
-            showTrackMap("map-before", lats, lons, "#e11d48", eles, times, hrs);
-            const shown =
-              document.getElementById("map-before").style.display === "block";
-            document.getElementById("track-label-before").style.display = shown
-              ? "block"
-              : "none";
-            document.getElementById("color-mode-row").style.display = shown
-              ? "flex"
-              : "none";
-            updateColorModeAvailability("map-before", hrs);
-            if (shown) {
-              renderTrackStats(
-                document.getElementById("track-stats-before"),
-                computeTrackStats(lats, lons, eles, times, hrs),
-              );
-            }
-          } catch (err) {
-            // превью необязательно, ошибку покажем при нажатии "Исправить"
-          }
-          updateEpisodeList();
+                try {
+                  const { lats, lons, eles, times, hrs } =
+                    extractTrackData(gpxText);
+                  showTrackMap(
+                    "map-before",
+                    lats,
+                    lons,
+                    "#e11d48",
+                    eles,
+                    times,
+                    hrs,
+                  );
+                  const shown =
+                    document.getElementById("map-before").style.display ===
+                    "block";
+                  document.getElementById("track-label-before").style.display =
+                    shown ? "block" : "none";
+                  document.getElementById("color-mode-row").style.display =
+                    shown ? "flex" : "none";
+                  updateColorModeAvailability("map-before", hrs);
+                  if (shown) {
+                    renderTrackStats(
+                      document.getElementById("track-stats-before"),
+                      computeTrackStats(lats, lons, eles, times, hrs),
+                    );
+                  }
+                } catch (err) {
+                  // превью необязательно, ошибку покажем при нажатии "Исправить"
+                }
+                updateEpisodeList();
+              } finally {
+                hideBusyOverlay();
+              }
+            });
+          });
+        };
+        reader.onerror = () => {
+          hideBusyOverlay();
         };
         if (isFit) {
           reader.readAsArrayBuffer(file);
@@ -4456,6 +4558,7 @@
         btnDl.style.display = "none";
         document.getElementById("done-img").style.display = "none";
         btnFix.disabled = true;
+        showBusyOverlay(t("busy_fixing"));
 
         const params = {
           maxSpeed:
@@ -4536,6 +4639,7 @@
             log(t("log_error", { msg: err.message }), "log-err");
           } finally {
             btnFix.disabled = false;
+            hideBusyOverlay();
           }
         }, 50);
       });
@@ -4598,5 +4702,9 @@
         >github.com/agran/gpx-repair</a
       >
     </footer>
+    <div class="busy-overlay" id="busy-overlay" style="display: none">
+      <div class="busy-spinner"></div>
+      <div class="busy-text" id="busy-text"></div>
+    </div>
   </body>
 </html>
