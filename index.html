@@ -193,7 +193,22 @@
         .track-map {
           height: 240px;
         }
-        .track-stats {
+        .elevation-profile-wrap {
+          flex-direction: column;
+          height: 17.4em;
+        }
+        .elevation-profile {
+          flex: 0 0 7.4em;
+          height: 7.4em;
+        }
+        .elevation-profile-info {
+          flex: 1 1 auto;
+          max-width: 100%;
+          height: auto;
+          border-left: none;
+          border-top: 1px solid #0f3460;
+        }
+        .stats-group {
           grid-template-columns: repeat(auto-fit, minmax(90px, 1fr));
         }
         .episode-row {
@@ -473,8 +488,18 @@
       .track-stats {
         display: none;
         margin-top: 10px;
-        grid-template-columns: repeat(auto-fit, minmax(95px, 1fr));
+      }
+      .stats-group {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
         gap: 8px;
+        margin-top: 8px;
+      }
+      .stats-group:first-child {
+        margin-top: 0;
+      }
+      .stats-group--heart {
+        margin-top: 16px;
       }
       .track-stats .stat {
         background: #10213f;
@@ -944,8 +969,17 @@
           stat_minhr: "Мин. пульс",
           stat_maxhr: "Макс. пульс",
           stat_avghr: "Средний пульс",
+          stat_duration: "Длительность",
+          stat_moving_time: "Время в движении",
+          stat_stop_time: "Время остановок",
+          stat_avg_moving_speed: "Ср. скорость в движении",
+          stat_pace: "Темп",
+          stat_start: "Старт",
+          stat_finish: "Финиш",
           alert_bad_filetype: "Пожалуйста, выберите .gpx, .tcx или .fit файл",
           alert_parse_fail: "Не удалось разобрать файл: {msg}",
+          busy_loading: "Обрабатываем трек…",
+          busy_fixing: "Исправляем трек…",
           suffix_tcx: " (конвертирован из TCX)",
           suffix_fit: " (конвертирован из FIT)",
           update_available: "Доступно обновление GPX Repair",
@@ -1390,6 +1424,50 @@
         return { minEle, maxEle, gain, loss };
       }
 
+      // Ниже этого порога скорости движение считаем остановкой — обычный шаг
+      // или бег заметно быстрее (порог вынесен в константу по просьбе
+      // пользователя). Отрезки длиннее паузы записи (см. PAUSE_GAP_S) в
+      // "время в движении" не попадают вообще (ни как движение, ни как явная
+      // стоянка) — они относятся на разницу (см. ниже), чтобы случайный
+      // выброс скорости на огромном dt через разрыв записи не считался
+      // ни честным движением, ни явной остановкой.
+      const STOP_SPEED_THRESHOLD_MS = 0.6;
+
+      function computeMovingTimeStats(lats, lons, times) {
+        if (!times || times.length < 2) return { hasMoving: false };
+        const t0 = times[0],
+          t1 = times[times.length - 1];
+        if (!Number.isFinite(t0) || !Number.isFinite(t1)) {
+          return { hasMoving: false };
+        }
+        const duration = t1 - t0;
+        let movingTime = 0;
+        let movingDist = 0;
+        for (let i = 1; i < lats.length; i++) {
+          if (!Number.isFinite(times[i]) || !Number.isFinite(times[i - 1])) {
+            continue;
+          }
+          const dt = times[i] - times[i - 1];
+          if (dt <= 0 || dt > PAUSE_GAP_S) continue;
+          const d = haversine(lats[i - 1], lons[i - 1], lats[i], lons[i]);
+          if (d / dt > STOP_SPEED_THRESHOLD_MS) {
+            movingTime += dt;
+            movingDist += d;
+          }
+        }
+        const stopTime = Math.max(0, duration - movingTime);
+        const avgMovingSpeed = movingTime > 0 ? movingDist / movingTime : 0;
+        return {
+          hasMoving: true,
+          duration,
+          movingTime,
+          stopTime,
+          avgMovingSpeed,
+          startTime: t0,
+          endTime: t1,
+        };
+      }
+
       function computeTrackStats(lats, lons, eles, times, hrs) {
         let length = 0;
         let maxSpeed = 0;
@@ -1431,6 +1509,8 @@
           ? { minHr, maxHr, avgHr: sumHr / countHr }
           : { minHr: null, maxHr: null, avgHr: null };
 
+        const movingStats = computeMovingTimeStats(lats, lons, times);
+
         const hasEle = eles.some((e) => !Number.isNaN(e));
         if (!hasEle) {
           return {
@@ -1444,6 +1524,7 @@
             maxSpeed,
             hasHr,
             ...hrStats,
+            ...movingStats,
           };
         }
 
@@ -1460,35 +1541,87 @@
           maxSpeed,
           hasHr,
           ...hrStats,
+          ...movingStats,
         };
       }
 
       const lastTrackStats = {}; // containerId -> stats (для перерисовки при смене языка)
 
+      // Форматирует темп в мин:сек на километр (округляем до целой секунды,
+      // чтобы избежать "16:60" — считаем totalSec целиком, потом делим).
+      function formatPace(speedMs) {
+        if (!Number.isFinite(speedMs) || speedMs <= 0) return null;
+        const totalSec = Math.round(1000 / speedMs);
+        const mm = Math.floor(totalSec / 60);
+        const ss = totalSec % 60;
+        return `${mm}:${String(ss).padStart(2, "0")}`;
+      }
+
       function renderTrackStats(containerEl, stats) {
         lastTrackStats[containerEl.id] = stats;
-        const items = [
+
+        // Группа 1 — время (длина трека переехала в группу скорости — там она
+        // логически ближе к средней скорости/темпу, которые из неё же и
+        // считаются).
+        const distTimeItems = [];
+        if (stats.hasMoving) {
+          distTimeItems.push(
+            {
+              label: t("stat_duration"),
+              value: formatDuration(stats.duration),
+            },
+            {
+              label: t("stat_moving_time"),
+              value: formatDuration(stats.movingTime),
+            },
+            {
+              label: t("stat_stop_time"),
+              value: formatDuration(stats.stopTime),
+            },
+            {
+              // Дата и время на отдельных строчках — иначе значение слишком
+              // длинное и плохо помещается в карточку статистики.
+              label: t("stat_start"),
+              value: formatEpisodeTime(stats.startTime).replace(" ", "<br>"),
+            },
+            {
+              label: t("stat_finish"),
+              value: formatEpisodeTime(stats.endTime).replace(" ", "<br>"),
+            },
+          );
+        }
+
+        // Группа 2 — дистанция, скорость и темп.
+        const speedItems = [
           {
             label: t("stat_length"),
             value: `${(stats.length / 1000).toFixed(2)} ${t("unit_km")}`,
           },
         ];
+        if (stats.hasMoving && stats.avgMovingSpeed > 0) {
+          speedItems.push({
+            label: t("stat_avg_moving_speed"),
+            value: `${(stats.avgMovingSpeed * 3.6).toFixed(1)} ${t("unit_kmh")}`,
+          });
+          const pace = formatPace(stats.avgMovingSpeed);
+          if (pace) {
+            speedItems.push({
+              label: t("stat_pace"),
+              value: `${pace} ${t("unit_pace")}`,
+            });
+          }
+        }
         if (stats.hasSpeed) {
-          items.push({
+          speedItems.push({
             label: t("stat_maxspeed"),
             value: `${(stats.maxSpeed * 3.6).toFixed(1)} ${t("unit_kmh")}`,
           });
         }
+
+        // Группа 3 — высота.
+        const elevationItems = [];
         if (stats.hasEle) {
-          items.push(
-            {
-              label: t("stat_maxele"),
-              value: `${stats.maxEle.toFixed(0)} ${t("unit_m")}`,
-            },
-            {
-              label: t("stat_minele"),
-              value: `${stats.minEle.toFixed(0)} ${t("unit_m")}`,
-            },
+          elevationItems.push(
             {
               label: t("stat_gain"),
               value: `${stats.gain.toFixed(0)} ${t("unit_m")}`,
@@ -1497,31 +1630,57 @@
               label: t("stat_loss"),
               value: `${stats.loss.toFixed(0)} ${t("unit_m")}`,
             },
+            {
+              label: t("stat_maxele"),
+              value: `${stats.maxEle.toFixed(0)} ${t("unit_m")}`,
+            },
+            {
+              label: t("stat_minele"),
+              value: `${stats.minEle.toFixed(0)} ${t("unit_m")}`,
+            },
           );
         }
+
+        // Группа 4 — пульс, всегда последняя и визуально отделена, чтобы
+        // скриншот можно было обрезать ровно над ней, не потеряв остальное.
+        const heartItems = [];
         if (stats.hasHr) {
-          items.push(
+          heartItems.push(
             {
-              label: t("stat_minhr"),
-              value: `${Math.round(stats.minHr)} ${t("unit_bpm")}`,
+              label: t("stat_avghr"),
+              value: `${Math.round(stats.avgHr)} ${t("unit_bpm")}`,
             },
             {
               label: t("stat_maxhr"),
               value: `${Math.round(stats.maxHr)} ${t("unit_bpm")}`,
             },
             {
-              label: t("stat_avghr"),
-              value: `${Math.round(stats.avgHr)} ${t("unit_bpm")}`,
+              label: t("stat_minhr"),
+              value: `${Math.round(stats.minHr)} ${t("unit_bpm")}`,
             },
           );
         }
-        containerEl.innerHTML = items
+
+        const groups = [
+          { key: "distTime", items: distTimeItems },
+          { key: "speed", items: speedItems },
+          { key: "elevation", items: elevationItems },
+          { key: "heart", items: heartItems },
+        ];
+
+        containerEl.innerHTML = groups
+          .filter((g) => g.items.length > 0)
           .map(
-            (it) =>
-              `<div class="stat"><div class="stat-value">${it.value}</div><div class="stat-label">${it.label}</div></div>`,
+            (g) =>
+              `<div class="stats-group stats-group--${g.key}">${g.items
+                .map(
+                  (it) =>
+                    `<div class="stat"><div class="stat-value">${it.value}</div><div class="stat-label">${it.label}</div></div>`,
+                )
+                .join("")}</div>`,
           )
           .join("");
-        containerEl.style.display = "grid";
+        containerEl.style.display = "block";
       }
 
       function smoothSeries(arr, radius) {
