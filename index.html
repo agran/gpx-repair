@@ -4779,7 +4779,12 @@
 
         const r = route.routes[0];
         const wp = route.waypoints;
-        if (!wp || wp[0].distance > 300 || wp[1].distance > 300) {
+        if (
+          !wp ||
+          wp.length < 2 ||
+          wp[0].distance > 300 ||
+          wp[1].distance > 300
+        ) {
           return fallback(t("reason_far_from_road"));
         }
         const routeDist = r.distance;
@@ -5375,6 +5380,12 @@
       let gpxText = null,
         gpxFileName = "",
         lastFileSuffixKey = null;
+      // Увеличивается при каждой загрузке нового файла — позволяет уже
+      // запущенной (асинхронной) операции "Исправить трек" распознать,
+      // что пользователь тем временем загрузил другой файл, и не
+      // перезаписывать результатами устаревшего трека уже показанный
+      // пользователю новый трек (гонка между loadFile() и fixGpx()).
+      let opGeneration = 0;
 
       const dropzone = document.getElementById("dropzone");
       const fileInput = document.getElementById("file-input");
@@ -5786,6 +5797,7 @@
       })();
 
       function loadFile(file) {
+        opGeneration++;
         const name = ((file && file.name) || "").toLowerCase();
         const isGpx = name.endsWith(".gpx");
         const isTcx = name.endsWith(".tcx");
@@ -5988,6 +6000,13 @@
 
       btnFix.addEventListener("click", () => {
         if (!gpxText) return;
+        // Фиксируем поколение и имя файла ДО начала асинхронной операции:
+        // если пока идёт исправление пользователь загрузит другой файл,
+        // loadFile() увеличит opGeneration, и по завершении мы поймём,
+        // что результат устарел, и не будем перезаписывать им уже
+        // показанный новый трек.
+        const myGeneration = opGeneration;
+        const fileNameForResult = gpxFileName;
         logLines = [];
         logEl.style.display = "block";
         btnDl.style.display = "none";
@@ -6017,10 +6036,17 @@
               params,
             );
 
+            if (myGeneration !== opGeneration) {
+              // Пока шло исправление, пользователь загрузил другой файл —
+              // результат устарел, не перезаписываем им уже показанный
+              // новый трек.
+              return;
+            }
+
             const blob = new Blob([result], { type: "application/gpx+xml" });
             const url = URL.createObjectURL(blob);
             const outName =
-              gpxFileName.replace(/\.(gpx|tcx|fit)$/i, "") + "_fixed.gpx";
+              fileNameForResult.replace(/\.(gpx|tcx|fit)$/i, "") + "_fixed.gpx";
 
             btnDl.href = url;
             btnDl.download = outName;

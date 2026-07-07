@@ -27,8 +27,10 @@ fix_gpx_jammer.py
 import argparse
 import json
 import math
+import os
 import re
 import sys
+import tempfile
 import time
 import urllib.error
 import urllib.request
@@ -790,7 +792,7 @@ def build_routed_interpolated(
 
     r = route["routes"][0]
     wp = route.get("waypoints")
-    if not wp or wp[0].get("distance", 0) > 300 or wp[1].get("distance", 0) > 300:
+    if not wp or len(wp) < 2 or wp[0].get("distance", 0) > 300 or wp[1].get("distance", 0) > 300:
         return fallback("граничные точки слишком далеко от дороги/тропы")
 
     route_dist = r["distance"]
@@ -1008,10 +1010,27 @@ def fix_gpx(
     маршрутизация по дорогам/тропам через OSRM с высотой рельефа из
     Open-Meteo. При ошибке сети/API или неправдоподобном маршруте молча
     откатывается на прямую линию для конкретного эпизода.
+
+    Выбрасывает ValueError при некорректных параметрах или невозможности
+    разобрать входной файл (вместо sys.exit — безопасно для библиотечного использования).
     """
 
+    if interval_s <= 0:
+        raise ValueError(f"interval_s должен быть больше 0 (получено {interval_s!r})")
+    if max_speed_mps <= 0:
+        raise ValueError(f"max_speed_mps должен быть больше 0 (получено {max_speed_mps!r})")
+    if min_cluster_dist_m <= 0:
+        raise ValueError(f"min_cluster_dist_m должен быть больше 0 (получено {min_cluster_dist_m!r})")
+    if max_vert_speed_mps <= 0:
+        raise ValueError(f"max_vert_speed_mps должен быть больше 0 (получено {max_vert_speed_mps!r})")
+    if pre_jitter_dist_m < 0:
+        raise ValueError(f"pre_jitter_dist_m не может быть отрицательным (получено {pre_jitter_dist_m!r})")
+
     # --- 1. Регистрируем пространства имён (чтобы не получить ns0/ns1) ---
-    ns_map = collect_namespaces(input_path)
+    try:
+        ns_map = collect_namespaces(input_path)
+    except ET.ParseError as e:
+        raise ValueError(f"Ошибка разбора XML: {e}")
     for prefix, uri in ns_map.items():
         # Пропускаем зарезервированные префиксы ns0/ns1/ns2/… —
         # ElementTree присвоит им автоматические имена при записи.
@@ -1022,7 +1041,10 @@ def fix_gpx(
     NS3 = ns_map.get("ns3", "http://www.garmin.com/xmlschemas/TrackPointExtension/v1")
 
     # --- 2. Парсинг ---
-    tree = ET.parse(input_path)
+    try:
+        tree = ET.parse(input_path)
+    except ET.ParseError as e:
+        raise ValueError(f"Ошибка разбора XML: {e}")
     root = tree.getroot()
 
     seg = root.find(f".//{{{NS}}}trkseg")
@@ -1303,7 +1325,23 @@ def fix_gpx(
             add_leg(lats[i], lons[i])
 
     # --- 6. Запись ---
-    tree.write(output_path, encoding="UTF-8", xml_declaration=True)
+    # Пишем во временный файл рядом с целевым и атомарно переименовываем —
+    # если процесс оборвётся посередине записи, исходный/целевой файл не
+    # останется в битом состоянии (важно, когда output_path == input_path).
+    out_path = Path(output_path)
+    tmp_fd, tmp_name = tempfile.mkstemp(
+        dir=str(out_path.parent) or ".", prefix=out_path.name + ".", suffix=".tmp"
+    )
+    try:
+        with os.fdopen(tmp_fd, "wb") as tmp_f:
+            tree.write(tmp_f, encoding="UTF-8", xml_declaration=True)
+        os.replace(tmp_name, output_path)
+    except BaseException:
+        try:
+            os.remove(tmp_name)
+        except OSError:
+            pass
+        raise
 
     if verbose:
         print(f"\nУдалено плохих точек  : {total_removed}")
