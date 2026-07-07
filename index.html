@@ -1396,6 +1396,10 @@
       // Данные последнего отрисованного трека на каждой карте (для перерисовки
       // при смене режима раскраски без повторной загрузки/обработки файла).
       const mapTrackData = {};
+      // Вставленные (интерполированные) участки последней отрисовки на каждой
+      // карте — кэш нужен, чтобы пунктир не пропадал при перерисовке карты
+      // (смена режима раскраски) без повторной обработки файла.
+      const mapInterpData = {};
       // Текущий режим раскраски трека на карте: "plain" | "speed" | "grade" |
       // "elevation" | "hr" — общий для карт "до" и "после".
       let colorMode = "plain";
@@ -1440,6 +1444,55 @@
         return { min: lo, max: hi === lo ? lo + 1 : hi };
       }
 
+      // Метрика раскраски для одного отрезка между двумя точками
+      // ({lat, lon, ele, time, hr}) — переиспользуется и для основного трека,
+      // и для вставленных (интерполированных) участков.
+      function metricForSegment(mode, p0, p1) {
+        if (mode === "speed") {
+          const d = haversine(p0.lat, p0.lon, p1.lat, p1.lon);
+          const dt =
+            Number.isFinite(p1.time) && Number.isFinite(p0.time)
+              ? p1.time - p0.time
+              : NaN;
+          return dt > 0 ? (d / dt) * 3.6 : NaN;
+        }
+        if (mode === "grade") {
+          const d = haversine(p0.lat, p0.lon, p1.lat, p1.lon);
+          const de =
+            Number.isFinite(p1.ele) && Number.isFinite(p0.ele)
+              ? p1.ele - p0.ele
+              : NaN;
+          return d > 1 && Number.isFinite(de) ? (de / d) * 100 : NaN;
+        }
+        if (mode === "elevation") {
+          const e0 = p0.ele,
+            e1 = p1.ele;
+          return Number.isFinite(e0) && Number.isFinite(e1)
+            ? (e0 + e1) / 2
+            : Number.isFinite(e0)
+              ? e0
+              : e1;
+        }
+        if (mode === "hr") {
+          const h0 = p0.hr,
+            h1 = p1.hr;
+          return Number.isFinite(h0) && Number.isFinite(h1)
+            ? (h0 + h1) / 2
+            : Number.isFinite(h0)
+              ? h0
+              : h1;
+        }
+        return NaN;
+      }
+
+      // Переводит значение метрики в цвет по уже посчитанной легенде
+      // (min/max) — серый для отсутствующих данных.
+      function colorForValue(value, legend) {
+        if (!legend || !Number.isFinite(value)) return "#5b6478";
+        const range = legend.max - legend.min || 1;
+        return colorScale((value - legend.min) / range);
+      }
+
       // Считает метрику раскраски на каждом отрезке между соседними точками
       // (из уже прореженного списка индексов idxs) и переводит её в цвет.
       function computeColorSegments(mode, lats, lons, eles, times, hrs, idxs) {
@@ -1451,41 +1504,23 @@
         for (let k = 0; k < n - 1; k++) {
           const i0 = idxs[k],
             i1 = idxs[k + 1];
-          if (mode === "speed") {
-            const d = haversine(lats[i0], lons[i0], lats[i1], lons[i1]);
-            const dt =
-              times && Number.isFinite(times[i1]) && Number.isFinite(times[i0])
-                ? times[i1] - times[i0]
-                : NaN;
-            raw[k] = dt > 0 ? (d / dt) * 3.6 : NaN;
-          } else if (mode === "grade") {
-            const d = haversine(lats[i0], lons[i0], lats[i1], lons[i1]);
-            const de =
-              eles && Number.isFinite(eles[i1]) && Number.isFinite(eles[i0])
-                ? eles[i1] - eles[i0]
-                : NaN;
-            raw[k] = d > 1 && Number.isFinite(de) ? (de / d) * 100 : NaN;
-          } else if (mode === "elevation") {
-            const e0 = eles ? eles[i0] : NaN,
-              e1 = eles ? eles[i1] : NaN;
-            raw[k] =
-              Number.isFinite(e0) && Number.isFinite(e1)
-                ? (e0 + e1) / 2
-                : Number.isFinite(e0)
-                  ? e0
-                  : e1;
-          } else if (mode === "hr") {
-            const h0 = hrs ? hrs[i0] : NaN,
-              h1 = hrs ? hrs[i1] : NaN;
-            raw[k] =
-              Number.isFinite(h0) && Number.isFinite(h1)
-                ? (h0 + h1) / 2
-                : Number.isFinite(h0)
-                  ? h0
-                  : h1;
-          } else {
-            raw[k] = NaN;
-          }
+          raw[k] = metricForSegment(
+            mode,
+            {
+              lat: lats[i0],
+              lon: lons[i0],
+              ele: eles ? eles[i0] : NaN,
+              time: times ? times[i0] : NaN,
+              hr: hrs ? hrs[i0] : NaN,
+            },
+            {
+              lat: lats[i1],
+              lon: lons[i1],
+              ele: eles ? eles[i1] : NaN,
+              time: times ? times[i1] : NaN,
+              hr: hrs ? hrs[i1] : NaN,
+            },
+          );
         }
 
         const finite = raw.filter(Number.isFinite);
@@ -1504,10 +1539,8 @@
           max = p.max;
         }
 
-        const range = max - min || 1;
-        const segColors = raw.map((v) =>
-          Number.isFinite(v) ? colorScale((v - min) / range) : "#5b6478",
-        );
+        const legendForColor = { min, max };
+        const segColors = raw.map((v) => colorForValue(v, legendForColor));
 
         const unit =
           mode === "speed"
@@ -1597,6 +1630,7 @@
         times,
         hrs,
         keepView,
+        interpSegments,
       ) {
         const el = document.getElementById(containerId);
         if (!lats.length) {
@@ -1623,6 +1657,12 @@
         const latlngs = idxs.map((i) => [smoothLats[i], smoothLons[i]]);
 
         mapTrackData[containerId] = { lats, lons, eles, times, hrs, color };
+        // interpSegments передаётся явно только при первой отрисовке после
+        // обработки — при перерисовке из-за смены режима раскраски (undefined)
+        // используется уже сохранённый набор.
+        if (interpSegments !== undefined) {
+          mapInterpData[containerId] = interpSegments;
+        }
 
         let inst = mapInstances[containerId];
         if (!inst) {
@@ -1687,6 +1727,13 @@
           );
         }
         updateColorLegend(containerId, legend);
+        // Вставленные участки всегда показываются пунктиром поверх основного трека,
+        // перерисовываются в текущем режиме раскраски, чтобы не пропадать при
+        // смене режима или масштаба карты.
+        const segs = mapInterpData[containerId];
+        if (segs && segs.length) {
+          drawInterpSegments(containerId, segs, colorMode, legend);
+        }
         inst.startMarker = L.circleMarker(latlngs[0], {
           radius: 5,
           color: "#166534",
@@ -1713,8 +1760,10 @@
       }
 
       // Пунктирные полилинии поверх основного трека, показывающие как именно
-      // заполнен каждый пробел: синим — по маршруту OSRM, оранжевым — прямой
-      // линией (в т.ч. fallback, когда маршрут не удался).
+      // заполнен каждый пробел (вставленный/исправленный участок) — всегда
+      // пунктиром, чтобы был отличим от реальных точек трека. В однотонном режиме —
+      // синим по маршруту OSRM, оранжевым — прямой линией (в т.ч. fallback);
+      // в окрашенном режиме — теми же цветами по выбранной метрике, что и остальной трек.
       function clearInterpSegments(containerId) {
         const inst = mapInstances[containerId];
         if (inst && inst.interpLayers) {
@@ -1723,9 +1772,12 @@
         }
       }
 
-      function drawInterpSegments(containerId, segments) {
+      function drawInterpSegments(containerId, segments, mode, legend) {
         const inst = mapInstances[containerId];
         if (!inst) return;
+        // Кэшируем, чтобы вставки можно было перерисовать из showTrackMap при
+        // смене режима раскраски без повторной передачи снаружи.
+        mapInterpData[containerId] = segments;
         clearInterpSegments(containerId);
         // Рисуем после основного трека (вызывается уже после showTrackMap),
         // поэтому слои и так ложатся сверху — bringToFront() не нужен, а на
@@ -1733,22 +1785,44 @@
         for (const seg of segments) {
           if (seg.points.length < 2) continue;
           try {
-            const color = seg.type === "routed" ? "#0ea5e9" : "#f97316";
+            const latlngs = seg.points.map((p) => [p.lat, p.lon]);
             // Тонкий цветной пунктир поверх сплошного трека того же тона почти
             // не виден — добавляем сплошную белую "обводку" пошире под ним,
             // чтобы вставка чётко выделялась независимо от цвета основной линии.
-            const casing = L.polyline(seg.points, {
+            const casing = L.polyline(latlngs, {
               color: "#ffffff",
               weight: 8,
               opacity: 0.95,
             }).addTo(inst.map);
-            const layer = L.polyline(seg.points, {
-              color,
-              weight: 4,
-              dashArray: "10,8",
-              opacity: 1,
-            }).addTo(inst.map);
-            inst.interpLayers.push(casing, layer);
+            inst.interpLayers.push(casing);
+
+            if (mode && mode !== "plain") {
+              // Красим вставку по той же метрике и той же шкале (legend),
+              // что и весь остальной трек, но оставляем пунктирной.
+              for (let k = 0; k < seg.points.length - 1; k++) {
+                const value = metricForSegment(
+                  mode,
+                  seg.points[k],
+                  seg.points[k + 1],
+                );
+                const layer = L.polyline([latlngs[k], latlngs[k + 1]], {
+                  color: colorForValue(value, legend),
+                  weight: 4,
+                  dashArray: "10,8",
+                  opacity: 1,
+                }).addTo(inst.map);
+                inst.interpLayers.push(layer);
+              }
+            } else {
+              const color = seg.type === "routed" ? "#0ea5e9" : "#f97316";
+              const layer = L.polyline(latlngs, {
+                color,
+                weight: 4,
+                dashArray: "10,8",
+                opacity: 1,
+              }).addTo(inst.map);
+              inst.interpLayers.push(layer);
+            }
           } catch (e) {
             // Подсветка вставок — необязательная визуальная деталь, ошибка
             // здесь не должна ломать уже готовый результат обработки.
@@ -3266,12 +3340,33 @@
 
             insertionBefore.set(afterIdx, interpResult.points);
             totalInserted += interpResult.points.length;
+            // Точки вставки хранятся с ele/time/hr (не только lat/lon) — это
+            // нужно, чтобы вставленный участок можно было раскрасить той же
+            // метрикой (скорость/уклон/высота/пульс), что и весь трек.
             interpSegments.push({
               type: interpResult.method,
               points: [
-                [lats[beforeIdx], lons[beforeIdx]],
-                ...interpResult.points.map((p) => [p.lat, p.lon]),
-                [lats[afterIdx], lons[afterIdx]],
+                {
+                  lat: lats[beforeIdx],
+                  lon: lons[beforeIdx],
+                  ele: eles[beforeIdx],
+                  time: times[beforeIdx],
+                  hr: hrs[beforeIdx],
+                },
+                ...interpResult.points.map((p) => ({
+                  lat: p.lat,
+                  lon: p.lon,
+                  ele: p.ele,
+                  time: p.time,
+                  hr: p.hr,
+                })),
+                {
+                  lat: lats[afterIdx],
+                  lon: lons[afterIdx],
+                  ele: eles[afterIdx],
+                  time: times[afterIdx],
+                  hr: hrs[afterIdx],
+                },
               ],
             });
           }
@@ -3783,6 +3878,10 @@
           document.getElementById("track-stats-before").style.display = "none";
           document.getElementById("color-mode-row-after").style.display =
             "none";
+          // Новый файл — сбрасываем кэш вставок предыдущего исправления,
+          // иначе после загрузки следующего трека пунктир от старого может
+          // остаться закэшированным до первого нажатия "Исправить трек".
+          delete mapInterpData["map-after"];
 
           try {
             const { lats, lons, eles, times, hrs } = extractTrackData(gpxText);
@@ -3915,6 +4014,8 @@
               afterEles,
               afterTimes,
               afterHrs,
+              false,
+              interpSegments,
             );
             const shownAfter =
               document.getElementById("map-after").style.display === "block";
@@ -3928,9 +4029,6 @@
                 document.getElementById("track-stats-after"),
                 computeTrackStats(afterLats, afterLons, afterEles, afterTimes),
               );
-              if (interpSegments.length) {
-                drawInterpSegments("map-after", interpSegments);
-              }
             }
           } catch (err) {
             log(t("log_error", { msg: err.message }), "log-err");
