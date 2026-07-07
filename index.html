@@ -4702,6 +4702,27 @@
         return dem + (1 - alpha) * (ele0 - dem0) + alpha * (ele1 - dem1);
       }
 
+      // Опорные точки высоты рельефа берутся редко (до 98 на весь маршрут),
+      // а простое DEM (SRTM/Copernicus) на таком шаге содержит мелкий шум
+      // отдельных точек (скалы, растительность, ошибки растра). Если тянуть
+      // между опорными точками прямые отрезки без сглаживания, шум одной
+      // точки превращается в резкий излом на профиле высоты — выглядит
+      // неправдоподобно. Сглаживаем сами значения в опорных точках (не
+      // трогая граничные dem0/dem1), сохраняя общий тренд рельефа.
+      function smoothAnchorValues(vals) {
+        const n = vals.length;
+        if (n < 3) return vals.slice();
+        let out = vals.slice();
+        for (let pass = 0; pass < 2; pass++) {
+          const next = out.slice();
+          for (let i = 1; i < n - 1; i++) {
+            next[i] = 0.25 * out[i - 1] + 0.5 * out[i] + 0.25 * out[i + 1];
+          }
+          out = next;
+        }
+        return out;
+      }
+
       // ─── Интерполяция вдоль маршрута с fallback на линейную ────────────────────
 
       async function buildRoutedInterpolated(
@@ -4880,11 +4901,14 @@
 
         let demAtIndex = null;
         if (demOk && sampled.length) {
+          const anchorVals = smoothAnchorValues(
+            anchorIdxs.map((i) =>
+              demMap.get(eleCacheKey(sampled[i].lat, sampled[i].lon)),
+            ),
+          );
           demAtIndex = new Array(sampled.length);
-          for (const i of anchorIdxs) {
-            demAtIndex[i] = demMap.get(
-              eleCacheKey(sampled[i].lat, sampled[i].lon),
-            );
+          for (let k = 0; k < anchorIdxs.length; k++) {
+            demAtIndex[anchorIdxs[k]] = anchorVals[k];
           }
           let prevIdx = 0,
             prevVal = demAtIndex[0];

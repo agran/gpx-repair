@@ -355,6 +355,25 @@ def calibrate_elevation(dem: float, alpha: float, ele0: float, dem0: float, ele1
     return dem + (1 - alpha) * (ele0 - dem0) + alpha * (ele1 - dem1)
 
 
+def _smooth_anchor_values(vals: List[float]) -> List[float]:
+    """Опорные точки высоты рельефа берутся редко (до 98 на весь маршрут),
+    а само DEM (SRTM/Copernicus) на таком шаге содержит мелкий шум отдельных
+    точек (скалы, растительность, ошибки растра). Если тянуть между опорными
+    точками прямые отрезки без сглаживания, шум одной точки превращается в
+    резкий излом на профиле высоты — выглядит неправдоподобно. Сглаживаем
+    сами значения в опорных точках, сохраняя общий тренд рельефа."""
+    n = len(vals)
+    if n < 3:
+        return list(vals)
+    out = list(vals)
+    for _ in range(2):
+        nxt = list(out)
+        for i in range(1, n - 1):
+            nxt[i] = 0.25 * out[i - 1] + 0.5 * out[i] + 0.25 * out[i + 1]
+        out = nxt
+    return out
+
+
 # ---------------------------------------------------------------------------
 # Геодезические утилиты
 # ---------------------------------------------------------------------------
@@ -842,9 +861,12 @@ def build_routed_interpolated(
 
     dem_at_index: Optional[List[float]] = None
     if dem_ok and sampled:
+        anchor_vals = _smooth_anchor_values(
+            [dem_map.get(_ele_cache_key(sampled[i]["lat"], sampled[i]["lon"])) for i in anchor_idxs]
+        )
         dem_at_index = [0.0] * len(sampled)
-        for i in anchor_idxs:
-            dem_at_index[i] = dem_map.get(_ele_cache_key(sampled[i]["lat"], sampled[i]["lon"]))
+        for i, val in zip(anchor_idxs, anchor_vals):
+            dem_at_index[i] = val
         prev_idx, prev_val = 0, dem_at_index[0]
         for idx in anchor_idxs[1:]:
             val = dem_at_index[idx]
