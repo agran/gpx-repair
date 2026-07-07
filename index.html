@@ -626,9 +626,7 @@
         <select id="color-mode-select">
           <option value="plain" data-i18n="color_mode_plain">Однотонный</option>
           <option value="speed" data-i18n="color_mode_speed">Скорость</option>
-          <option value="grade" data-i18n="color_mode_grade">
-            Уклон (набор/сброс)
-          </option>
+          <option value="grade" data-i18n="color_mode_grade">Уклон</option>
           <option value="elevation" data-i18n="color_mode_elevation">
             Высота
           </option>
@@ -686,8 +684,10 @@
           <option value="car" data-i18n="gapfill_car">Маршрут: авто</option>
         </select>
         <span class="hint" data-i18n="hint_interp_mode"
-          >Режимы "Маршрут" отправляют координаты границ пробелов на
-          routing.openstreetmap.de и api.open-meteo.com</span
+          >Режимы "Маршрут" прокладывают пропущенный участок по реальной тропе
+          или дороге (а не прямой линией) — для этого координаты границ пробела
+          отправляются на routing.openstreetmap.de (построение маршрута) и
+          api.open-meteo.com (высоты)</span
         >
       </div>
       <div class="params-grid">
@@ -823,9 +823,7 @@
         <select id="color-mode-select-after">
           <option value="plain" data-i18n="color_mode_plain">Однотонный</option>
           <option value="speed" data-i18n="color_mode_speed">Скорость</option>
-          <option value="grade" data-i18n="color_mode_grade">
-            Уклон (набор/сброс)
-          </option>
+          <option value="grade" data-i18n="color_mode_grade">Уклон</option>
           <option value="elevation" data-i18n="color_mode_elevation">
             Высота
           </option>
@@ -877,7 +875,7 @@
             "Профиль подставляет параметры ниже — их всё равно можно подправить вручную",
           label_interp_mode: "Заполнение пробелов",
           hint_interp_mode:
-            'Режимы "Маршрут" отправляют координаты границ пробелов на routing.openstreetmap.de и api.open-meteo.com',
+            'Режимы "Маршрут" прокладывают пропущенный участок по реальной тропе или дороге (а не прямой линией) — для этого координаты границ пробела отправляются на routing.openstreetmap.de (построение маршрута) и api.open-meteo.com (высоты)',
           gapfill_linear: "Простое соединение (офлайн)",
           gapfill_foot: "Маршрут: пешком",
           gapfill_bike: "Маршрут: велосипед",
@@ -1021,7 +1019,7 @@
             "The profile fills in the parameters below — you can still adjust them manually",
           label_interp_mode: "Gap fill mode",
           hint_interp_mode:
-            '"Route" modes send the gap-boundary coordinates to routing.openstreetmap.de and api.open-meteo.com',
+            '"Route" modes fill the gap along the actual trail or road (not a straight line) — this sends the gap-boundary coordinates to routing.openstreetmap.de (routing) and api.open-meteo.com (elevation)',
           gapfill_linear: "Simple join (offline)",
           gapfill_foot: "Route: on foot",
           gapfill_bike: "Route: bicycle",
