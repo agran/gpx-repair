@@ -60,6 +60,8 @@
         font-size: 0.85rem;
         color: #888;
         margin-bottom: 24px;
+        max-width: 480px;
+        text-align: center;
       }
       .download-row {
         display: flex;
@@ -183,6 +185,13 @@
         .track-stats {
           grid-template-columns: repeat(auto-fit, minmax(90px, 1fr));
         }
+        .episode-row {
+          flex-direction: column;
+          align-items: stretch;
+        }
+        .episode-mode-select {
+          width: 100%;
+        }
       }
       .param-row {
         display: flex;
@@ -216,6 +225,35 @@
         margin-bottom: 16px;
         padding-bottom: 16px;
         border-bottom: 1px solid #0f3460;
+      }
+
+      /* Список аномальных участков */
+      .episode-row {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        padding: 10px 0;
+        border-bottom: 1px solid #0f3460;
+      }
+      .episode-row:last-child {
+        border-bottom: none;
+      }
+      .episode-info {
+        font-size: 0.83rem;
+        color: #ccc;
+        flex: 1 1 260px;
+      }
+      .episode-mode-select {
+        background: #0d1b35;
+        border: 1px solid #0f3460;
+        color: #e0e0e0;
+        border-radius: 6px;
+        padding: 6px 8px;
+        font-size: 0.85rem;
+        flex: 0 0 auto;
+        max-width: 100%;
       }
 
       /* Buttons */
@@ -416,8 +454,9 @@
       <h1>GPX Jammer Fix</h1>
     </div>
     <p class="subtitle">
-      Удаление артефактов GPS-глушилки. Всё обрабатывается локально в браузере —
-      файл никуда не отправляется.
+      Удаление артефактов GPS-глушилки. Обработка — локально на устройстве, файл
+      никуда не отправляется (кроме необязательной маршрутизации по
+      дорогам/тропам).
     </p>
 
     <div class="card">
@@ -462,6 +501,19 @@
         <span class="hint"
           >Профиль подставляет параметры ниже — их всё равно можно подправить
           вручную</span
+        >
+      </div>
+      <div class="param-row profile-row">
+        <label>Заполнение пробелов</label>
+        <select id="p-interp-mode">
+          <option value="linear" selected>Прямая линия (офлайн)</option>
+          <option value="foot">Маршрут: пешком</option>
+          <option value="bike">Маршрут: велосипед</option>
+          <option value="car">Маршрут: авто</option>
+        </select>
+        <span class="hint"
+          >Режимы "Маршрут" отправляют координаты границ пробелов на
+          routing.openstreetmap.de и api.open-meteo.com</span
         >
       </div>
       <div class="params-grid">
@@ -531,6 +583,15 @@
           <span class="hint">Соответствует частоте записи вашего трека</span>
         </div>
       </div>
+    </div>
+
+    <div class="card" id="episode-card" style="display: none">
+      <h2>Аномальные участки</h2>
+      <p class="hint" style="margin-bottom: 12px; display: block">
+        Для каждого найденного участка можно выбрать свой способ заполнения —
+        включая полное удаление без замены или отказ от изменений.
+      </p>
+      <div id="episode-list"></div>
     </div>
 
     <div class="card">
@@ -801,6 +862,7 @@
             casing: null,
             startMarker: null,
             endMarker: null,
+            interpLayers: [],
           };
           mapInstances[containerId] = inst;
         }
@@ -809,6 +871,7 @@
         if (inst.polyline) inst.map.removeLayer(inst.polyline);
         if (inst.startMarker) inst.map.removeLayer(inst.startMarker);
         if (inst.endMarker) inst.map.removeLayer(inst.endMarker);
+        clearInterpSegments(containerId);
 
         // Белая "подложка" под линией трека даёт контраст на любом фоне карты
         // (светлом, тёмном, зелёном лесном и т.п.), где сам цвет трека может теряться.
@@ -843,8 +906,73 @@
         }, 0);
       }
 
+      // Пунктирные полилинии поверх основного трека, показывающие как именно
+      // заполнен каждый пробел: синим — по маршруту OSRM, оранжевым — прямой
+      // линией (в т.ч. fallback, когда маршрут не удался).
+      function clearInterpSegments(containerId) {
+        const inst = mapInstances[containerId];
+        if (inst && inst.interpLayers) {
+          for (const l of inst.interpLayers) inst.map.removeLayer(l);
+          inst.interpLayers = [];
+        }
+      }
+
+      function drawInterpSegments(containerId, segments) {
+        const inst = mapInstances[containerId];
+        if (!inst) return;
+        clearInterpSegments(containerId);
+        // Рисуем после основного трека (вызывается уже после showTrackMap),
+        // поэтому слои и так ложатся сверху — bringToFront() не нужен, а на
+        // только что созданной карте он может упасть (SVG-путь ещё не готов).
+        for (const seg of segments) {
+          if (seg.points.length < 2) continue;
+          try {
+            const color = seg.type === "routed" ? "#0ea5e9" : "#f97316";
+            // Тонкий цветной пунктир поверх сплошного трека того же тона почти
+            // не виден — добавляем сплошную белую "обводку" пошире под ним,
+            // чтобы вставка чётко выделялась независимо от цвета основной линии.
+            const casing = L.polyline(seg.points, {
+              color: "#ffffff",
+              weight: 8,
+              opacity: 0.95,
+            }).addTo(inst.map);
+            const layer = L.polyline(seg.points, {
+              color,
+              weight: 4,
+              dashArray: "10,8",
+              opacity: 1,
+            }).addTo(inst.map);
+            inst.interpLayers.push(casing, layer);
+          } catch (e) {
+            // Подсветка вставок — необязательная визуальная деталь, ошибка
+            // здесь не должна ломать уже готовый результат обработки.
+          }
+        }
+      }
+
       function formatTime(unixS) {
         return new Date(unixS * 1000).toISOString().replace(".000Z", "Z");
+      }
+
+      // Читаемые дата/длительность для списка аномальных участков (в отличие от formatTime,
+      // который возвращает ISO 8601 для записи в GPX и трогать его нельзя).
+      function formatEpisodeTime(unixS) {
+        const d = new Date(unixS * 1000);
+        const pad = (v) => String(v).padStart(2, "0");
+        return (
+          `${pad(d.getUTCDate())}.${pad(d.getUTCMonth() + 1)}.${d.getUTCFullYear()} ` +
+          `${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}:${pad(d.getUTCSeconds())}`
+        );
+      }
+
+      function formatDuration(totalSeconds) {
+        const s = Math.max(0, Math.round(totalSeconds));
+        const h = Math.floor(s / 3600);
+        const m = Math.floor((s % 3600) / 60);
+        const sec = s % 60;
+        if (h) return `${h} ч ${String(m).padStart(2, "0")} мин`;
+        if (m) return `${m} мин ${String(sec).padStart(2, "0")} с`;
+        return `${sec} с`;
       }
 
       // ─── Лог ────────────────────────────────────────────────────────────────────
@@ -1371,10 +1499,393 @@
         return buildGpxFromPoints(points, trackName);
       }
 
+      // ─── Умная интерполяция пробелов по дорогам/тропам (опционально) ───────────
+      //
+      // Все ошибки сети/API/проверок правдоподобия ведут к молчаливому откату на
+      // обычную линейную интерполяцию для конкретного эпизода — результат должен
+      // получаться всегда, независимо от доступности внешних сервисов.
+
+      const OSRM_PRIMARY = "https://routing.openstreetmap.de";
+      const OSRM_FALLBACK = "https://router.project-osrm.org";
+      const ELEVATION_PRIMARY = "https://api.open-meteo.com/v1/elevation";
+      const ELEVATION_FALLBACK = "https://api.opentopodata.org/v1/srtm30m";
+      const NETWORK_TIMEOUT_MS = 10_000;
+      const NETWORK_PACE_MS = 250;
+      const MAX_ROUTED_EPISODES = 30;
+      const MAX_ELEVATION_POINTS_PER_REQUEST = 100;
+      const INTERP_MODE_LABELS = {
+        foot: "пешком",
+        bike: "велосипед",
+        car: "авто",
+      };
+
+      function sleep(ms) {
+        return new Promise((resolve) => setTimeout(resolve, ms));
+      }
+
+      // Публичные бесплатные сервисы — держим паузу между запросами и не бьём
+      // их параллельными вызовами.
+      let lastNetworkCallAt = 0;
+      async function paceNetwork() {
+        const wait = lastNetworkCallAt + NETWORK_PACE_MS - Date.now();
+        if (wait > 0) await sleep(wait);
+        lastNetworkCallAt = Date.now();
+      }
+
+      async function fetchJsonTimeout(url) {
+        await paceNetwork();
+        const ctrl = new AbortController();
+        const timer = setTimeout(() => ctrl.abort(), NETWORK_TIMEOUT_MS);
+        try {
+          const resp = await fetch(url, { signal: ctrl.signal });
+          if (!resp.ok) throw new Error("HTTP " + resp.status);
+          return await resp.json();
+        } finally {
+          clearTimeout(timer);
+        }
+      }
+
+      // ─── Маршрутизация (OSRM) ───────────────────────────────────────────────────
+
+      async function fetchRoute(profile, p0, p1) {
+        const url =
+          `${OSRM_PRIMARY}/routed-${profile}/route/v1/${profile}/` +
+          `${p0.lon},${p0.lat};${p1.lon},${p1.lat}` +
+          `?overview=full&geometries=geojson&steps=false`;
+        try {
+          const data = await fetchJsonTimeout(url);
+          if (data.code === "Ok" && data.routes && data.routes.length)
+            return data;
+        } catch (e) {
+          // молча идём дальше — либо резерв (для авто), либо fallback на линию
+        }
+        if (profile === "car") {
+          try {
+            const fbUrl =
+              `${OSRM_FALLBACK}/route/v1/driving/` +
+              `${p0.lon},${p0.lat};${p1.lon},${p1.lat}` +
+              `?overview=full&geometries=geojson&steps=false`;
+            const data = await fetchJsonTimeout(fbUrl);
+            if (data.code === "Ok" && data.routes && data.routes.length)
+              return data;
+          } catch (e) {}
+        }
+        return null;
+      }
+
+      // Ресемплинг ломаной маршрута по времени: модель постоянной скорости
+      // вдоль пути. coords — [[lon,lat], ...] (порядок OSRM/GeoJSON).
+      function resampleRoute(coords, totalS, intervalS) {
+        const pts = coords.map(([lon, lat]) => ({ lat, lon }));
+        const cum = [0];
+        for (let i = 1; i < pts.length; i++) {
+          cum.push(
+            cum[i - 1] +
+              haversine(pts[i - 1].lat, pts[i - 1].lon, pts[i].lat, pts[i].lon),
+          );
+        }
+        const L = cum[cum.length - 1];
+
+        let step = intervalS;
+        if (Math.floor(totalS / step) > 5000) step = totalS / 5000;
+
+        const out = [];
+        let segIdx = 0;
+        for (let t = step; t < totalS - 1e-6; t += step) {
+          const alpha = t / totalS;
+          const targetDist = alpha * L;
+          while (segIdx < cum.length - 2 && cum[segIdx + 1] < targetDist)
+            segIdx++;
+          const segLen = cum[segIdx + 1] - cum[segIdx];
+          const segAlpha = segLen > 0 ? (targetDist - cum[segIdx]) / segLen : 0;
+          const a = pts[segIdx],
+            b = pts[segIdx + 1];
+          out.push({
+            lat: a.lat + segAlpha * (b.lat - a.lat),
+            lon: a.lon + segAlpha * (b.lon - a.lon),
+            t,
+            alpha,
+          });
+        }
+        return { points: out, totalLength: L };
+      }
+
+      // ─── Высота рельефа (Open-Meteo, резерв Opentopodata) ──────────────────────
+
+      const elevationCache = new Map();
+      function eleCacheKey(lat, lon) {
+        return lat.toFixed(4) + "," + lon.toFixed(4);
+      }
+
+      async function fetchElevationsRaw(coordPairs) {
+        const latStr = coordPairs.map((p) => p.lat.toFixed(6)).join(",");
+        const lonStr = coordPairs.map((p) => p.lon.toFixed(6)).join(",");
+        try {
+          const url = `${ELEVATION_PRIMARY}?latitude=${latStr}&longitude=${lonStr}`;
+          const data = await fetchJsonTimeout(url);
+          if (
+            Array.isArray(data.elevation) &&
+            data.elevation.length === coordPairs.length
+          ) {
+            return data.elevation.map((v) =>
+              typeof v === "number" ? v : null,
+            );
+          }
+        } catch (e) {}
+        try {
+          const locStr = coordPairs
+            .map((p) => `${p.lat.toFixed(6)},${p.lon.toFixed(6)}`)
+            .join("|");
+          const url = `${ELEVATION_FALLBACK}?locations=${locStr}`;
+          const data = await fetchJsonTimeout(url);
+          if (
+            Array.isArray(data.results) &&
+            data.results.length === coordPairs.length
+          ) {
+            return data.results.map((r) =>
+              r && typeof r.elevation === "number" ? r.elevation : null,
+            );
+          }
+        } catch (e) {}
+        return null;
+      }
+
+      // points: [{lat, lon}, ...] (≤100), возвращает Map(cacheKey -> высота|null)
+      async function fetchElevations(points) {
+        const need = [];
+        for (const p of points) {
+          const key = eleCacheKey(p.lat, p.lon);
+          if (!elevationCache.has(key)) need.push({ p, key });
+        }
+        for (
+          let i = 0;
+          i < need.length;
+          i += MAX_ELEVATION_POINTS_PER_REQUEST
+        ) {
+          const chunk = need.slice(i, i + MAX_ELEVATION_POINTS_PER_REQUEST);
+          const result = await fetchElevationsRaw(chunk.map((c) => c.p));
+          if (!result) {
+            for (const c of chunk) elevationCache.set(c.key, null);
+          } else {
+            chunk.forEach((c, idx) => elevationCache.set(c.key, result[idx]));
+          }
+        }
+        const out = new Map();
+        for (const p of points) {
+          const key = eleCacheKey(p.lat, p.lon);
+          out.set(
+            key,
+            elevationCache.has(key) ? elevationCache.get(key) : null,
+          );
+        }
+        return out;
+      }
+
+      // Барометрическая/DEM высота имеют смещение друг от друга (10-30м) — плавно
+      // перетекаем от известного смещения на старте к известному смещению на конце,
+      // чтобы на швах эпизода не было ступеньки высоты.
+      function calibrateElevation(dem, alpha, ele0, dem0, ele1, dem1) {
+        return dem + (1 - alpha) * (ele0 - dem0) + alpha * (ele1 - dem1);
+      }
+
+      // ─── Интерполяция вдоль маршрута с fallback на линейную ────────────────────
+
+      async function buildRoutedInterpolated(
+        lat0,
+        lon0,
+        ele0,
+        t0,
+        lat1,
+        lon1,
+        ele1,
+        t1,
+        intervalS,
+        sensors0,
+        sensors1,
+        profile,
+        maxSpeedParam,
+        routedBudget,
+      ) {
+        const fallback = (reason) => ({
+          points: buildInterpolated(
+            lat0,
+            lon0,
+            ele0,
+            t0,
+            lat1,
+            lon1,
+            ele1,
+            t1,
+            intervalS,
+            sensors0,
+            sensors1,
+          ),
+          method: "linear",
+          reason,
+        });
+
+        const totalS = t1 - t0;
+        const D = haversine(lat0, lon0, lat1, lon1);
+
+        if (totalS <= intervalS || D < 30) return fallback();
+
+        if (routedBudget.used >= routedBudget.max) {
+          return fallback(
+            `лимит эпизодов с маршрутизацией (${routedBudget.max}) исчерпан`,
+          );
+        }
+        routedBudget.used++;
+
+        let route;
+        try {
+          route = await fetchRoute(
+            profile,
+            { lat: lat0, lon: lon0 },
+            { lat: lat1, lon: lon1 },
+          );
+        } catch (e) {
+          route = null;
+        }
+        if (!route) return fallback("маршрут не найден (сервис недоступен)");
+
+        const r = route.routes[0];
+        const wp = route.waypoints;
+        if (!wp || wp[0].distance > 300 || wp[1].distance > 300) {
+          return fallback("граница пробела далеко от дороги/тропы");
+        }
+        const routeDist = r.distance;
+        if (routeDist / Math.max(D, 1) > 4) {
+          return fallback("маршрут — слишком большой крюк");
+        }
+        if (routeDist / totalS > 1.2 * maxSpeedParam) {
+          return fallback("маршрут не проходим за время пробела");
+        }
+
+        const { points: sampled } = resampleRoute(
+          r.geometry.coordinates,
+          totalS,
+          intervalS,
+        );
+
+        // ─── Высота: ≤98 опорных точек маршрута + 2 граничные ───
+        const maxAnchors = 98;
+        const anchorStep = Math.max(1, Math.ceil(sampled.length / maxAnchors));
+        const anchorIdxs = [];
+        for (let i = 0; i < sampled.length; i += anchorStep) anchorIdxs.push(i);
+        if (
+          sampled.length &&
+          anchorIdxs[anchorIdxs.length - 1] !== sampled.length - 1
+        ) {
+          anchorIdxs.push(sampled.length - 1);
+        }
+
+        let demMap = null;
+        try {
+          const anchorCoords = anchorIdxs.map((i) => ({
+            lat: sampled[i].lat,
+            lon: sampled[i].lon,
+          }));
+          demMap = await fetchElevations([
+            { lat: lat0, lon: lon0 },
+            { lat: lat1, lon: lon1 },
+            ...anchorCoords,
+          ]);
+        } catch (e) {
+          demMap = null;
+        }
+
+        const dem0 = demMap ? demMap.get(eleCacheKey(lat0, lon0)) : null;
+        const dem1 = demMap ? demMap.get(eleCacheKey(lat1, lon1)) : null;
+        const demOk =
+          demMap != null &&
+          dem0 != null &&
+          dem1 != null &&
+          anchorIdxs.every(
+            (i) =>
+              demMap.get(eleCacheKey(sampled[i].lat, sampled[i].lon)) != null,
+          );
+
+        let demAtIndex = null;
+        if (demOk && sampled.length) {
+          demAtIndex = new Array(sampled.length);
+          for (const i of anchorIdxs) {
+            demAtIndex[i] = demMap.get(
+              eleCacheKey(sampled[i].lat, sampled[i].lon),
+            );
+          }
+          let prevIdx = 0,
+            prevVal = demAtIndex[0];
+          for (let k = 1; k < anchorIdxs.length; k++) {
+            const idx = anchorIdxs[k];
+            const val = demAtIndex[idx];
+            for (let j = prevIdx + 1; j < idx; j++) {
+              const a = (j - prevIdx) / (idx - prevIdx);
+              demAtIndex[j] = prevVal + a * (val - prevVal);
+            }
+            prevIdx = idx;
+            prevVal = val;
+          }
+          for (let j = prevIdx + 1; j < sampled.length; j++)
+            demAtIndex[j] = prevVal;
+        }
+
+        const canInterp = (s0, s1) =>
+          Number.isFinite(s0) && Number.isFinite(s1);
+        const hrOk = canInterp(sensors0.hr, sensors1.hr);
+        const cadOk = canInterp(sensors0.cad, sensors1.cad);
+        const atempOk = canInterp(sensors0.atemp, sensors1.atemp);
+
+        const pts = [];
+        let prevLat = lat0,
+          prevLon = lon0,
+          prevT = 0;
+        for (let k = 0; k < sampled.length; k++) {
+          const s = sampled[k];
+          const ele = demOk
+            ? calibrateElevation(demAtIndex[k], s.alpha, ele0, dem0, ele1, dem1)
+            : ele0 + s.alpha * (ele1 - ele0);
+          const dt = s.t - prevT;
+          const legDist = haversine(prevLat, prevLon, s.lat, s.lon);
+          const speed = dt > 0 ? legDist / dt : 0;
+          const pt = { lat: s.lat, lon: s.lon, ele, time: t0 + s.t, speed };
+          if (hrOk)
+            pt.hr = Math.round(
+              sensors0.hr + s.alpha * (sensors1.hr - sensors0.hr),
+            );
+          if (cadOk)
+            pt.cad = Math.round(
+              sensors0.cad + s.alpha * (sensors1.cad - sensors0.cad),
+            );
+          if (atempOk)
+            pt.atemp =
+              sensors0.atemp + s.alpha * (sensors1.atemp - sensors0.atemp);
+          pts.push(pt);
+          prevLat = s.lat;
+          prevLon = s.lon;
+          prevT = s.t;
+        }
+
+        return {
+          points: pts,
+          method: "routed",
+          demOk,
+          distanceKm: routeDist / 1000,
+        };
+      }
+
       // ─── Основная функция обработки ──────────────────────────────────────────────
 
-      function fixGpx(xmlText, params) {
-        const { maxSpeed, minDist, preJitter, maxVert, interval } = params;
+      async function fixGpx(xmlText, params) {
+        const {
+          maxSpeed,
+          minDist,
+          preJitter,
+          maxVert,
+          interval,
+          episodeModes,
+        } = params;
+        const modeFor = (idx) =>
+          (episodeModes && episodeModes[idx]) || "linear";
 
         const parser = new DOMParser();
         const doc = parser.parseFromString(xmlText, "application/xml");
@@ -1441,7 +1952,18 @@
 
         if (!episodes.length) {
           log("Аномальных эпизодов не обнаружено.", "log-warn");
-          return xmlText;
+          return { xml: xmlText, interpSegments: [] };
+        }
+
+        const routedRequestedCount = episodes.reduce((acc, _, i) => {
+          const m = modeFor(i);
+          return acc + (m === "foot" || m === "bike" || m === "car" ? 1 : 0);
+        }, 0);
+        if (routedRequestedCount > MAX_ROUTED_EPISODES) {
+          log(
+            `⚠ Эпизодов с маршрутизацией много (${routedRequestedCount}) — маршрутизация ограничена первыми ${MAX_ROUTED_EPISODES}, остальные заполнятся линией.`,
+            "log-warn",
+          );
         }
 
         let totalRemoved = 0,
@@ -1449,6 +1971,8 @@
         const removeSet = new Set();
         // insertionBefore[afterIdx] = [{lat,lon,ele,time}, ...]
         const insertionBefore = new Map();
+        const interpSegments = [];
+        const routedBudget = { used: 0, max: MAX_ROUTED_EPISODES };
 
         // Определяем ns3-префикс для расширений Garmin
         const nsExtPrefix = (() => {
@@ -1462,7 +1986,18 @@
           return "ns3";
         })();
 
-        for (let ep of episodes) {
+        for (let epIdx = 0; epIdx < episodes.length; epIdx++) {
+          const ep = episodes[epIdx];
+          const mode = modeFor(epIdx);
+
+          if (mode === "keep") {
+            log(
+              `\nЭпизод глушения: точки [${ep.firstBad}..${ep.lastBad}] — оставлен без изменений (выбрано «оставить как было»)`,
+              "log-warn",
+            );
+            continue;
+          }
+
           let { firstBad, lastBad, afterIdx } = ep;
 
           // 1) Расширение назад по координатам и высоте
@@ -1517,6 +2052,13 @@
 
           for (let i = firstBad; i <= lastBad; i++) removeSet.add(i);
 
+          if (mode === "remove") {
+            log(`  Участок удалён без замены (${cnt} точек)`, "log-warn");
+            continue;
+          }
+
+          const routed = mode !== "linear";
+
           // 3) Интерполяция
           if (afterIdx < n) {
             const stableEle = getPreEpisodeEle(eles, times, beforeIdx);
@@ -1529,29 +2071,79 @@
               "log-info",
             );
 
-            const interp = buildInterpolated(
-              lats[beforeIdx],
-              lons[beforeIdx],
-              stableEle,
-              times[beforeIdx],
-              lats[afterIdx],
-              lons[afterIdx],
-              eles[afterIdx],
-              times[afterIdx],
-              interval,
-              {
-                hr: hrs[beforeIdx],
-                cad: cads[beforeIdx],
-                atemp: atemps[beforeIdx],
-              },
-              {
-                hr: hrs[afterIdx],
-                cad: cads[afterIdx],
-                atemp: atemps[afterIdx],
-              },
-            );
-            insertionBefore.set(afterIdx, interp);
-            totalInserted += interp.length;
+            const sensors0 = {
+              hr: hrs[beforeIdx],
+              cad: cads[beforeIdx],
+              atemp: atemps[beforeIdx],
+            };
+            const sensors1 = {
+              hr: hrs[afterIdx],
+              cad: cads[afterIdx],
+              atemp: atemps[afterIdx],
+            };
+
+            let interpResult;
+            if (routed) {
+              interpResult = await buildRoutedInterpolated(
+                lats[beforeIdx],
+                lons[beforeIdx],
+                stableEle,
+                times[beforeIdx],
+                lats[afterIdx],
+                lons[afterIdx],
+                eles[afterIdx],
+                times[afterIdx],
+                interval,
+                sensors0,
+                sensors1,
+                mode,
+                maxSpeed,
+                routedBudget,
+              );
+            } else {
+              interpResult = {
+                points: buildInterpolated(
+                  lats[beforeIdx],
+                  lons[beforeIdx],
+                  stableEle,
+                  times[beforeIdx],
+                  lats[afterIdx],
+                  lons[afterIdx],
+                  eles[afterIdx],
+                  times[afterIdx],
+                  interval,
+                  sensors0,
+                  sensors1,
+                ),
+                method: "linear",
+              };
+            }
+
+            if (routed) {
+              if (interpResult.method === "routed") {
+                log(
+                  `  Эпизод ${epIdx + 1}/${episodes.length}: маршрут ${interpResult.distanceKm.toFixed(1)} км (${INTERP_MODE_LABELS[mode]}), высота: ${interpResult.demOk ? "рельеф ✓" : "линейно (рельеф недоступен)"}`,
+                  "log-ok",
+                );
+              } else {
+                log(
+                  `  Эпизод ${epIdx + 1}/${episodes.length}: маршрут не построен — линейная интерполяция` +
+                    (interpResult.reason ? ` (${interpResult.reason})` : ""),
+                  "log-warn",
+                );
+              }
+            }
+
+            insertionBefore.set(afterIdx, interpResult.points);
+            totalInserted += interpResult.points.length;
+            interpSegments.push({
+              type: interpResult.method,
+              points: [
+                [lats[beforeIdx], lons[beforeIdx]],
+                ...interpResult.points.map((p) => [p.lat, p.lon]),
+                [lats[afterIdx], lons[afterIdx]],
+              ],
+            });
           }
         }
 
@@ -1617,7 +2209,7 @@
           "log-ok",
         );
 
-        return outXml;
+        return { xml: outXml, interpSegments };
       }
 
       // ─── UI ──────────────────────────────────────────────────────────────────────
@@ -1778,6 +2370,31 @@
         "p-interval",
       ];
 
+      // Какой способ заполнения пробелов логично подходит под тип активности.
+      // Профили без дорожной сети (вода, воздух, снег, рельсы, бездорожье) —
+      // "linear": маршрутизация OSRM по автодорогам/тропам там не поможет.
+      const PROFILE_INTERP_MODE = {
+        hiking: "foot",
+        running: "foot",
+        horse: "foot",
+        kayak: "linear",
+        mtb: "bike",
+        road_bike: "bike",
+        ski: "linear",
+        enduro: "linear",
+        boat: "linear",
+        car: "car",
+        paraglider: "linear",
+        train: "linear",
+      };
+
+      function applyInterpModeForProfile(key) {
+        const mode = PROFILE_INTERP_MODE[key];
+        if (!mode) return; // "custom" — не трогаем выбор пользователя
+        const sel = document.getElementById("p-interp-mode");
+        if (sel) sel.value = mode;
+      }
+
       function applyProfile(key) {
         const entry = ACTIVITY_PROFILES.find(([k]) => k === key);
         if (!entry) return;
@@ -1787,6 +2404,107 @@
         document.getElementById("p-prejitter").value = p.preJitter;
         document.getElementById("p-vertspeed").value = p.maxVert;
         document.getElementById("p-interval").value = p.interval;
+      }
+
+      // ─── Список аномальных участков с индивидуальным выбором заполнения ────────
+      // Помимо режимов из "Заполнение пробелов" (прямая линия / маршрут), для
+      // каждого найденного участка отдельно можно выбрать "удалить" (вырезать
+      // без замены) или "оставить как было" (вообще не трогать).
+      const GAP_FILL_OPTIONS = [
+        { value: "linear", label: "Прямая линия (офлайн)" },
+        { value: "foot", label: "Маршрут: пешком" },
+        { value: "bike", label: "Маршрут: велосипед" },
+        { value: "car", label: "Маршрут: авто" },
+        { value: "remove", label: "Удалить участок (без замены)" },
+        { value: "keep", label: "Оставить как было (не трогать)" },
+      ];
+
+      const episodeCard = document.getElementById("episode-card");
+      const episodeListEl = document.getElementById("episode-list");
+      let episodeChoices = []; // режим на каждый обнаруженный эпизод, по индексу
+      let episodePreview = []; // последний обнаруженный список эпизодов
+      let episodePreviewTimes = []; // times[] трека, для которого построен episodePreview
+
+      function updateEpisodeList() {
+        if (!gpxText) {
+          episodeCard.style.display = "none";
+          episodeChoices = [];
+          episodePreview = [];
+          return;
+        }
+        let lats, lons, eles, times;
+        try {
+          ({ lats, lons, eles, times } = extractTrackData(gpxText));
+        } catch (e) {
+          episodeCard.style.display = "none";
+          return;
+        }
+        if (!lats.length) {
+          episodeCard.style.display = "none";
+          return;
+        }
+        const maxSpeed =
+          parseFloat(document.getElementById("p-maxspeed").value) || 20;
+        const minDist =
+          parseFloat(document.getElementById("p-mindist").value) || 1000;
+        const episodes = findJammerEpisodes(
+          lats,
+          lons,
+          times,
+          maxSpeed,
+          minDist,
+        );
+        episodePreview = episodes;
+        episodePreviewTimes = times;
+        const defaultMode = document.getElementById("p-interp-mode").value;
+        episodeChoices = episodes.map(() => defaultMode);
+        renderEpisodeList(episodes, times);
+        episodeCard.style.display = episodes.length ? "block" : "none";
+      }
+
+      function renderEpisodeList(episodes, times) {
+        episodeListEl.innerHTML = "";
+        const n = times.length;
+        episodes.forEach((ep, idx) => {
+          const row = document.createElement("div");
+          row.className = "episode-row";
+
+          const info = document.createElement("div");
+          info.className = "episode-info";
+          const cnt = ep.lastBad - ep.firstBad + 1;
+          const tFrom = Number.isFinite(times[ep.firstBad - 1])
+            ? formatEpisodeTime(times[ep.firstBad - 1])
+            : "?";
+          const hasAfter =
+            ep.afterIdx < n && Number.isFinite(times[ep.afterIdx]);
+          const durS = hasAfter
+            ? Math.round(times[ep.afterIdx] - times[ep.firstBad - 1])
+            : null;
+          info.innerHTML =
+            `<strong>Эпизод ${idx + 1}</strong>: ${tFrom} → ${hasAfter ? formatEpisodeTime(times[ep.afterIdx]) : "обрыв в конце трека"}` +
+            (durS !== null
+              ? ` &nbsp;(${formatDuration(durS)}, ${cnt} точек)`
+              : ` &nbsp;(${cnt} точек)`);
+
+          const select = document.createElement("select");
+          select.className = "episode-mode-select";
+          for (const opt of GAP_FILL_OPTIONS) {
+            if (!hasAfter && opt.value !== "remove" && opt.value !== "keep")
+              continue; // хвостовой обрыв — маршрут строить некуда
+            const o = document.createElement("option");
+            o.value = opt.value;
+            o.textContent = opt.label;
+            select.appendChild(o);
+          }
+          select.value = episodeChoices[idx];
+          select.addEventListener("change", () => {
+            episodeChoices[idx] = select.value;
+          });
+
+          row.appendChild(info);
+          row.appendChild(select);
+          episodeListEl.appendChild(row);
+        });
       }
 
       (function initProfileSelect() {
@@ -1807,15 +2525,33 @@
 
         select.value = DEFAULT_PROFILE;
         applyProfile(DEFAULT_PROFILE);
-        select.addEventListener("change", () => applyProfile(select.value));
+        applyInterpModeForProfile(DEFAULT_PROFILE);
+        select.addEventListener("change", () => {
+          applyProfile(select.value);
+          applyInterpModeForProfile(select.value);
+          updateEpisodeList();
+        });
 
         for (const id of PROFILE_PARAM_IDS) {
           document.getElementById(id).addEventListener("input", () => {
             if (select.value !== CUSTOM_PROFILE_KEY) {
               select.value = CUSTOM_PROFILE_KEY;
             }
+            if (id === "p-maxspeed" || id === "p-mindist") {
+              updateEpisodeList();
+            }
           });
         }
+
+        document
+          .getElementById("p-interp-mode")
+          .addEventListener("change", () => {
+            const mode = document.getElementById("p-interp-mode").value;
+            if (episodePreview.length) {
+              episodeChoices = episodePreview.map(() => mode);
+              renderEpisodeList(episodePreview, episodePreviewTimes);
+            }
+          });
       })();
 
       function loadFile(file) {
@@ -1847,6 +2583,7 @@
             alert("Не удалось разобрать файл: " + err.message);
             btnFix.disabled = true;
             gpxText = null;
+            updateEpisodeList();
             return;
           }
           btnFix.disabled = false;
@@ -1877,6 +2614,7 @@
           } catch (err) {
             // превью необязательно, ошибку покажем при нажатии "Исправить"
           }
+          updateEpisodeList();
         };
         if (isFit) {
           reader.readAsArrayBuffer(file);
@@ -1918,12 +2656,16 @@
             parseFloat(document.getElementById("p-vertspeed").value) || 5,
           interval:
             parseFloat(document.getElementById("p-interval").value) || 1,
+          episodeModes: episodeChoices.slice(),
         };
 
         // Запускаем в следующем тике, чтобы успел отрисоваться UI
-        setTimeout(() => {
+        setTimeout(async () => {
           try {
-            const result = fixGpx(gpxText, params);
+            const { xml: result, interpSegments } = await fixGpx(
+              gpxText,
+              params,
+            );
 
             const blob = new Blob([result], { type: "application/gpx+xml" });
             const url = URL.createObjectURL(blob);
@@ -1956,6 +2698,9 @@
                 document.getElementById("track-stats-after"),
                 computeTrackStats(afterLats, afterLons, afterEles, afterTimes),
               );
+              if (interpSegments.length) {
+                drawInterpSegments("map-after", interpSegments);
+              }
             }
           } catch (err) {
             log("\n✗ Ошибка: " + err.message, "log-err");
