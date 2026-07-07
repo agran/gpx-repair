@@ -19,14 +19,19 @@ fix_gpx_jammer.py
   python fix_gpx_jammer.py track.gpx --profile hiking
   python fix_gpx_jammer.py track.gpx --max-speed 20 --interval 2
   python fix_gpx_jammer.py track.gpx --no-interpolate   # просто удалить
+  python fix_gpx_jammer.py track.gpx --gap-fill foot    # заполнить пробел маршрутом по тропам
 
 Зависимости: только стандартная библиотека Python 3.7+
 """
 
 import argparse
+import json
 import math
 import re
 import sys
+import time
+import urllib.error
+import urllib.request
 import xml.etree.ElementTree as ET
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -57,6 +62,190 @@ ACTIVITY_PROFILES: Dict[str, Dict[str, float]] = {
     "train":      {"label": "🚆 Поезд / автобус",         "max_speed": 90.0, "min_distance": 10000.0, "pre_jitter_dist": 0.0,    "max_vert_speed": 4.0,  "interval": 2.0},
 }
 DEFAULT_PROFILE = "hiking"
+
+# Какой способ заполнения пробелов логично подходит под тип активности.
+# Профили без дорожной/тропиночной сети (вода, воздух, снег, рельсы,
+# бездорожье) — "line": маршрутизация OSRM по дорогам/тропам там не поможет.
+PROFILE_INTERP_MODE: Dict[str, str] = {
+    "hiking":     "foot",
+    "running":    "foot",
+    "horse":      "foot",
+    "kayak":      "line",
+    "mtb":        "bike",
+    "road_bike":  "bike",
+    "ski":        "line",
+    "enduro":     "line",
+    "boat":       "line",
+    "car":        "car",
+    "paraglider": "line",
+    "train":      "line",
+}
+
+
+# ---------------------------------------------------------------------------
+# Восстановление по дорогам/тропам (OSRM) + высота рельефа (Open-Meteo)
+# ---------------------------------------------------------------------------
+# Публичные бесплатные сервисы. Все ошибки сети/API/проверок правдоподобия
+# ведут к молчаливому откату на обычную линейную интерполяцию для конкретного
+# эпизода — результат должен получаться всегда, независимо от доступности
+# внешних сервисов.
+
+OSRM_PRIMARY = "https://routing.openstreetmap.de"
+OSRM_FALLBACK = "https://router.project-osrm.org"
+ELEVATION_PRIMARY = "https://api.open-meteo.com/v1/elevation"
+ELEVATION_FALLBACK = "https://api.opentopodata.org/v1/srtm30m"
+NETWORK_TIMEOUT_S = 10.0
+NETWORK_PACE_S = 0.25
+MAX_ROUTED_EPISODES = 30
+MAX_ELEVATION_POINTS_PER_REQUEST = 100
+USER_AGENT = "gpx-repair/1.0 (+https://github.com/agran/gpx-repair)"
+
+_last_network_call_at = 0.0
+
+
+def _pace_network() -> None:
+    """Выдерживает паузу между запросами, чтобы не бить бесплатные сервисы
+    параллельными/слишком частыми вызовами."""
+    global _last_network_call_at
+    wait = _last_network_call_at + NETWORK_PACE_S - time.monotonic()
+    if wait > 0:
+        time.sleep(wait)
+    _last_network_call_at = time.monotonic()
+
+
+def fetch_json(url: str) -> dict:
+    _pace_network()
+    req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
+    with urllib.request.urlopen(req, timeout=NETWORK_TIMEOUT_S) as resp:
+        if resp.status != 200:
+            raise urllib.error.HTTPError(url, resp.status, "HTTP error", resp.headers, None)
+        return json.loads(resp.read().decode("utf-8"))
+
+
+def fetch_route(profile: str, p0: Tuple[float, float], p1: Tuple[float, float]) -> Optional[dict]:
+    """profile: "foot" | "bike" | "car". p0/p1: (lat, lon)."""
+    lat0, lon0 = p0
+    lat1, lon1 = p1
+    url = (
+        f"{OSRM_PRIMARY}/routed-{profile}/route/v1/{profile}/"
+        f"{lon0},{lat0};{lon1},{lat1}?overview=full&geometries=geojson&steps=false"
+    )
+    try:
+        data = fetch_json(url)
+        if data.get("code") == "Ok" and data.get("routes"):
+            return data
+    except Exception:
+        pass  # молча идём дальше — либо резерв (для авто), либо fallback на линию
+
+    if profile == "car":
+        try:
+            fb_url = (
+                f"{OSRM_FALLBACK}/route/v1/driving/"
+                f"{lon0},{lat0};{lon1},{lat1}?overview=full&geometries=geojson&steps=false"
+            )
+            data = fetch_json(fb_url)
+            if data.get("code") == "Ok" and data.get("routes"):
+                return data
+        except Exception:
+            pass
+    return None
+
+
+def resample_route(
+    coords: List[List[float]], total_s: float, interval_s: float
+) -> Tuple[List[dict], float]:
+    """Ресемплинг ломаной маршрута по времени: модель постоянной скорости
+    вдоль пути. coords — [[lon, lat], ...] (порядок OSRM/GeoJSON).
+    Возвращает (points, total_length_m)."""
+    pts = [(lat, lon) for lon, lat in coords]
+    cum = [0.0]
+    for i in range(1, len(pts)):
+        cum.append(cum[-1] + haversine(pts[i - 1][0], pts[i - 1][1], pts[i][0], pts[i][1]))
+    total_length = cum[-1] if cum else 0.0
+
+    step = interval_s
+    if total_s > 0 and total_s / step > 5000:
+        step = total_s / 5000
+
+    out: List[dict] = []
+    seg_idx = 0
+    t = step
+    while t < total_s - 1e-6:
+        alpha = t / total_s
+        target_dist = alpha * total_length
+        while seg_idx < len(cum) - 2 and cum[seg_idx + 1] < target_dist:
+            seg_idx += 1
+        seg_len = cum[seg_idx + 1] - cum[seg_idx] if seg_idx + 1 < len(cum) else 0.0
+        seg_alpha = (target_dist - cum[seg_idx]) / seg_len if seg_len > 0 else 0.0
+        a_lat, a_lon = pts[seg_idx]
+        b_lat, b_lon = pts[min(seg_idx + 1, len(pts) - 1)]
+        out.append({
+            "lat": a_lat + seg_alpha * (b_lat - a_lat),
+            "lon": a_lon + seg_alpha * (b_lon - a_lon),
+            "t": t,
+            "alpha": alpha,
+        })
+        t += step
+    return out, total_length
+
+
+_elevation_cache: Dict[str, Optional[float]] = {}
+
+
+def _ele_cache_key(lat: float, lon: float) -> str:
+    return f"{lat:.4f},{lon:.4f}"
+
+
+def fetch_elevations_raw(coord_pairs: List[Tuple[float, float]]) -> Optional[List[Optional[float]]]:
+    lat_str = ",".join(f"{lat:.6f}" for lat, _ in coord_pairs)
+    lon_str = ",".join(f"{lon:.6f}" for _, lon in coord_pairs)
+    try:
+        url = f"{ELEVATION_PRIMARY}?latitude={lat_str}&longitude={lon_str}"
+        data = fetch_json(url)
+        elevs = data.get("elevation")
+        if isinstance(elevs, list) and len(elevs) == len(coord_pairs):
+            return [v if isinstance(v, (int, float)) else None for v in elevs]
+    except Exception:
+        pass
+    try:
+        loc_str = "|".join(f"{lat:.6f},{lon:.6f}" for lat, lon in coord_pairs)
+        url = f"{ELEVATION_FALLBACK}?locations={loc_str}"
+        data = fetch_json(url)
+        results = data.get("results")
+        if isinstance(results, list) and len(results) == len(coord_pairs):
+            return [
+                r.get("elevation") if isinstance(r, dict) and isinstance(r.get("elevation"), (int, float)) else None
+                for r in results
+            ]
+    except Exception:
+        pass
+    return None
+
+
+def fetch_elevations(points: List[Tuple[float, float]]) -> Dict[str, Optional[float]]:
+    """points: [(lat, lon), ...]. Возвращает {cache_key: высота|None}."""
+    need = []
+    for lat, lon in points:
+        key = _ele_cache_key(lat, lon)
+        if key not in _elevation_cache:
+            need.append((lat, lon, key))
+    for i in range(0, len(need), MAX_ELEVATION_POINTS_PER_REQUEST):
+        chunk = need[i:i + MAX_ELEVATION_POINTS_PER_REQUEST]
+        result = fetch_elevations_raw([(lat, lon) for lat, lon, _ in chunk])
+        if result is None:
+            for _, _, key in chunk:
+                _elevation_cache[key] = None
+        else:
+            for (_, _, key), val in zip(chunk, result):
+                _elevation_cache[key] = val
+    return {_ele_cache_key(lat, lon): _elevation_cache.get(_ele_cache_key(lat, lon)) for lat, lon in points}
+
+
+def calibrate_elevation(dem: float, alpha: float, ele0: float, dem0: float, ele1: float, dem1: float) -> float:
+    """Барометрическая/DEM высота имеют смещение друг от друга (10-30м) —
+    плавно перетекаем от известного смещения на старте к известному смещению
+    на конце, чтобы на швах эпизода не было ступеньки высоты."""
+    return dem + (1 - alpha) * (ele0 - dem0) + alpha * (ele1 - dem1)
 
 
 # ---------------------------------------------------------------------------
@@ -339,6 +528,153 @@ def build_interpolated_points(
     return result
 
 
+def build_routed_interpolated(
+    lat0: float, lon0: float, ele0: float, t0: datetime,
+    lat1: float, lon1: float, ele1: float, t1: datetime,
+    interval_s: float,
+    sensors0: dict,
+    sensors1: dict,
+    profile: str,
+    max_speed_mps: float,
+    routed_budget: dict,
+) -> dict:
+    """
+    Пытается заполнить пробел маршрутом по дорогам/тропам (OSRM), с высотой
+    рельефа из Open-Meteo (резерв Opentopodata). При любой ошибке сети/API
+    или неправдоподобном результате молча откатывается на обычную линейную
+    интерполяцию — результат должен получаться всегда, вне зависимости от
+    доступности внешних сервисов.
+
+    profile: "foot" | "bike" | "car".
+    routed_budget: {"used": int, "max": int} — общий на весь трек лимит
+    запросов маршрутизации (публичные сервисы бесплатны, не будем их спамить).
+
+    Возвращает {"points": [...], "method": "routed"|"linear", "reason"?: str,
+    "dem_ok"?: bool, "distance_km"?: float}.
+    """
+
+    def fallback(reason: Optional[str] = None) -> dict:
+        return {
+            "points": build_interpolated_points(
+                lat0, lon0, ele0, t0, lat1, lon1, ele1, t1,
+                interval_s, sensors0, sensors1,
+            ),
+            "method": "linear",
+            "reason": reason,
+        }
+
+    total_s = (t1 - t0).total_seconds()
+    d = haversine(lat0, lon0, lat1, lon1)
+
+    if total_s <= interval_s or d < 30:
+        return fallback()
+
+    if routed_budget["used"] >= routed_budget["max"]:
+        return fallback(
+            f"достигнут лимит маршрутизации ({routed_budget['max']} эпизодов) — прямая линия"
+        )
+    routed_budget["used"] += 1
+
+    try:
+        route = fetch_route(profile, (lat0, lon0), (lat1, lon1))
+    except Exception:
+        route = None
+    if not route:
+        return fallback("маршрут не найден")
+
+    r = route["routes"][0]
+    wp = route.get("waypoints")
+    if not wp or wp[0].get("distance", 0) > 300 or wp[1].get("distance", 0) > 300:
+        return fallback("граничные точки слишком далеко от дороги/тропы")
+
+    route_dist = r["distance"]
+    if route_dist / max(d, 1) > 4:
+        return fallback("маршрут слишком длинный (большой объезд)")
+    if route_dist / total_s > 1.2 * max_speed_mps:
+        return fallback("маршрут требует нереальной скорости")
+
+    sampled, _ = resample_route(r["geometry"]["coordinates"], total_s, interval_s)
+
+    # ─── Высота: ≤98 опорных точек маршрута + 2 граничные ───
+    max_anchors = 98
+    anchor_step = max(1, math.ceil(len(sampled) / max_anchors)) if sampled else 1
+    anchor_idxs = list(range(0, len(sampled), anchor_step))
+    if sampled and anchor_idxs[-1] != len(sampled) - 1:
+        anchor_idxs.append(len(sampled) - 1)
+
+    dem_map: Optional[Dict[str, Optional[float]]] = None
+    try:
+        anchor_coords = [(sampled[i]["lat"], sampled[i]["lon"]) for i in anchor_idxs]
+        dem_map = fetch_elevations([(lat0, lon0), (lat1, lon1)] + anchor_coords)
+    except Exception:
+        dem_map = None
+
+    dem0 = dem_map.get(_ele_cache_key(lat0, lon0)) if dem_map else None
+    dem1 = dem_map.get(_ele_cache_key(lat1, lon1)) if dem_map else None
+    dem_ok = (
+        dem_map is not None and dem0 is not None and dem1 is not None
+        and all(
+            dem_map.get(_ele_cache_key(sampled[i]["lat"], sampled[i]["lon"])) is not None
+            for i in anchor_idxs
+        )
+    )
+
+    dem_at_index: Optional[List[float]] = None
+    if dem_ok and sampled:
+        dem_at_index = [0.0] * len(sampled)
+        for i in anchor_idxs:
+            dem_at_index[i] = dem_map.get(_ele_cache_key(sampled[i]["lat"], sampled[i]["lon"]))
+        prev_idx, prev_val = 0, dem_at_index[0]
+        for idx in anchor_idxs[1:]:
+            val = dem_at_index[idx]
+            for j in range(prev_idx + 1, idx):
+                a = (j - prev_idx) / (idx - prev_idx)
+                dem_at_index[j] = prev_val + a * (val - prev_val)
+            prev_idx, prev_val = idx, val
+        for j in range(prev_idx + 1, len(sampled)):
+            dem_at_index[j] = prev_val
+
+    def _both_finite(a: Optional[float], b: Optional[float]) -> bool:
+        return a is not None and b is not None and math.isfinite(a) and math.isfinite(b)
+
+    hr0, hr1 = sensors0.get("hr"), sensors1.get("hr")
+    cad0, cad1 = sensors0.get("cad"), sensors1.get("cad")
+    atemp0, atemp1 = sensors0.get("atemp"), sensors1.get("atemp")
+    hr_ok = _both_finite(hr0, hr1)
+    cad_ok = _both_finite(cad0, cad1)
+    atemp_ok = _both_finite(atemp0, atemp1)
+
+    pts: List[dict] = []
+    prev_lat, prev_lon, prev_t = lat0, lon0, 0.0
+    for k, s in enumerate(sampled):
+        if dem_ok:
+            ele = calibrate_elevation(dem_at_index[k], s["alpha"], ele0, dem0, ele1, dem1)
+        else:
+            ele = ele0 + s["alpha"] * (ele1 - ele0)
+        dt = s["t"] - prev_t
+        leg_dist = haversine(prev_lat, prev_lon, s["lat"], s["lon"])
+        speed = leg_dist / dt if dt > 0 else 0.0
+        pt = {
+            "lat": s["lat"], "lon": s["lon"], "ele": ele,
+            "time": t0 + timedelta(seconds=s["t"]), "speed": speed,
+        }
+        if hr_ok:
+            pt["hr"] = round(hr0 + s["alpha"] * (hr1 - hr0))
+        if cad_ok:
+            pt["cad"] = round(cad0 + s["alpha"] * (cad1 - cad0))
+        if atemp_ok:
+            pt["atemp"] = atemp0 + s["alpha"] * (atemp1 - atemp0)
+        pts.append(pt)
+        prev_lat, prev_lon, prev_t = s["lat"], s["lon"], s["t"]
+
+    return {
+        "points": pts,
+        "method": "routed",
+        "dem_ok": dem_ok,
+        "distance_km": route_dist / 1000,
+    }
+
+
 # ---------------------------------------------------------------------------
 # Работа с XML / GPX
 # ---------------------------------------------------------------------------
@@ -407,6 +743,7 @@ def fix_gpx(
     interval_s: float = 1.0,
     pre_jitter_dist_m: float = 200.0,
     max_vert_speed_mps: float = 5.0,
+    gap_fill_mode: str = "line",
     verbose: bool = True,
 ) -> None:
     """Исправляет GPX-трек: удаляет зашумлённые точки и интерполирует пробел.
@@ -414,6 +751,11 @@ def fix_gpx(
     pre_jitter_dist_m: если > 0, дополнительно удаляет точки непосредственно
     ДО эпизода, которые смещены от post-jammer-позиции более чем на это расстояние
     (убирает «ранний дрейф» GPS перед включением глушилки).
+
+    gap_fill_mode: "line" — прямая линия (офлайн), "foot"/"bike"/"car" —
+    маршрутизация по дорогам/тропам через OSRM с высотой рельефа из
+    Open-Meteo. При ошибке сети/API или неправдоподобном маршруте молча
+    откатывается на прямую линию для конкретного эпизода.
     """
 
     # --- 1. Регистрируем пространства имён (чтобы не получить ns0/ns1) ---
@@ -484,6 +826,18 @@ def fix_gpx(
     remove_set      = set()
     # insertion_before[i] = список точек, вставляемых ПЕРЕД pts[i]
     insertion_before: dict = {}
+    routed_budget = {"used": 0, "max": MAX_ROUTED_EPISODES}
+
+    if gap_fill_mode in ("foot", "bike", "car"):
+        routed_requested = sum(
+            1 for ep_start, ep_end in episodes if ep_end + 1 < n
+        )
+        if routed_requested > MAX_ROUTED_EPISODES:
+            print(
+                f"Внимание: запрошено {routed_requested} эпизодов с маршрутизацией, "
+                f"но лимит — {MAX_ROUTED_EPISODES} за один запуск "
+                "(остальные будут заполнены прямой линией)."
+            )
 
     for ep_start, ep_end in episodes:
         after_idx  = ep_end + 1 if ep_end + 1 < n else None
@@ -585,21 +939,44 @@ def fix_gpx(
             # Используем стабильную высоту из окна 30–300 с ДО эпизода,
             # чтобы не начинать от уже испорченной глушилкой высоты.
             stable_ele0 = get_pre_episode_ele(eles, times, before_idx)
-            interp = build_interpolated_points(
-                lats[before_idx], lons[before_idx], stable_ele0,        times[before_idx],
-                lats[after_idx],  lons[after_idx],  eles[after_idx],    times[after_idx],
-                interval_s,
-                sensors0={
-                    "hr": hrs[before_idx],
-                    "cad": cads[before_idx],
-                    "atemp": atemps[before_idx],
-                },
-                sensors1={
-                    "hr": hrs[after_idx],
-                    "cad": cads[after_idx],
-                    "atemp": atemps[after_idx],
-                },
-            )
+            sensors0 = {
+                "hr": hrs[before_idx],
+                "cad": cads[before_idx],
+                "atemp": atemps[before_idx],
+            }
+            sensors1 = {
+                "hr": hrs[after_idx],
+                "cad": cads[after_idx],
+                "atemp": atemps[after_idx],
+            }
+
+            if gap_fill_mode in ("foot", "bike", "car"):
+                result = build_routed_interpolated(
+                    lats[before_idx], lons[before_idx], stable_ele0,     times[before_idx],
+                    lats[after_idx],  lons[after_idx],  eles[after_idx], times[after_idx],
+                    interval_s, sensors0, sensors1,
+                    gap_fill_mode, max_speed_mps, routed_budget,
+                )
+                interp = result["points"]
+                if verbose:
+                    if result["method"] == "routed":
+                        dem_note = "" if result.get("dem_ok") else ", высота: линейно (DEM недоступен)"
+                        print(
+                            f"  Заполнение    : маршрут ({gap_fill_mode}), "
+                            f"{result['distance_km']:.2f} км{dem_note}"
+                        )
+                    else:
+                        reason = result.get("reason")
+                        suffix = f" — {reason}" if reason else ""
+                        print(f"  Заполнение    : прямая линия (офлайн){suffix}")
+            else:
+                interp = build_interpolated_points(
+                    lats[before_idx], lons[before_idx], stable_ele0,     times[before_idx],
+                    lats[after_idx],  lons[after_idx],  eles[after_idx], times[after_idx],
+                    interval_s,
+                    sensors0=sensors0,
+                    sensors1=sensors1,
+                )
             insertion_before[after_idx] = interp
             total_inserted += len(interp)
             if verbose:
@@ -663,6 +1040,8 @@ def main() -> None:
   python fix_gpx_jammer.py track.gpx --profile car
   python fix_gpx_jammer.py track.gpx --profile mtb --max-speed 28  # профиль + ручная подстройка
   python fix_gpx_jammer.py track.gpx --no-interpolate # только удалить точки
+  python fix_gpx_jammer.py track.gpx --gap-fill foot  # маршрут по тропам вместо прямой линии
+  python fix_gpx_jammer.py track.gpx --gap-fill car   # маршрут по дорогам (для авто/мото)
 
 Доступные профили (--profile), по умолчанию — """
         + DEFAULT_PROFILE
@@ -717,6 +1096,16 @@ def main() -> None:
         help="Не вставлять интерполированные точки — просто удалить ложные.",
     )
     parser.add_argument(
+        "--gap-fill", choices=["line", "foot", "bike", "car"], default=None,
+        metavar="MODE",
+        help="Способ заполнения пробела: line — прямая линия (офлайн); "
+             "foot/bike/car — маршрутизация по дорогам и тропам через OSRM "
+             "(routing.openstreetmap.de) с высотой рельефа из Open-Meteo "
+             "(требует интернет; при ошибке сети/API молча откатывается на line). "
+             "По умолчанию — режим, подходящий выбранному --profile "
+             "(hiking/running/horse → foot, mtb/road_bike → bike, car → car, остальные → line).",
+    )
+    parser.add_argument(
         "--quiet", "-q", action="store_true",
         help="Не выводить подробный отчёт.",
     )
@@ -735,9 +1124,13 @@ def main() -> None:
         out = str(p.parent / (p.stem + "_fixed" + p.suffix))
 
     profile = ACTIVITY_PROFILES[args.profile or DEFAULT_PROFILE]
+    profile_key = args.profile or DEFAULT_PROFILE
+    gap_fill_mode = args.gap_fill or PROFILE_INTERP_MODE.get(profile_key, "line")
 
     if not args.quiet:
-        print(f"Профиль: {profile['label']} ({args.profile or DEFAULT_PROFILE})")
+        print(f"Профиль: {profile['label']} ({profile_key})")
+        if gap_fill_mode != "line":
+            print(f"Заполнение пробелов: маршрут ({gap_fill_mode}) через OSRM/Open-Meteo")
 
     fix_gpx(
         input_path=inp,
@@ -748,6 +1141,7 @@ def main() -> None:
         interval_s=args.interval if args.interval is not None else profile["interval"],
         pre_jitter_dist_m=args.pre_jitter_dist if args.pre_jitter_dist is not None else profile["pre_jitter_dist"],
         max_vert_speed_mps=args.max_vert_speed if args.max_vert_speed is not None else profile["max_vert_speed"],
+        gap_fill_mode=gap_fill_mode,
         verbose=not args.quiet,
     )
 

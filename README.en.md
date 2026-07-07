@@ -27,6 +27,7 @@ python fix_gpx_jammer.py input.gpx output.gpx
 | `--max-vert-speed`  | 5 m/s   | Maximum allowed vertical speed                                 |
 | `--interval`        | 1 s     | Interpolation step between points                               |
 | `--no-interpolate`  | —       | Don't fill the gap, just remove it                              |
+| `--gap-fill`        | from profile | Gap fill method: `line` — straight line (offline), `foot`/`bike`/`car` — route along roads and trails via OSRM (routing.openstreetmap.de) with terrain elevation from Open-Meteo. Requires internet; silently falls back to `line` on network errors |
 
 ## How it works
 
