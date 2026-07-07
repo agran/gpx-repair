@@ -442,9 +442,37 @@
       .update-banner button:hover {
         background: #e5e7eb;
       }
+
+      .lang-switch {
+        position: fixed;
+        top: 12px;
+        right: 12px;
+        display: flex;
+        gap: 4px;
+        z-index: 500;
+      }
+      .lang-switch button {
+        border: 1px solid #0f3460;
+        border-radius: 6px;
+        background: #16213e;
+        color: #888;
+        font-size: 0.75rem;
+        font-weight: 600;
+        padding: 4px 9px;
+        cursor: pointer;
+      }
+      .lang-switch button.active {
+        background: #2563eb;
+        color: #fff;
+        border-color: #2563eb;
+      }
     </style>
   </head>
   <body>
+    <div class="lang-switch" id="lang-switch">
+      <button type="button" data-lang="ru">RU</button>
+      <button type="button" data-lang="en">EN</button>
+    </div>
     <div class="brand">
       <img
         src="https://www.erudit23.ru/gpx-repair/logo.svg"
@@ -453,14 +481,14 @@
       />
       <h1>GPX Jammer Fix</h1>
     </div>
-    <p class="subtitle">
+    <p class="subtitle" data-i18n="subtitle">
       Удаление артефактов GPS-глушилки. Обработка — локально на устройстве, файл
       никуда не отправляется (кроме необязательной маршрутизации по
       дорогам/тропам).
     </p>
 
     <div class="card">
-      <h2>1. Выберите GPX-файл</h2>
+      <h2 data-i18n="card1_title">1. Выберите GPX-файл</h2>
       <div
         id="dropzone"
         onclick="document.getElementById('file-input').click()"
@@ -477,8 +505,14 @@
             d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5"
           />
         </svg>
-        <p><strong>Нажмите или перетащите .gpx, .tcx или .fit файл</strong></p>
-        <p>Треки с часов Amazfit, Garmin, Suunto и других</p>
+        <p>
+          <strong data-i18n="dropzone_main"
+            >Нажмите или перетащите .gpx, .tcx или .fit файл</strong
+          >
+        </p>
+        <p data-i18n="dropzone_sub">
+          Треки с часов Amazfit, Garmin, Suunto и других
+        </p>
       </div>
       <input
         type="file"
@@ -487,38 +521,48 @@
       />
       <div class="file-name" id="file-name"></div>
       <div id="map-before" class="track-map"></div>
-      <div class="track-label" id="track-label-before">
+      <div
+        class="track-label"
+        id="track-label-before"
+        data-i18n="track_label_before"
+      >
         Схема загруженного трека (с артефактами)
       </div>
       <div class="track-stats" id="track-stats-before"></div>
     </div>
 
     <div class="card">
-      <h2>2. Параметры</h2>
+      <h2 data-i18n="card2_title">2. Параметры</h2>
       <div class="param-row profile-row">
-        <label>Тип активности</label>
+        <label data-i18n="label_profile">Тип активности</label>
         <select id="p-profile"></select>
-        <span class="hint"
+        <span class="hint" data-i18n="hint_profile"
           >Профиль подставляет параметры ниже — их всё равно можно подправить
           вручную</span
         >
       </div>
       <div class="param-row profile-row">
-        <label>Заполнение пробелов</label>
+        <label data-i18n="label_interp_mode">Заполнение пробелов</label>
         <select id="p-interp-mode">
-          <option value="linear" selected>Прямая линия (офлайн)</option>
-          <option value="foot">Маршрут: пешком</option>
-          <option value="bike">Маршрут: велосипед</option>
-          <option value="car">Маршрут: авто</option>
+          <option value="linear" data-i18n="gapfill_linear" selected>
+            Прямая линия (офлайн)
+          </option>
+          <option value="foot" data-i18n="gapfill_foot">Маршрут: пешком</option>
+          <option value="bike" data-i18n="gapfill_bike">
+            Маршрут: велосипед
+          </option>
+          <option value="car" data-i18n="gapfill_car">Маршрут: авто</option>
         </select>
-        <span class="hint"
+        <span class="hint" data-i18n="hint_interp_mode"
           >Режимы "Маршрут" отправляют координаты границ пробелов на
           routing.openstreetmap.de и api.open-meteo.com</span
         >
       </div>
       <div class="params-grid">
         <div class="param-row">
-          <label>Макс. горизонт. скорость (м/с)</label>
+          <label data-i18n="label_maxspeed"
+            >Макс. горизонт. скорость (м/с)</label
+          >
           <input
             type="number"
             id="p-maxspeed"
@@ -527,13 +571,15 @@
             max="500"
             step="1"
           />
-          <span class="hint"
+          <span class="hint" data-i18n="hint_maxspeed"
             >Пеший поход: 10–15 &nbsp;|&nbsp; Велосипед: 25–40 &nbsp;|&nbsp;
             Авто: 80–120</span
           >
         </div>
         <div class="param-row">
-          <label>Макс. верт. скорость высоты (м/с)</label>
+          <label data-i18n="label_vertspeed"
+            >Макс. верт. скорость высоты (м/с)</label
+          >
           <input
             type="number"
             id="p-vertspeed"
@@ -542,12 +588,14 @@
             max="100"
             step="0.5"
           />
-          <span class="hint"
+          <span class="hint" data-i18n="hint_vertspeed"
             >Убирает крэш высоты от глушилки. Норма: 2–5 м/с</span
           >
         </div>
         <div class="param-row">
-          <label>Мин. расстояние до кластера глушилки (м)</label>
+          <label data-i18n="label_mindist"
+            >Мин. расстояние до кластера глушилки (м)</label
+          >
           <input
             type="number"
             id="p-mindist"
@@ -556,10 +604,12 @@
             max="100000"
             step="100"
           />
-          <span class="hint">Меньше — чувствительнее к близким аномалиям</span>
+          <span class="hint" data-i18n="hint_mindist"
+            >Меньше — чувствительнее к близким аномалиям</span
+          >
         </div>
         <div class="param-row">
-          <label>Порог раннего дрейфа (м)</label>
+          <label data-i18n="label_prejitter">Порог раннего дрейфа (м)</label>
           <input
             type="number"
             id="p-prejitter"
@@ -568,10 +618,12 @@
             max="5000"
             step="50"
           />
-          <span class="hint">0 — не искать ранний дрейф перед глушилкой</span>
+          <span class="hint" data-i18n="hint_prejitter"
+            >0 — не искать ранний дрейф перед глушилкой</span
+          >
         </div>
         <div class="param-row">
-          <label>Шаг интерполяции (с)</label>
+          <label data-i18n="label_interval">Шаг интерполяции (с)</label>
           <input
             type="number"
             id="p-interval"
@@ -580,14 +632,20 @@
             max="60"
             step="0.5"
           />
-          <span class="hint">Соответствует частоте записи вашего трека</span>
+          <span class="hint" data-i18n="hint_interval"
+            >Соответствует частоте записи вашего трека</span
+          >
         </div>
       </div>
     </div>
 
     <div class="card" id="episode-card" style="display: none">
-      <h2>Аномальные участки</h2>
-      <p class="hint" style="margin-bottom: 12px; display: block">
+      <h2 data-i18n="episode_card_title">Аномальные участки</h2>
+      <p
+        class="hint"
+        style="margin-bottom: 12px; display: block"
+        data-i18n="episode_card_hint"
+      >
         Для каждого найденного участка можно выбрать свой способ заполнения —
         включая полное удаление без замены или отказ от изменений.
       </p>
@@ -595,29 +653,343 @@
     </div>
 
     <div class="card">
-      <h2>3. Обработка</h2>
-      <button id="btn-fix" disabled>Исправить трек</button>
+      <h2 data-i18n="card3_title">3. Обработка</h2>
+      <button id="btn-fix" disabled data-i18n="btn_fix">Исправить трек</button>
       <pre id="log"></pre>
       <div class="download-row">
         <a id="btn-download" download>
-          <span class="dl-label">⬇ Скачать исправленный GPX</span>
+          <span class="dl-label" data-i18n="btn_download_label"
+            >⬇ Скачать исправленный GPX</span
+          >
           <span class="dl-filename" id="dl-filename"></span>
         </a>
         <img
           id="done-img"
           src="https://www.erudit23.ru/gpx-repair/done.svg"
           alt="Готово"
+          data-i18n-alt="alt_done"
           onerror="this.classList.add('img-broken')"
         />
       </div>
       <div id="map-after" class="track-map"></div>
-      <div class="track-label" id="track-label-after">
+      <div
+        class="track-label"
+        id="track-label-after"
+        data-i18n="track_label_after"
+      >
         Схема исправленного трека
       </div>
       <div class="track-stats" id="track-stats-after"></div>
     </div>
 
     <script>
+      // ─── Локализация (RU по умолчанию/приоритет, EN — опционально) ────────────
+
+      const I18N = {
+        ru: {
+          subtitle:
+            "Удаление артефактов GPS-глушилки. Обработка — локально на устройстве, файл никуда не отправляется (кроме необязательной маршрутизации по дорогам/тропам).",
+          card1_title: "1. Выберите GPX-файл",
+          dropzone_main: "Нажмите или перетащите .gpx, .tcx или .fit файл",
+          dropzone_sub: "Треки с часов Amazfit, Garmin, Suunto и других",
+          track_label_before: "Схема загруженного трека (с артефактами)",
+          card2_title: "2. Параметры",
+          label_profile: "Тип активности",
+          hint_profile:
+            "Профиль подставляет параметры ниже — их всё равно можно подправить вручную",
+          label_interp_mode: "Заполнение пробелов",
+          hint_interp_mode:
+            'Режимы "Маршрут" отправляют координаты границ пробелов на routing.openstreetmap.de и api.open-meteo.com',
+          gapfill_linear: "Прямая линия (офлайн)",
+          gapfill_foot: "Маршрут: пешком",
+          gapfill_bike: "Маршрут: велосипед",
+          gapfill_car: "Маршрут: авто",
+          gapfill_remove: "Удалить участок (без замены)",
+          gapfill_keep: "Оставить как было (не трогать)",
+          label_maxspeed: "Макс. горизонт. скорость (м/с)",
+          hint_maxspeed:
+            "Пеший поход: 10–15 &nbsp;|&nbsp; Велосипед: 25–40 &nbsp;|&nbsp; Авто: 80–120",
+          label_vertspeed: "Макс. верт. скорость высоты (м/с)",
+          hint_vertspeed: "Убирает крэш высоты от глушилки. Норма: 2–5 м/с",
+          label_mindist: "Мин. расстояние до кластера глушилки (м)",
+          hint_mindist: "Меньше — чувствительнее к близким аномалиям",
+          label_prejitter: "Порог раннего дрейфа (м)",
+          hint_prejitter: "0 — не искать ранний дрейф перед глушилкой",
+          label_interval: "Шаг интерполяции (с)",
+          hint_interval: "Соответствует частоте записи вашего трека",
+          episode_card_title: "Аномальные участки",
+          episode_card_hint:
+            "Для каждого найденного участка можно выбрать свой способ заполнения — включая полное удаление без замены или отказ от изменений.",
+          episode_label: "Эпизод {n}",
+          episode_tail: "обрыв в конце трека",
+          episode_points: "{n} точек",
+          card3_title: "3. Обработка",
+          btn_fix: "Исправить трек",
+          btn_download_label: "⬇ Скачать исправленный GPX",
+          btn_download_label_done: "⬇ Скачать",
+          track_label_after: "Схема исправленного трека",
+          stat_length: "Длина трека",
+          stat_maxspeed: "Макс. скорость",
+          stat_maxele: "Макс. высота",
+          stat_minele: "Мин. высота",
+          stat_gain: "Набор высоты",
+          stat_loss: "Сброс высоты",
+          alert_bad_filetype: "Пожалуйста, выберите .gpx, .tcx или .fit файл",
+          alert_parse_fail: "Не удалось разобрать файл: {msg}",
+          suffix_tcx: " (конвертирован из TCX)",
+          suffix_fit: " (конвертирован из FIT)",
+          update_available: "Доступно обновление GPX Repair",
+          update_btn: "Обновить",
+          alt_done: "Готово",
+          profile_hiking: "🥾 Пеший поход",
+          profile_running: "🏃 Бег / трейлраннинг",
+          profile_kayak: "🛶 Сплав / каяк / SUP",
+          profile_horse: "🐎 Верховая езда",
+          profile_mtb: "🚴 Велосипед (МТБ)",
+          profile_road_bike: "🚴 Велосипед (шоссе)",
+          profile_ski: "⛷ Горные лыжи / сноуборд",
+          profile_enduro: "🏍 Эндуро / мото-бездорожье",
+          profile_boat: "🚤 Катер / моторная лодка",
+          profile_car: "🚗 Авто / шоссейный мотоцикл",
+          profile_paraglider: "🪂 Параплан / дельтаплан",
+          profile_train: "🚆 Поезд / автобус",
+          profile_custom: "🛠 Пользовательский",
+          modeword_foot: "пешком",
+          modeword_bike: "велосипед",
+          modeword_car: "авто",
+          unit_hour: "ч",
+          unit_min: "мин",
+          unit_sec: "с",
+          unit_km: "км",
+          unit_kmh: "км/ч",
+          unit_m: "м",
+          log_loaded_points: "Загружено точек: {n}",
+          log_length_before: "Длина трека до исправления: {km} км",
+          log_no_episodes: "Аномальных эпизодов не обнаружено.",
+          log_routed_limit:
+            "⚠ Эпизодов с маршрутизацией много ({count}) — маршрутизация ограничена первыми {max}, остальные заполнятся линией.",
+          log_episode_kept:
+            "\nЭпизод глушения: точки [{first}..{last}] — оставлен без изменений (выбрано «оставить как было»)",
+          log_episode_header:
+            "\nЭпизод глушения: точки [{first}..{last}]  ({cnt} точек, {dur}с пробел){tail}",
+          log_episode_tail_cut: "  [обрыв в конце трека, без возврата]",
+          log_before_point: "  До  : {time}  ({lat}, {lon})  ele={ele}м",
+          log_after_point: "  После: {time}  ({lat}, {lon})  ele={ele}м",
+          log_after_none:
+            "  После: — (запись обрывается во время глушения, точки удаляются до конца трека)",
+          log_removed_no_replace: "  Участок удалён без замены ({cnt} точек)",
+          log_elevation: "  Высота: {before}м → {after}м{corrected}",
+          log_elevation_corrected: "  [скорректирована с {orig}м]",
+          log_episode_routed:
+            "  Эпизод {i}/{n}: маршрут {km} км ({modeLabel}), высота: {demStatus}",
+          dem_ok: "рельеф ✓",
+          dem_fail: "линейно (рельеф недоступен)",
+          log_episode_fallback:
+            "  Эпизод {i}/{n}: маршрут не построен — линейная интерполяция{reasonSuffix}",
+          log_removed_total: "\nУдалено плохих точек  : {n}",
+          log_inserted_total: "Вставлено интерполир. : {n}",
+          log_total_points: "Итого точек в треке   : {n}",
+          log_length_after:
+            "Длина трека после исправления: {after} км (было {before} км, разница {diff} км)",
+          log_done: "\n✓ Готово!",
+          log_error: "\n✗ Ошибка: {msg}",
+          err_no_track_points_convert: "Не найдено точек трека для конвертации",
+          err_tcx_parse: "Ошибка разбора TCX-файла",
+          err_tcx_no_trackpoints:
+            "В TCX-файле не найдены точки трека (Trackpoint)",
+          err_tcx_no_coords:
+            "В TCX-файле не найдено точек трека с координатами",
+          err_fit_too_small: "Файл слишком мал для FIT",
+          err_fit_no_signature: "Не похоже на FIT-файл (нет сигнатуры .FIT)",
+          err_fit_corrupt: "Повреждённый FIT-файл (некорректный размер данных)",
+          err_fit_no_points:
+            "В FIT-файле не найдено точек трека (record) с координатами",
+          err_xml_parse: "Ошибка разбора XML: {detail}",
+          err_no_trkpt: "Точки трека (trkpt) не найдены",
+          err_no_trkseg: "Элемент <trkseg> не найден",
+          reason_routing_limit:
+            "лимит эпизодов с маршрутизацией ({max}) исчерпан",
+          reason_no_route: "маршрут не найден (сервис недоступен)",
+          reason_far_from_road: "граница пробела далеко от дороги/тропы",
+          reason_big_detour: "маршрут — слишком большой крюк",
+          reason_too_slow: "маршрут не проходим за время пробела",
+        },
+        en: {
+          subtitle:
+            "Removes GPS-jammer artifacts. Processing runs locally on your device — the file is never uploaded (except optional road/trail routing).",
+          card1_title: "1. Select a GPX file",
+          dropzone_main: "Click or drag & drop a .gpx, .tcx or .fit file",
+          dropzone_sub: "Tracks from Amazfit, Garmin, Suunto and other watches",
+          track_label_before: "Uploaded track map (with artifacts)",
+          card2_title: "2. Parameters",
+          label_profile: "Activity type",
+          hint_profile:
+            "The profile fills in the parameters below — you can still adjust them manually",
+          label_interp_mode: "Gap fill mode",
+          hint_interp_mode:
+            '"Route" modes send the gap-boundary coordinates to routing.openstreetmap.de and api.open-meteo.com',
+          gapfill_linear: "Straight line (offline)",
+          gapfill_foot: "Route: on foot",
+          gapfill_bike: "Route: bicycle",
+          gapfill_car: "Route: car",
+          gapfill_remove: "Delete section (no replacement)",
+          gapfill_keep: "Keep as-is (don't touch)",
+          label_maxspeed: "Max. horizontal speed (m/s)",
+          hint_maxspeed:
+            "Hiking: 10–15 &nbsp;|&nbsp; Bike: 25–40 &nbsp;|&nbsp; Car: 80–120",
+          label_vertspeed: "Max. vertical (elevation) speed (m/s)",
+          hint_vertspeed:
+            "Removes elevation crashes caused by the jammer. Normal: 2–5 m/s",
+          label_mindist: "Min. distance to jammer cluster (m)",
+          hint_mindist: "Lower — more sensitive to nearby anomalies",
+          label_prejitter: "Early drift threshold (m)",
+          hint_prejitter: "0 — don't look for early drift before the jammer",
+          label_interval: "Interpolation step (s)",
+          hint_interval: "Should match your track's recording rate",
+          episode_card_title: "Anomalous sections",
+          episode_card_hint:
+            "For each detected section you can choose its own fill method — including full removal with no replacement, or leaving it unchanged.",
+          episode_label: "Episode {n}",
+          episode_tail: "track cut off at the end",
+          episode_points: "{n} points",
+          card3_title: "3. Processing",
+          btn_fix: "Fix track",
+          btn_download_label: "⬇ Download fixed GPX",
+          btn_download_label_done: "⬇ Download",
+          track_label_after: "Fixed track map",
+          stat_length: "Track length",
+          stat_maxspeed: "Max speed",
+          stat_maxele: "Max elevation",
+          stat_minele: "Min elevation",
+          stat_gain: "Elevation gain",
+          stat_loss: "Elevation loss",
+          alert_bad_filetype: "Please select a .gpx, .tcx or .fit file",
+          alert_parse_fail: "Failed to parse file: {msg}",
+          suffix_tcx: " (converted from TCX)",
+          suffix_fit: " (converted from FIT)",
+          update_available: "GPX Repair update available",
+          update_btn: "Update",
+          alt_done: "Done",
+          profile_hiking: "🥾 Hiking",
+          profile_running: "🏃 Running / trail running",
+          profile_kayak: "🛶 Rafting / kayak / SUP",
+          profile_horse: "🐎 Horse riding",
+          profile_mtb: "🚴 Bicycle (MTB)",
+          profile_road_bike: "🚴 Bicycle (road)",
+          profile_ski: "⛷ Skiing / snowboarding",
+          profile_enduro: "🏍 Enduro / off-road moto",
+          profile_boat: "🚤 Boat / motorboat",
+          profile_car: "🚗 Car / road motorcycle",
+          profile_paraglider: "🪂 Paraglider / hang glider",
+          profile_train: "🚆 Train / bus",
+          profile_custom: "🛠 Custom",
+          modeword_foot: "on foot",
+          modeword_bike: "bicycle",
+          modeword_car: "car",
+          unit_hour: "h",
+          unit_min: "min",
+          unit_sec: "s",
+          unit_km: "km",
+          unit_kmh: "km/h",
+          unit_m: "m",
+          log_loaded_points: "Loaded points: {n}",
+          log_length_before: "Track length before fix: {km} km",
+          log_no_episodes: "No anomalous episodes detected.",
+          log_routed_limit:
+            "⚠ Too many routed episodes ({count}) — routing limited to the first {max}, the rest will be filled with a straight line.",
+          log_episode_kept:
+            "\nJammer episode: points [{first}..{last}] — left unchanged (kept as-is)",
+          log_episode_header:
+            "\nJammer episode: points [{first}..{last}]  ({cnt} points, {dur}s gap){tail}",
+          log_episode_tail_cut: "  [track cut off at the end, no return]",
+          log_before_point: "  Before: {time}  ({lat}, {lon})  ele={ele}m",
+          log_after_point: "  After: {time}  ({lat}, {lon})  ele={ele}m",
+          log_after_none:
+            "  After: — (recording cuts off during jamming, points removed to the end of the track)",
+          log_removed_no_replace:
+            "  Section removed, no replacement ({cnt} points)",
+          log_elevation: "  Elevation: {before}m → {after}m{corrected}",
+          log_elevation_corrected: "  [corrected from {orig}m]",
+          log_episode_routed:
+            "  Episode {i}/{n}: route {km} km ({modeLabel}), elevation: {demStatus}",
+          dem_ok: "terrain ✓",
+          dem_fail: "linear (terrain unavailable)",
+          log_episode_fallback:
+            "  Episode {i}/{n}: route not built — linear interpolation{reasonSuffix}",
+          log_removed_total: "\nBad points removed   : {n}",
+          log_inserted_total: "Interpolated inserted : {n}",
+          log_total_points: "Total points in track : {n}",
+          log_length_after:
+            "Track length after fix: {after} km (was {before} km, diff {diff} km)",
+          log_done: "\n✓ Done!",
+          log_error: "\n✗ Error: {msg}",
+          err_no_track_points_convert: "No track points found to convert",
+          err_tcx_parse: "Failed to parse TCX file",
+          err_tcx_no_trackpoints:
+            "No track points (Trackpoint) found in TCX file",
+          err_tcx_no_coords:
+            "No track points with coordinates found in TCX file",
+          err_fit_too_small: "File too small to be a FIT file",
+          err_fit_no_signature:
+            "Doesn't look like a FIT file (no .FIT signature)",
+          err_fit_corrupt: "Corrupt FIT file (invalid data size)",
+          err_fit_no_points:
+            "No track points (record) with coordinates found in FIT file",
+          err_xml_parse: "XML parse error: {detail}",
+          err_no_trkpt: "No track points (trkpt) found",
+          err_no_trkseg: "Element <trkseg> not found",
+          reason_routing_limit: "routed-episode limit ({max}) reached",
+          reason_no_route: "route not found (service unavailable)",
+          reason_far_from_road: "gap boundary is far from a road/trail",
+          reason_big_detour: "route is too much of a detour",
+          reason_too_slow: "route isn't traversable within the gap time",
+        },
+      };
+
+      const LANG_STORAGE_KEY = "gpxRepairLang";
+      let currentLang = "ru"; // приоритет русскому языку — меняется только по явному выбору пользователя
+      try {
+        const saved = localStorage.getItem(LANG_STORAGE_KEY);
+        if (saved === "en" || saved === "ru") currentLang = saved;
+      } catch (e) {}
+
+      function t(key, vars) {
+        const dict = I18N[currentLang] || I18N.ru;
+        let str = dict[key] !== undefined ? dict[key] : I18N.ru[key];
+        if (str === undefined) return key;
+        if (vars) {
+          for (const k in vars) {
+            str = str.split("{" + k + "}").join(vars[k]);
+          }
+        }
+        return str;
+      }
+
+      function applyStaticI18n() {
+        document.documentElement.lang = currentLang;
+        document.querySelectorAll("[data-i18n]").forEach((el) => {
+          const val = t(el.getAttribute("data-i18n"));
+          if (el.tagName === "OPTION") el.textContent = val;
+          else el.innerHTML = val;
+        });
+        document.querySelectorAll("[data-i18n-alt]").forEach((el) => {
+          el.alt = t(el.getAttribute("data-i18n-alt"));
+        });
+        document.querySelectorAll(".lang-switch button").forEach((btn) => {
+          btn.classList.toggle("active", btn.dataset.lang === currentLang);
+        });
+      }
+
+      function setLang(lang) {
+        if (lang !== "ru" && lang !== "en") return;
+        currentLang = lang;
+        try {
+          localStorage.setItem(LANG_STORAGE_KEY, lang);
+        } catch (e) {}
+        applyStaticI18n();
+        rebuildDynamicUI();
+      }
+
       // ─── Утилиты ────────────────────────────────────────────────────────────────
 
       function haversine(lat1, lon1, lat2, lon2) {
@@ -760,25 +1132,40 @@
         };
       }
 
+      const lastTrackStats = {}; // containerId -> stats (для перерисовки при смене языка)
+
       function renderTrackStats(containerEl, stats) {
+        lastTrackStats[containerEl.id] = stats;
         const items = [
           {
-            label: "Длина трека",
-            value: `${(stats.length / 1000).toFixed(2)} км`,
+            label: t("stat_length"),
+            value: `${(stats.length / 1000).toFixed(2)} ${t("unit_km")}`,
           },
         ];
         if (stats.hasSpeed) {
           items.push({
-            label: "Макс. скорость",
-            value: `${(stats.maxSpeed * 3.6).toFixed(1)} км/ч`,
+            label: t("stat_maxspeed"),
+            value: `${(stats.maxSpeed * 3.6).toFixed(1)} ${t("unit_kmh")}`,
           });
         }
         if (stats.hasEle) {
           items.push(
-            { label: "Макс. высота", value: `${stats.maxEle.toFixed(0)} м` },
-            { label: "Мин. высота", value: `${stats.minEle.toFixed(0)} м` },
-            { label: "Набор высоты", value: `${stats.gain.toFixed(0)} м` },
-            { label: "Сброс высоты", value: `${stats.loss.toFixed(0)} м` },
+            {
+              label: t("stat_maxele"),
+              value: `${stats.maxEle.toFixed(0)} ${t("unit_m")}`,
+            },
+            {
+              label: t("stat_minele"),
+              value: `${stats.minEle.toFixed(0)} ${t("unit_m")}`,
+            },
+            {
+              label: t("stat_gain"),
+              value: `${stats.gain.toFixed(0)} ${t("unit_m")}`,
+            },
+            {
+              label: t("stat_loss"),
+              value: `${stats.loss.toFixed(0)} ${t("unit_m")}`,
+            },
           );
         }
         containerEl.innerHTML = items
@@ -970,9 +1357,11 @@
         const h = Math.floor(s / 3600);
         const m = Math.floor((s % 3600) / 60);
         const sec = s % 60;
-        if (h) return `${h} ч ${String(m).padStart(2, "0")} мин`;
-        if (m) return `${m} мин ${String(sec).padStart(2, "0")} с`;
-        return `${sec} с`;
+        if (h)
+          return `${h} ${t("unit_hour")} ${String(m).padStart(2, "0")} ${t("unit_min")}`;
+        if (m)
+          return `${m} ${t("unit_min")} ${String(sec).padStart(2, "0")} ${t("unit_sec")}`;
+        return `${sec} ${t("unit_sec")}`;
       }
 
       // ─── Лог ────────────────────────────────────────────────────────────────────
@@ -1294,8 +1683,7 @@
       // Собирает синтетический GPX-документ из массива точек {lat, lon, ele, time}.
       // Дальше он проходит через тот же fixGpx()/extractTrackData(), что и обычный GPX.
       function buildGpxFromPoints(points, trackName) {
-        if (!points.length)
-          throw new Error("Не найдено точек трека для конвертации");
+        if (!points.length) throw new Error(t("err_no_track_points_convert"));
         const lines = points.map((p) => {
           const eleTag = Number.isFinite(p.ele)
             ? `<ele>${p.ele.toFixed(2)}</ele>`
@@ -1320,11 +1708,10 @@
         const parser = new DOMParser();
         const doc = parser.parseFromString(tcxText, "application/xml");
         if (doc.querySelector("parsererror"))
-          throw new Error("Ошибка разбора TCX-файла");
+          throw new Error(t("err_tcx_parse"));
 
         const trackpoints = Array.from(doc.querySelectorAll("Trackpoint"));
-        if (!trackpoints.length)
-          throw new Error("В TCX-файле не найдены точки трека (Trackpoint)");
+        if (!trackpoints.length) throw new Error(t("err_tcx_no_trackpoints"));
 
         const points = [];
         for (const tp of trackpoints) {
@@ -1343,8 +1730,7 @@
           const ele = eleEl ? parseFloat(eleEl.textContent) : NaN;
           points.push({ lat, lon, ele, time });
         }
-        if (!points.length)
-          throw new Error("В TCX-файле не найдено точек трека с координатами");
+        if (!points.length) throw new Error(t("err_tcx_no_coords"));
 
         return buildGpxFromPoints(points, trackName);
       }
@@ -1361,7 +1747,7 @@
 
       function parseFitTrackpoints(arrayBuffer) {
         const view = new DataView(arrayBuffer);
-        if (view.byteLength < 12) throw new Error("Файл слишком мал для FIT");
+        if (view.byteLength < 12) throw new Error(t("err_fit_too_small"));
 
         const headerSize = view.getUint8(0);
         const sig = String.fromCharCode(
@@ -1370,13 +1756,11 @@
           view.getUint8(10),
           view.getUint8(11),
         );
-        if (sig !== ".FIT")
-          throw new Error("Не похоже на FIT-файл (нет сигнатуры .FIT)");
+        if (sig !== ".FIT") throw new Error(t("err_fit_no_signature"));
 
         const dataSize = view.getUint32(4, true);
         const dataEnd = headerSize + dataSize;
-        if (dataEnd > view.byteLength)
-          throw new Error("Повреждённый FIT-файл (некорректный размер данных)");
+        if (dataEnd > view.byteLength) throw new Error(t("err_fit_corrupt"));
 
         const localDefs = {};
         let lastTimestamp = null;
@@ -1487,10 +1871,7 @@
           }
         }
 
-        if (!points.length)
-          throw new Error(
-            "В FIT-файле не найдено точек трека (record) с координатами",
-          );
+        if (!points.length) throw new Error(t("err_fit_no_points"));
         return points;
       }
 
@@ -1513,11 +1894,9 @@
       const NETWORK_PACE_MS = 250;
       const MAX_ROUTED_EPISODES = 30;
       const MAX_ELEVATION_POINTS_PER_REQUEST = 100;
-      const INTERP_MODE_LABELS = {
-        foot: "пешком",
-        bike: "велосипед",
-        car: "авто",
-      };
+      function interpModeLabel(mode) {
+        return t("modeword_" + mode);
+      }
 
       function sleep(ms) {
         return new Promise((resolve) => setTimeout(resolve, ms));
@@ -1730,9 +2109,7 @@
         if (totalS <= intervalS || D < 30) return fallback();
 
         if (routedBudget.used >= routedBudget.max) {
-          return fallback(
-            `лимит эпизодов с маршрутизацией (${routedBudget.max}) исчерпан`,
-          );
+          return fallback(t("reason_routing_limit", { max: routedBudget.max }));
         }
         routedBudget.used++;
 
@@ -1746,19 +2123,19 @@
         } catch (e) {
           route = null;
         }
-        if (!route) return fallback("маршрут не найден (сервис недоступен)");
+        if (!route) return fallback(t("reason_no_route"));
 
         const r = route.routes[0];
         const wp = route.waypoints;
         if (!wp || wp[0].distance > 300 || wp[1].distance > 300) {
-          return fallback("граница пробела далеко от дороги/тропы");
+          return fallback(t("reason_far_from_road"));
         }
         const routeDist = r.distance;
         if (routeDist / Math.max(D, 1) > 4) {
-          return fallback("маршрут — слишком большой крюк");
+          return fallback(t("reason_big_detour"));
         }
         if (routeDist / totalS > 1.2 * maxSpeedParam) {
-          return fallback("маршрут не проходим за время пробела");
+          return fallback(t("reason_too_slow"));
         }
 
         const { points: sampled } = resampleRoute(
@@ -1893,7 +2270,7 @@
         const parseErr = doc.querySelector("parsererror");
         if (parseErr)
           throw new Error(
-            "Ошибка разбора XML: " + parseErr.textContent.slice(0, 200),
+            t("err_xml_parse", { detail: parseErr.textContent.slice(0, 200) }),
           );
 
         // Определяем namespace
@@ -1902,7 +2279,7 @@
 
         // Находим все trkpt
         const allPts = Array.from(doc.querySelectorAll("trkpt"));
-        if (!allPts.length) throw new Error("Точки трека (trkpt) не найдены");
+        if (!allPts.length) throw new Error(t("err_no_trkpt"));
 
         const n = allPts.length;
         const lats = allPts.map((p) => parseFloat(p.getAttribute("lat")));
@@ -1929,7 +2306,7 @@
           return e ? parseFloat(e.textContent) : NaN;
         });
 
-        log(`Загружено точек: ${n}`, "log-info");
+        log(t("log_loaded_points", { n }), "log-info");
 
         // Длина исходного трека (сумма расстояний между соседними точками)
         let lengthBefore = 0;
@@ -1937,7 +2314,7 @@
           lengthBefore += haversine(lats[i - 1], lons[i - 1], lats[i], lons[i]);
         }
         log(
-          `Длина трека до исправления: ${(lengthBefore / 1000).toFixed(2)} км`,
+          t("log_length_before", { km: (lengthBefore / 1000).toFixed(2) }),
           "log-info",
         );
 
@@ -1951,7 +2328,7 @@
         );
 
         if (!episodes.length) {
-          log("Аномальных эпизодов не обнаружено.", "log-warn");
+          log(t("log_no_episodes"), "log-warn");
           return { xml: xmlText, interpSegments: [] };
         }
 
@@ -1961,7 +2338,10 @@
         }, 0);
         if (routedRequestedCount > MAX_ROUTED_EPISODES) {
           log(
-            `⚠ Эпизодов с маршрутизацией много (${routedRequestedCount}) — маршрутизация ограничена первыми ${MAX_ROUTED_EPISODES}, остальные заполнятся линией.`,
+            t("log_routed_limit", {
+              count: routedRequestedCount,
+              max: MAX_ROUTED_EPISODES,
+            }),
             "log-warn",
           );
         }
@@ -1992,7 +2372,7 @@
 
           if (mode === "keep") {
             log(
-              `\nЭпизод глушения: точки [${ep.firstBad}..${ep.lastBad}] — оставлен без изменений (выбрано «оставить как было»)`,
+              t("log_episode_kept", { first: ep.firstBad, last: ep.lastBad }),
               "log-warn",
             );
             continue;
@@ -2034,26 +2414,38 @@
           const durS =
             afterIdx < n ? (times[afterIdx] - times[beforeIdx]).toFixed(0) : 0;
           log(
-            `\nЭпизод глушения: точки [${firstBad}..${lastBad}]  (${cnt} точек, ${durS}с пробел)` +
-              (afterIdx >= n ? "  [обрыв в конце трека, без возврата]" : ""),
+            t("log_episode_header", {
+              first: firstBad,
+              last: lastBad,
+              cnt,
+              dur: durS,
+              tail: afterIdx >= n ? t("log_episode_tail_cut") : "",
+            }),
             "log-warn",
           );
           log(
-            `  До  : ${timeEls[beforeIdx]?.textContent}  (${lats[beforeIdx].toFixed(5)}, ${lons[beforeIdx].toFixed(5)})  ele=${eles[beforeIdx].toFixed(1)}м`,
+            t("log_before_point", {
+              time: timeEls[beforeIdx]?.textContent,
+              lat: lats[beforeIdx].toFixed(5),
+              lon: lons[beforeIdx].toFixed(5),
+              ele: eles[beforeIdx].toFixed(1),
+            }),
           );
           if (afterIdx < n)
             log(
-              `  После: ${timeEls[afterIdx]?.textContent}  (${lats[afterIdx].toFixed(5)}, ${lons[afterIdx].toFixed(5)})  ele=${eles[afterIdx].toFixed(1)}м`,
+              t("log_after_point", {
+                time: timeEls[afterIdx]?.textContent,
+                lat: lats[afterIdx].toFixed(5),
+                lon: lons[afterIdx].toFixed(5),
+                ele: eles[afterIdx].toFixed(1),
+              }),
             );
-          else
-            log(
-              `  После: — (запись обрывается во время глушения, точки удаляются до конца трека)`,
-            );
+          else log(t("log_after_none"));
 
           for (let i = firstBad; i <= lastBad; i++) removeSet.add(i);
 
           if (mode === "remove") {
-            log(`  Участок удалён без замены (${cnt} точек)`, "log-warn");
+            log(t("log_removed_no_replace", { cnt }), "log-warn");
             continue;
           }
 
@@ -2064,10 +2456,15 @@
             const stableEle = getPreEpisodeEle(eles, times, beforeIdx);
             const corrected = Math.abs(stableEle - eles[beforeIdx]) > 5;
             log(
-              `  Высота: ${stableEle.toFixed(1)}м → ${eles[afterIdx].toFixed(1)}м` +
-                (corrected
-                  ? `  [скорректирована с ${eles[beforeIdx].toFixed(1)}м]`
-                  : ""),
+              t("log_elevation", {
+                before: stableEle.toFixed(1),
+                after: eles[afterIdx].toFixed(1),
+                corrected: corrected
+                  ? t("log_elevation_corrected", {
+                      orig: eles[beforeIdx].toFixed(1),
+                    })
+                  : "",
+              }),
               "log-info",
             );
 
@@ -2122,13 +2519,24 @@
             if (routed) {
               if (interpResult.method === "routed") {
                 log(
-                  `  Эпизод ${epIdx + 1}/${episodes.length}: маршрут ${interpResult.distanceKm.toFixed(1)} км (${INTERP_MODE_LABELS[mode]}), высота: ${interpResult.demOk ? "рельеф ✓" : "линейно (рельеф недоступен)"}`,
+                  t("log_episode_routed", {
+                    i: epIdx + 1,
+                    n: episodes.length,
+                    km: interpResult.distanceKm.toFixed(1),
+                    modeLabel: interpModeLabel(mode),
+                    demStatus: interpResult.demOk ? t("dem_ok") : t("dem_fail"),
+                  }),
                   "log-ok",
                 );
               } else {
                 log(
-                  `  Эпизод ${epIdx + 1}/${episodes.length}: маршрут не построен — линейная интерполяция` +
-                    (interpResult.reason ? ` (${interpResult.reason})` : ""),
+                  t("log_episode_fallback", {
+                    i: epIdx + 1,
+                    n: episodes.length,
+                    reasonSuffix: interpResult.reason
+                      ? ` (${interpResult.reason})`
+                      : "",
+                  }),
                   "log-warn",
                 );
               }
@@ -2151,7 +2559,7 @@
 
         // Собираем оставшиеся trkpt и вставляем интерполированные
         const seg = doc.querySelector("trkseg");
-        if (!seg) throw new Error("Элемент <trkseg> не найден");
+        if (!seg) throw new Error(t("err_no_trkseg"));
 
         // Сериализуем оставшиеся точки в строки (быстрее DOM-манипуляций на 60k точках)
         const serializer = new XMLSerializer();
@@ -2197,15 +2605,18 @@
           `$1\n${trkptBlock}\n\t\t$3`,
         );
 
-        log(`\nУдалено плохих точек  : ${totalRemoved}`, "log-ok");
-        log(`Вставлено интерполир. : ${totalInserted}`, "log-ok");
+        log(t("log_removed_total", { n: totalRemoved }), "log-ok");
+        log(t("log_inserted_total", { n: totalInserted }), "log-ok");
         log(
-          `Итого точек в треке   : ${n - totalRemoved + totalInserted}`,
+          t("log_total_points", { n: n - totalRemoved + totalInserted }),
           "log-ok",
         );
         log(
-          `Длина трека после исправления: ${(lengthAfter / 1000).toFixed(2)} км` +
-            ` (было ${(lengthBefore / 1000).toFixed(2)} км, разница ${((lengthAfter - lengthBefore) / 1000).toFixed(2)} км)`,
+          t("log_length_after", {
+            after: (lengthAfter / 1000).toFixed(2),
+            before: (lengthBefore / 1000).toFixed(2),
+            diff: ((lengthAfter - lengthBefore) / 1000).toFixed(2),
+          }),
           "log-ok",
         );
 
@@ -2215,7 +2626,8 @@
       // ─── UI ──────────────────────────────────────────────────────────────────────
 
       let gpxText = null,
-        gpxFileName = "";
+        gpxFileName = "",
+        lastFileSuffixKey = null;
 
       const dropzone = document.getElementById("dropzone");
       const fileInput = document.getElementById("file-input");
@@ -2229,7 +2641,6 @@
         [
           "hiking",
           {
-            label: "🥾 Пеший поход",
             maxSpeed: 10,
             minDist: 1000,
             preJitter: 200,
@@ -2240,7 +2651,6 @@
         [
           "running",
           {
-            label: "🏃 Бег / трейлраннинг",
             maxSpeed: 12,
             minDist: 1500,
             preJitter: 300,
@@ -2251,7 +2661,6 @@
         [
           "kayak",
           {
-            label: "🛶 Сплав / каяк / SUP",
             maxSpeed: 8,
             minDist: 1000,
             preJitter: 200,
@@ -2262,7 +2671,6 @@
         [
           "horse",
           {
-            label: "🐎 Верховая езда",
             maxSpeed: 15,
             minDist: 1500,
             preJitter: 300,
@@ -2273,7 +2681,6 @@
         [
           "mtb",
           {
-            label: "🚴 Велосипед (МТБ)",
             maxSpeed: 25,
             minDist: 2000,
             preJitter: 500,
@@ -2284,7 +2691,6 @@
         [
           "road_bike",
           {
-            label: "🚴 Велосипед (шоссе)",
             maxSpeed: 30,
             minDist: 2500,
             preJitter: 500,
@@ -2295,7 +2701,6 @@
         [
           "ski",
           {
-            label: "⛷ Горные лыжи / сноуборд",
             maxSpeed: 40,
             minDist: 2000,
             preJitter: 600,
@@ -2306,7 +2711,6 @@
         [
           "enduro",
           {
-            label: "🏍 Эндуро / мото-бездорожье",
             maxSpeed: 40,
             minDist: 3000,
             preJitter: 800,
@@ -2317,7 +2721,6 @@
         [
           "boat",
           {
-            label: "🚤 Катер / моторная лодка",
             maxSpeed: 35,
             minDist: 3000,
             preJitter: 800,
@@ -2328,7 +2731,6 @@
         [
           "car",
           {
-            label: "🚗 Авто / шоссейный мотоцикл",
             maxSpeed: 70,
             minDist: 5000,
             preJitter: 1500,
@@ -2339,7 +2741,6 @@
         [
           "paraglider",
           {
-            label: "🪂 Параплан / дельтаплан",
             maxSpeed: 25,
             minDist: 3000,
             preJitter: 500,
@@ -2350,7 +2751,6 @@
         [
           "train",
           {
-            label: "🚆 Поезд / автобус",
             maxSpeed: 90,
             minDist: 10000,
             preJitter: 0,
@@ -2361,7 +2761,6 @@
       ];
       const DEFAULT_PROFILE = "hiking";
       const CUSTOM_PROFILE_KEY = "custom";
-      const CUSTOM_PROFILE_LABEL = "🛠 Пользовательский";
       const PROFILE_PARAM_IDS = [
         "p-maxspeed",
         "p-mindist",
@@ -2411,12 +2810,12 @@
       // каждого найденного участка отдельно можно выбрать "удалить" (вырезать
       // без замены) или "оставить как было" (вообще не трогать).
       const GAP_FILL_OPTIONS = [
-        { value: "linear", label: "Прямая линия (офлайн)" },
-        { value: "foot", label: "Маршрут: пешком" },
-        { value: "bike", label: "Маршрут: велосипед" },
-        { value: "car", label: "Маршрут: авто" },
-        { value: "remove", label: "Удалить участок (без замены)" },
-        { value: "keep", label: "Оставить как было (не трогать)" },
+        { value: "linear" },
+        { value: "foot" },
+        { value: "bike" },
+        { value: "car" },
+        { value: "remove" },
+        { value: "keep" },
       ];
 
       const episodeCard = document.getElementById("episode-card");
@@ -2481,10 +2880,10 @@
             ? Math.round(times[ep.afterIdx] - times[ep.firstBad - 1])
             : null;
           info.innerHTML =
-            `<strong>Эпизод ${idx + 1}</strong>: ${tFrom} → ${hasAfter ? formatEpisodeTime(times[ep.afterIdx]) : "обрыв в конце трека"}` +
+            `<strong>${t("episode_label", { n: idx + 1 })}</strong>: ${tFrom} → ${hasAfter ? formatEpisodeTime(times[ep.afterIdx]) : t("episode_tail")}` +
             (durS !== null
-              ? ` &nbsp;(${formatDuration(durS)}, ${cnt} точек)`
-              : ` &nbsp;(${cnt} точек)`);
+              ? ` &nbsp;(${formatDuration(durS)}, ${t("episode_points", { n: cnt })})`
+              : ` &nbsp;(${t("episode_points", { n: cnt })})`);
 
           const select = document.createElement("select");
           select.className = "episode-mode-select";
@@ -2493,7 +2892,7 @@
               continue; // хвостовой обрыв — маршрут строить некуда
             const o = document.createElement("option");
             o.value = opt.value;
-            o.textContent = opt.label;
+            o.textContent = t("gapfill_" + opt.value);
             select.appendChild(o);
           }
           select.value = episodeChoices[idx];
@@ -2507,19 +2906,54 @@
         });
       }
 
+      // Пересобирает динамически созданные части UI (тексты которых не покрыты
+      // атрибутами data-i18n) после смены языка — без потери текущего состояния
+      // (выбранный профиль, выбранные режимы эпизодов, уже посчитанная статистика).
+      function rebuildDynamicUI() {
+        const profileSelect = document.getElementById("p-profile");
+        if (profileSelect) {
+          const curVal = profileSelect.value;
+          Array.from(profileSelect.options).forEach((opt) => {
+            opt.textContent = t("profile_" + opt.value);
+          });
+          profileSelect.value = curVal;
+        }
+
+        if (episodePreview.length) {
+          renderEpisodeList(episodePreview, episodePreviewTimes);
+        }
+
+        for (const id of ["track-stats-before", "track-stats-after"]) {
+          const stats = lastTrackStats[id];
+          if (stats) renderTrackStats(document.getElementById(id), stats);
+        }
+
+        if (gpxFileName) {
+          fileNameEl.textContent =
+            "📄 " +
+            gpxFileName +
+            (lastFileSuffixKey ? t(lastFileSuffixKey) : "");
+        }
+
+        if (btnDl.style.display !== "none") {
+          const label = document.querySelector("#btn-download .dl-label");
+          if (label) label.textContent = t("btn_download_label_done");
+        }
+      }
+
       (function initProfileSelect() {
         const select = document.getElementById("p-profile");
         for (const [key, p] of ACTIVITY_PROFILES) {
           const opt = document.createElement("option");
           opt.value = key;
-          opt.textContent = p.label;
+          opt.textContent = t("profile_" + key);
           select.appendChild(opt);
         }
         // Скрытая опция-плейсхолдер: не выбирается вручную из списка,
         // но подставляется автоматически, когда пользователь правит поля руками.
         const customOpt = document.createElement("option");
         customOpt.value = CUSTOM_PROFILE_KEY;
-        customOpt.textContent = CUSTOM_PROFILE_LABEL;
+        customOpt.textContent = t("profile_custom");
         customOpt.hidden = true;
         select.appendChild(customOpt);
 
@@ -2560,10 +2994,11 @@
         const isTcx = name.endsWith(".tcx");
         const isFit = name.endsWith(".fit");
         if (!file || (!isGpx && !isTcx && !isFit)) {
-          alert("Пожалуйста, выберите .gpx, .tcx или .fit файл");
+          alert(t("alert_bad_filetype"));
           return;
         }
         gpxFileName = file.name;
+        lastFileSuffixKey = null;
         fileNameEl.textContent = "📄 " + file.name;
         const reader = new FileReader();
         reader.onload = (e) => {
@@ -2572,15 +3007,15 @@
               gpxText = e.target.result;
             } else if (isTcx) {
               gpxText = convertTcxToGpx(e.target.result, file.name);
-              fileNameEl.textContent =
-                "📄 " + file.name + " (конвертирован из TCX)";
+              lastFileSuffixKey = "suffix_tcx";
+              fileNameEl.textContent = "📄 " + file.name + t("suffix_tcx");
             } else {
               gpxText = convertFitToGpx(e.target.result, file.name);
-              fileNameEl.textContent =
-                "📄 " + file.name + " (конвертирован из FIT)";
+              lastFileSuffixKey = "suffix_fit";
+              fileNameEl.textContent = "📄 " + file.name + t("suffix_fit");
             }
           } catch (err) {
-            alert("Не удалось разобрать файл: " + err.message);
+            alert(t("alert_parse_fail", { msg: err.message }));
             btnFix.disabled = true;
             gpxText = null;
             updateEpisodeList();
@@ -2674,12 +3109,13 @@
 
             btnDl.href = url;
             btnDl.download = outName;
-            document.querySelector("#btn-download .dl-label").textContent =
-              "⬇ Скачать";
+            document.querySelector("#btn-download .dl-label").textContent = t(
+              "btn_download_label_done",
+            );
             document.getElementById("dl-filename").textContent = outName;
             btnDl.style.display = "flex";
 
-            log("\n✓ Готово!", "log-ok");
+            log(t("log_done"), "log-ok");
             document.getElementById("done-img").style.display = "block";
 
             const {
@@ -2703,12 +3139,18 @@
               }
             }
           } catch (err) {
-            log("\n✗ Ошибка: " + err.message, "log-err");
+            log(t("log_error", { msg: err.message }), "log-err");
           } finally {
             btnFix.disabled = false;
           }
         }, 50);
       });
+
+      // ─── Переключатель языка ────────────────────────────────────────────────
+      document.querySelectorAll(".lang-switch button").forEach((btn) => {
+        btn.addEventListener("click", () => setLang(btn.dataset.lang));
+      });
+      applyStaticI18n();
     </script>
     <script>
       // ─── Обновление PWA ─────────────────────────────────────────────────────
@@ -2747,8 +3189,8 @@
             const banner = document.createElement("div");
             banner.className = "update-banner";
             banner.innerHTML =
-              "<span>Доступно обновление GPX Repair</span>" +
-              '<button type="button">Обновить</button>';
+              `<span>${t("update_available")}</span>` +
+              `<button type="button">${t("update_btn")}</button>`;
             banner
               .querySelector("button")
               .addEventListener("click", () => window.location.reload());
