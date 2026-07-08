@@ -10,7 +10,7 @@
 // загрузиться напрямую с сайта, а если сети/доступа нет — просто не
 // показываются (см. onerror в index.html), без подстановки кэша-заглушки.
 
-const CACHE_NAME = "gpx-repair-v7";
+const CACHE_NAME = "gpx-repair-v8";
 
 const PRECACHE_URLS = [
   "./",
