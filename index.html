@@ -4439,6 +4439,18 @@
       // эпизода целится своим концом ПРЯМО в ещё не осевшее, завышенное
       // значение высоты — визуально это выглядит как резкий шип на графике
       // высоты сразу перед возвратом к нормальному профилю.
+      //
+      // Важно: реальный барометрический "отход" после сбоя затухает не резко,
+      // а ПЛАВНО экспоненциально — скорость изменения высоты на каждом шаге
+      // составляет примерно 0.96-0.97 от предыдущей на протяжении ДЕСЯТКОВ
+      // точек подряд, так что она пересекает порог maxVertSpeed задолго до
+      // того, как реально затухнет до шумового уровня. Поэтому помимо
+      // проверки "выше порога" мы отдельно отслеживаем именно эту сигнатуру
+      // плавного затухания (коэффициент между соседними |скорость по
+      // высоте| остаётся <= DECAY_RATIO_MAX, т.е. не растёт) и продолжаем
+      // поглощать точки, пока она не спадёт до QUIET_V — реального
+      // "шумового пола" GPS/барометра, где даже настоящий рельеф уже
+      // неотличим от почти нулевой вертикальной скорости на данном шаге.
       function extendAltitudeForward(eles, times, epEnd, maxVertSpeed) {
         const n = eles.length;
         let newEnd = epEnd;
@@ -4446,20 +4458,49 @@
         let frozenFwdS = 0;
         const FROZEN_EPS_M = 0.005;
         const MAX_FROZEN_FWD_S = 60;
+        const QUIET_V = 0.5; // "шумовой пол", ниже которого крэш считается угасшим
+        const DECAY_RATIO_MAX = 1.05; // допуск на шум при слежении за хвостом
+        const MAX_TAIL_SECONDS = 180; // предохранитель от переедания реального рельефа
+        let inTail = false;
+        let tailS = 0;
+        let prevAbsV = null;
 
         while (i < n - 1) {
           const dtOut = Math.abs(times[i + 1] - times[i]);
           if (dtOut > 30) break;
 
           const dhOut = Math.abs(eles[i + 1] - eles[i]);
-          const outAnomaly = dtOut > 0 && dhOut / dtOut > maxVertSpeed;
+          const vOut = dtOut > 0 ? dhOut / dtOut : 0;
+          const outAnomaly = dtOut > 0 && vOut > maxVertSpeed;
 
           if (outAnomaly) {
             newEnd = i + 1;
             frozenFwdS = 0; // настоящая аномалия сбрасывает лимит
+            inTail = true;
+            tailS = 0;
+            prevAbsV = vOut;
             i++;
             continue;
           }
+
+          // Хвост затухающего крэша: раз уже была зафиксирована аномалия,
+          // продолжаем поглощать точки, пока скорость изменения высоты
+          // плавно спадает (не растёт больше чем на DECAY_RATIO_MAX от
+          // предыдущей) и ещё не ушла ниже шумового пола QUIET_V.
+          if (
+            inTail &&
+            prevAbsV !== null &&
+            tailS < MAX_TAIL_SECONDS &&
+            vOut > QUIET_V &&
+            vOut <= prevAbsV * DECAY_RATIO_MAX
+          ) {
+            newEnd = i + 1;
+            tailS += dtOut;
+            prevAbsV = vOut;
+            i++;
+            continue;
+          }
+
           // Проверяем следующий шаг — "плато перед окончательным затуханием"
           if (i + 2 < n) {
             const dtNext = Math.abs(times[i + 2] - times[i + 1]);
