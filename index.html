@@ -5028,6 +5028,141 @@
         return out;
       }
 
+      // ─── Диагностика сервисов высоты из консоли браузера ───────────────────────
+      //
+      // Список известных бесплатных сервисов высоты рельефа, доступных без
+      // API-ключа напрямую из браузера (без собственного прокси). Не все
+      // гарантированно отдают CORS-заголовки или покрывают весь мир — именно
+      // поэтому даём пользователю возможность проверить их вживую и выбрать,
+      // что лучше работает в его регионе/сети.
+      const ELEVATION_TEST_SERVICES = [
+        {
+          name: "Open-Meteo",
+          url: (lat, lon) =>
+            `https://api.open-meteo.com/v1/elevation?latitude=${lat}&longitude=${lon}`,
+          parse: (d) =>
+            Array.isArray(d && d.elevation) ? d.elevation[0] : undefined,
+        },
+        {
+          name: "OpenTopoData (srtm30m)",
+          url: (lat, lon) =>
+            `https://api.opentopodata.org/v1/srtm30m?locations=${lat},${lon}`,
+          parse: (d) =>
+            d && Array.isArray(d.results) && d.results[0]
+              ? d.results[0].elevation
+              : undefined,
+        },
+        {
+          name: "OpenTopoData (aster30m)",
+          url: (lat, lon) =>
+            `https://api.opentopodata.org/v1/aster30m?locations=${lat},${lon}`,
+          parse: (d) =>
+            d && Array.isArray(d.results) && d.results[0]
+              ? d.results[0].elevation
+              : undefined,
+        },
+        {
+          name: "OpenTopoData (etopo1, весь мир вкл. океан)",
+          url: (lat, lon) =>
+            `https://api.opentopodata.org/v1/etopo1?locations=${lat},${lon}`,
+          parse: (d) =>
+            d && Array.isArray(d.results) && d.results[0]
+              ? d.results[0].elevation
+              : undefined,
+        },
+        {
+          name: "Open-Elevation",
+          url: (lat, lon) =>
+            `https://api.open-elevation.com/api/v1/lookup?locations=${lat},${lon}`,
+          parse: (d) =>
+            d && Array.isArray(d.results) && d.results[0]
+              ? d.results[0].elevation
+              : undefined,
+        },
+        {
+          name: "USGS EPQS (только США)",
+          url: (lat, lon) =>
+            `https://epqs.nationalmap.gov/v1/json?x=${lon}&y=${lat}&units=Meters&wkid=4326&includeDate=false`,
+          parse: (d) => {
+            if (!d) return undefined;
+            if (d.value !== undefined) return Number(d.value);
+            const v =
+              d.USGS_Elevation_Point_Query_Service &&
+              d.USGS_Elevation_Point_Query_Service.Elevation_Query;
+            return v ? Number(v.Elevation) : undefined;
+          },
+        },
+      ];
+
+      // Консольная команда: window.checkElevationServices([lat], [lon])
+      // Опрашивает параллельно несколько публичных сервисов высоты и выводит
+      // таблицу со статусом, значением высоты и временем ответа — чтобы можно
+      // было вживую выбрать сервис, который лучше всего работает в вашем
+      // регионе/сети (например, если основной сервис заблокирован CORS или
+      // недоступен из-за региональных ограничений).
+      // По умолчанию используется точка из примера в issue (Адыгея/Кубань).
+      async function checkElevationServices(lat = 44.1235, lon = 39.58) {
+        console.log(
+          `Проверка сервисов высоты для точки ${lat}, ${lon}. Ожидайте...`,
+        );
+        const results = await Promise.all(
+          ELEVATION_TEST_SERVICES.map(async (svc) => {
+            const url = svc.url(lat, lon);
+            const t0 =
+              typeof performance !== "undefined" ? performance.now() : Date.now();
+            const elapsed = () =>
+              Math.round(
+                (typeof performance !== "undefined"
+                  ? performance.now()
+                  : Date.now()) - t0,
+              );
+            const ctrl = new AbortController();
+            const timer = setTimeout(() => ctrl.abort(), NETWORK_TIMEOUT_MS);
+            try {
+              const resp = await fetch(url, { signal: ctrl.signal });
+              clearTimeout(timer);
+              if (!resp.ok) {
+                return {
+                  Сервис: svc.name,
+                  Статус: `HTTP ${resp.status}`,
+                  "Высота, м": "-",
+                  "Время, мс": elapsed(),
+                  URL: url,
+                };
+              }
+              const data = await resp.json();
+              const ele = svc.parse(data);
+              return {
+                Сервис: svc.name,
+                Статус: "OK",
+                "Высота, м": typeof ele === "number" ? ele.toFixed(1) : "н/д",
+                "Время, мс": elapsed(),
+                URL: url,
+              };
+            } catch (e) {
+              clearTimeout(timer);
+              const msg =
+                e && e.name === "AbortError"
+                  ? "таймаут"
+                  : "ошибка сети/CORS: " + ((e && e.message) || String(e));
+              return {
+                Сервис: svc.name,
+                Статус: msg,
+                "Высота, м": "-",
+                "Время, мс": elapsed(),
+                URL: url,
+              };
+            }
+          }),
+        );
+        if (typeof console.table === "function") console.table(results);
+        else console.log(results);
+        return results;
+      }
+      if (typeof window !== "undefined") {
+        window.checkElevationServices = checkElevationServices;
+      }
+
       // Барометрическая/DEM высота имеют смещение друг от друга (10-30м) — плавно
       // перетекаем от известного смещения на старте к известному смещению на конце,
       // чтобы на швах эпизода не было ступеньки высоты.
