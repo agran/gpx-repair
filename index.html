@@ -350,7 +350,27 @@
       }
       @media (max-width: 480px) {
         .episode-info {
-          flex: 0 0 auto;
+          flex: 1 1 100%;
+          min-width: 0;
+        }
+        .episode-actions {
+          width: 100%;
+          flex-wrap: wrap;
+          align-items: stretch;
+        }
+        .episode-mode-select {
+          flex: 1 1 100%;
+        }
+        .episode-waypoint-btn {
+          flex: 1 1 100%;
+          min-width: 0;
+          white-space: normal;
+          text-align: center;
+        }
+        .episode-waypoint-info {
+          flex: 1 1 100%;
+          min-width: 0;
+          overflow-wrap: anywhere;
         }
       }
       .episode-waypoint-pin {
@@ -7146,27 +7166,31 @@
       // долго скроллить мимо превью карты, профиля высоты и параметров —
       // кнопка появляется сразу после успешной загрузки файла и сама
       // прокручивает к карточке "3. Обработка". Прячется автоматически, как
-      // только эта карточка попадает в видимую область (IntersectionObserver
-      // ниже), и снова появляется, если пользователь проскроллит обратно вверх.
+      // только в видимую область попадает САМА кнопка "Исправить трек"
+      // (а не просто верх карточки, который на мобильном мог уже чуть
+      // выглядывать на экране, пока до настоящей кнопки ещё нужно
+      // прокручивать), и снова появляется, если пользователь проскроллит
+      // обратно вверх.
       const scrollToFixBtn = document.getElementById("scroll-to-fix-btn");
       const cardFixEl = document.getElementById("card-fix");
+      const btnFixEl = document.getElementById("btn-fix");
       let trackLoadedForScrollBtn = false;
-      let cardFixVisible = false;
+      let btnFixVisible = false;
       function updateScrollToFixVisibility() {
         scrollToFixBtn.style.display =
-          trackLoadedForScrollBtn && !cardFixVisible ? "flex" : "none";
+          trackLoadedForScrollBtn && !btnFixVisible ? "flex" : "none";
       }
-      if (scrollToFixBtn && cardFixEl) {
+      if (scrollToFixBtn && cardFixEl && btnFixEl) {
         scrollToFixBtn.addEventListener("click", () => {
           cardFixEl.scrollIntoView({ behavior: "smooth", block: "start" });
         });
         new IntersectionObserver(
           (entries) => {
-            cardFixVisible = entries[0].isIntersecting;
+            btnFixVisible = entries[0].isIntersecting;
             updateScrollToFixVisibility();
           },
           { threshold: 0 },
-        ).observe(cardFixEl);
+        ).observe(btnFixEl);
       }
 
       // ─── Профили активности ────────────────────────────────────────────────────
