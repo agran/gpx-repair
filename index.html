@@ -259,8 +259,24 @@
         align-items: center;
         justify-content: space-between;
         gap: 10px;
-        padding: 10px 0;
+        padding: 10px 8px;
+        border-left: 3px solid transparent;
+        border-radius: 8px;
         border-bottom: 1px solid #0f3460;
+      }
+      .episode-row--jam {
+        border-left-color: #f43f5e;
+        background: rgba(244, 63, 94, 0.07);
+      }
+      .episode-row--pause {
+        border-left-color: #22d3ee;
+        background: rgba(34, 211, 238, 0.07);
+      }
+      .episode-row--pause .episode-info strong::before {
+        content: "⏸ ";
+      }
+      .episode-row--jam .episode-info strong::before {
+        content: "⚠ ";
       }
       .episode-row:last-child {
         border-bottom: none;
@@ -269,6 +285,16 @@
         font-size: 0.83rem;
         color: #ccc;
         flex: 1 1 260px;
+      }
+      .episode-info--clickable {
+        cursor: pointer;
+        border-radius: 6px;
+        padding: 2px 4px;
+        margin: -2px -4px;
+        transition: background 0.15s ease;
+      }
+      .episode-info--clickable:hover {
+        background: rgba(126, 184, 247, 0.12);
       }
       .episode-mode-select {
         background: #0d1b35;
@@ -347,6 +373,19 @@
       }
       .map-picking-waypoint {
         cursor: crosshair !important;
+      }
+      /* Подсветка эпизода/паузы на карте при клике по строке списка */
+      .episode-highlight-flash {
+        animation: episode-highlight-pulse 1.3s ease-in-out infinite;
+      }
+      @keyframes episode-highlight-pulse {
+        0%,
+        100% {
+          opacity: 1;
+        }
+        50% {
+          opacity: 0.35;
+        }
       }
 
       /* Раскраска трека на карте (скорость / пульс / высота / уклон) */
@@ -1383,6 +1422,8 @@
             "Сначала нажмите «Исправить трек» — точку можно выбрать на карте результата",
           hint_waypoint_routeless:
             "Недоступно для «Удалить»/«Оставить как было» — маршрут не строится",
+          hint_episode_locate:
+            "Показать этот участок на карте (и на карте результата, если она уже построена)",
           no_episodes_msg:
             "✓ Аномальных участков не найдено — трек уже в порядке, исправление не требуется.",
           card3_title: "3. Обработка",
@@ -1577,6 +1618,8 @@
             "Click \"Fix track\" first — the waypoint can be picked on the result map",
           hint_waypoint_routeless:
             "Not available for \"Remove\"/\"Keep as-is\" — no route is built",
+          hint_episode_locate:
+            "Show this section on the map (and on the result map, if already built)",
           no_episodes_msg:
             "✓ No anomalous sections found — the track is already clean, no fix needed.",
           card3_title: "3. Processing",
@@ -4590,7 +4633,21 @@
                   refLonR = lons[resumeIdx];
                 let j = tOut;
                 let stepsBack = 0;
-                while (j >= 0 && stepsBack < MICRO_SCAN_POINTS) {
+                // Ограничение не только числом точек (MICRO_SCAN_POINTS), но и
+                // временем (MICRO_SCAN_SECONDS) — на треке с плотной записью
+                // (интервал в 1-3с) 200 точек назад могут растянуться на
+                // час и больше РЕАЛЬНОГО честного движения, если место
+                // возврата (resumeIdx) просто физически далеко от старой
+                // части маршрута (например, петля/разворот тропы) — тогда
+                // dLocal никогда не опустится ниже порога не потому что это
+                // тот же самый выброс, а потому что там в принципе другая
+                // часть трека. Без временного окна такой честный участок
+                // целиком ошибочно попадал в "эпизод" глушения.
+                while (
+                  j >= 0 &&
+                  stepsBack < MICRO_SCAN_POINTS &&
+                  times[tOut] - times[j] <= MICRO_SCAN_SECONDS
+                ) {
                   const dLocal = haversine(
                     lats[j],
                     lons[j],
@@ -7236,6 +7293,166 @@
         renderEpisodeList(episodePreview, episodePreviewTimes);
       }
 
+      // Убирает подсветку эпизода/паузы с указанной карты (не трогает
+      // остальные слои — маркеры, курсор и т.п.).
+      function clearEpisodeHighlight(containerId) {
+        const inst = mapInstances[containerId];
+        if (!inst || !inst.episodeHighlightLayer) return;
+        if (inst.map.hasLayer(inst.episodeHighlightLayer)) {
+          inst.map.removeLayer(inst.episodeHighlightLayer);
+        }
+        inst.episodeHighlightLayer = null;
+      }
+
+      // Подсвечивает участок трека [idx0..idx1] (индексы по массивам
+      // lats/lons текущего mapTrackData) контрастной обводкой (белый ореол +
+      // ярко-розовая линия с пульсацией) поверх обычной раскраски,
+      // отмечает границы участка кружками и приближает карту к этому месту —
+      // используется, чтобы по клику на эпизод/паузу в списке было хорошо
+      // видно, о каком именно месте трека идёт речь.
+      function highlightRangeOnMap(containerId, idx0, idx1) {
+        const inst = mapInstances[containerId];
+        const data = mapTrackData[containerId];
+        if (!inst || !data || !data.lats.length) return;
+        clearEpisodeHighlight(containerId);
+        const lo = Math.max(0, Math.min(idx0, idx1));
+        const hi = Math.min(data.lats.length - 1, Math.max(idx0, idx1));
+        let latlngs = [];
+        const idxs = inst.idxs && inst.idxs.length ? inst.idxs : null;
+        if (!idxs) {
+          for (let i = lo; i <= hi; i++) latlngs.push([data.lats[i], data.lons[i]]);
+        } else {
+          // Основной трек на карте рисуется по сглаженным и прореженным точкам
+          // (см. showTrackMap: smoothLats/smoothLons + idxs). Чтобы мигающая
+          // подсветка совпадала с уже видимой линией "до клика", строим её по
+          // тем же координатам, а не по сырым lats/lons.
+          const smoothRadius = Math.min(3, Math.floor(data.lats.length / 10));
+          const smoothLats = smoothSeries(data.lats, smoothRadius);
+          const smoothLons = smoothSeries(data.lons, smoothRadius);
+          const picked = idxs.filter((i) => i >= lo && i <= hi);
+          if (!picked.length) {
+            const mid = (lo + hi) / 2;
+            let best = idxs[0];
+            let bestDist = Math.abs(best - mid);
+            for (let k = 1; k < idxs.length; k++) {
+              const d = Math.abs(idxs[k] - mid);
+              if (d < bestDist) {
+                best = idxs[k];
+                bestDist = d;
+              }
+            }
+            latlngs = [[smoothLats[best], smoothLons[best]]];
+          } else {
+            latlngs = picked.map((i) => [smoothLats[i], smoothLons[i]]);
+          }
+        }
+        const group = L.layerGroup();
+        if (latlngs.length < 2) {
+          const p = latlngs[0] || [data.lats[lo], data.lons[lo]];
+          // Одиночная точка (например, "мгновенная" пауза) — двойной кружок
+          // (белый ореол снизу + яркая заливка сверху) вместо линии.
+          L.circleMarker(p, {
+            radius: 20,
+            color: "#ffffff",
+            weight: 4,
+            fillColor: "#ffffff",
+            fillOpacity: 0.25,
+          }).addTo(group);
+          L.circleMarker(p, {
+            radius: 13,
+            color: "#ff1f7a",
+            weight: 4,
+            fillColor: "#ff1f7a",
+            fillOpacity: 0.55,
+            className: "episode-highlight-flash",
+          }).addTo(group);
+        } else {
+          // Белый ореол под линией — чтобы яркая линия не сливалась ни со
+          // светлыми, ни с тёмными подложками карты.
+          L.polyline(latlngs, {
+            color: "#ffffff",
+            weight: 15,
+            opacity: 0.9,
+            lineCap: "round",
+          }).addTo(group);
+          L.polyline(latlngs, {
+            color: "#ff1f7a",
+            weight: 8,
+            opacity: 0.95,
+            lineCap: "round",
+            className: "episode-highlight-flash",
+          }).addTo(group);
+          // Кружки на границах участка — чётко видно начало и конец.
+          const endpointStyle = {
+            radius: 9,
+            color: "#ffffff",
+            weight: 3,
+            fillColor: "#ff1f7a",
+            fillOpacity: 0.95,
+          };
+          L.circleMarker(latlngs[0], endpointStyle).addTo(group);
+          L.circleMarker(latlngs[latlngs.length - 1], endpointStyle).addTo(
+            group,
+          );
+        }
+        group.addTo(inst.map);
+        inst.episodeHighlightLayer = group;
+        const bounds = L.latLngBounds(latlngs.length ? latlngs : [[data.lats[lo], data.lons[lo]]]);
+        inst.map.fitBounds(bounds, { padding: [60, 60], maxZoom: 16 });
+      }
+
+      // По клику на строку эпизода/паузы в списке — подсвечивает
+      // соответствующий участок на карте "до", а если карта "после" уже
+      // построена (после первого "Исправить трек") — то и на ней тоже
+      // (индексы там другие из-за удалённых/вставленных точек, поэтому
+      // соответствие ищем по времени граничных точек, а не по индексу).
+      function highlightEpisodeOnMaps(idx) {
+        const ep = episodePreview[idx];
+        const times = episodePreviewTimes;
+        if (!ep || !times || !times.length) return;
+        const n = times.length;
+        // Для эпизода глушилки подсвечиваем строго "битые" точки
+        // [firstBad..lastBad], чтобы не захватывать соседние честные точки
+        // и не рисовать лишние визуальные "шипы" на границах.
+        // Для паузы "битых" точек нет (lastBad < firstBad), поэтому
+        // подсвечиваем сам разрыв между граничными точками [lastBad..afterIdx].
+        const rawStart = ep.isPause ? ep.lastBad : ep.firstBad;
+        const rawEnd = ep.isPause ? ep.afterIdx : ep.lastBad;
+        const idx0 = Math.max(0, Math.min(n - 1, rawStart));
+        const idx1 = Math.max(0, Math.min(n - 1, rawEnd));
+        highlightRangeOnMap("map-before", idx0, idx1);
+
+        const afterEl = document.getElementById("map-after");
+        const afterData = mapTrackData["map-after"];
+        const afterReady =
+          afterEl &&
+          afterEl.style.display === "block" &&
+          afterData &&
+          afterData.times &&
+          afterData.times.length;
+        let scrollTarget = "map-before";
+        if (afterReady) {
+          const t0 = Number.isFinite(times[idx0]) ? times[idx0] : times[0];
+          const t1 = Number.isFinite(times[idx1]) ? times[idx1] : times[n - 1];
+          const ai0 = nearestTimeIndex(afterData.times, t0);
+          const ai1 = nearestTimeIndex(afterData.times, t1);
+          if (ai0 >= 0 && ai1 >= 0) {
+            highlightRangeOnMap("map-after", ai0, ai1);
+            // Карта "после" уже готова — она интереснее (показывает
+            // результат исправления), поэтому скроллим именно к ней.
+            scrollTarget = "map-after";
+          } else {
+            clearEpisodeHighlight("map-after");
+          }
+        } else {
+          clearEpisodeHighlight("map-after");
+        }
+        const targetEl = document.getElementById(scrollTarget);
+        if (targetEl) {
+          targetEl.scrollIntoView({ behavior: "smooth", block: "center" });
+        }
+      }
+
       // precomputed (необязательно) — уже готовые {lats,lons,eles,times} для
       // ТЕКУЩЕГО gpxText, чтобы не парсить его через DOMParser второй раз
       // (loadFile уже вызывал extractTrackData для превью-карты). Если не
@@ -7249,6 +7466,8 @@
           episodePreview = [];
           episodeWaypoints.clear();
           waypointPickModeIdx = null;
+          clearEpisodeHighlight("map-before");
+          clearEpisodeHighlight("map-after");
           return;
         }
         let lats, lons, eles, times;
@@ -7307,6 +7526,8 @@
         episodeWaypoints.clear();
         waypointPickModeIdx = null;
         clearWaypointMarkers("map-after");
+        clearEpisodeHighlight("map-before");
+        clearEpisodeHighlight("map-after");
         const defaultMode = resolveInterpMode({ lats, lons, times });
         episodeChoices = finalEpisodes.map((ep) =>
           ep.isPause ? "keep" : defaultMode,
@@ -7323,7 +7544,7 @@
         const n = times.length;
         episodes.forEach((ep, idx) => {
           const row = document.createElement("div");
-          row.className = "episode-row";
+          row.className = `episode-row ${ep.isPause ? "episode-row--pause" : "episode-row--jam"}`;
 
           const info = document.createElement("div");
           info.className = "episode-info";
@@ -7341,6 +7562,12 @@
             (durS !== null
               ? ` &nbsp;(${formatDuration(durS)}, ${ep.isPause ? t("episode_pause_gap") : t("episode_points", { n: cnt })})`
               : ` &nbsp;(${ep.isPause ? t("episode_pause_gap") : t("episode_points", { n: cnt })})`);
+          // Клик по названию/времени эпизода — подсвечивает и приближает
+          // соответствующий участок на карте(ах): "до" всегда, "после" —
+          // если она уже построена (после первого "Исправить трек").
+          info.classList.add("episode-info--clickable");
+          info.title = t("hint_episode_locate");
+          info.addEventListener("click", () => highlightEpisodeOnMaps(idx));
 
           const select = document.createElement("select");
           select.className = "episode-mode-select";
@@ -7791,6 +8018,7 @@
         // Не оставляем активным режим выбора точки на время перестройки —
         // после неё карта "после" будет пересоздана заново.
         waypointPickModeIdx = null;
+        clearEpisodeHighlight("map-after");
         const mapAfterElBeforeFix = document.getElementById("map-after");
         if (mapAfterElBeforeFix)
           mapAfterElBeforeFix.classList.remove("map-picking-waypoint");
