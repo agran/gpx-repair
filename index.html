@@ -741,6 +741,42 @@
         background: #e5e7eb;
       }
 
+      /* Плавающая кнопка "К кнопке Исправить" — появляется после успешной
+         загрузки трека, пока карточка "3. Обработка" не видна на экране
+         (см. wireScrollToFixButton). Особенно полезна на мобильных, где до
+         кнопки "Исправить трек" нужно долго скроллить мимо превью карты,
+         профиля высоты и параметров. */
+      .scroll-to-fix-btn {
+        position: fixed;
+        right: 16px;
+        bottom: 16px;
+        z-index: 900;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        border: none;
+        border-radius: 999px;
+        background: #2563eb;
+        color: #fff;
+        font-size: 0.85rem;
+        font-weight: 600;
+        padding: 10px 16px;
+        box-shadow: 0 6px 20px rgba(0, 0, 0, 0.4);
+        cursor: pointer;
+      }
+      .scroll-to-fix-btn:hover {
+        background: #1d4ed8;
+      }
+      @media (max-width: 480px) {
+        .scroll-to-fix-btn span {
+          display: none;
+        }
+        .scroll-to-fix-btn {
+          padding: 12px 14px;
+          font-size: 1.1rem;
+        }
+      }
+
       .busy-overlay {
         position: fixed;
         inset: 0;
@@ -808,6 +844,16 @@
         <button type="button" data-lang="en">EN</button>
       </div>
     </div>
+    <button
+      type="button"
+      id="scroll-to-fix-btn"
+      class="scroll-to-fix-btn"
+      style="display: none"
+      data-i18n-title="scroll_to_fix_btn"
+      data-i18n-aria-label="scroll_to_fix_btn"
+    >
+      ⬇ <span data-i18n="scroll_to_fix_btn">К кнопке «Исправить»</span>
+    </button>
     <p class="subtitle" data-i18n="subtitle">
       Удаление артефактов GPS-глушилки. Обработка — локально на устройстве, файл
       никуда не отправляется (кроме необязательной маршрутизации по
@@ -1044,7 +1090,7 @@
       <div id="episode-list"></div>
     </div>
 
-    <div class="card">
+    <div class="card" id="card-fix">
       <h2 data-i18n="card3_title">3. Обработка</h2>
       <p
         id="no-episodes-msg"
@@ -1191,6 +1237,7 @@
           no_episodes_msg:
             "✓ Аномальных участков не найдено — трек уже в порядке, исправление не требуется.",
           card3_title: "3. Обработка",
+          scroll_to_fix_btn: "К кнопке «Исправить»",
           btn_fix: "Исправить трек",
           btn_download_label: "⬇ Скачать исправленный GPX",
           btn_download_label_done: "⬇ Скачать",
@@ -1353,6 +1400,7 @@
           no_episodes_msg:
             "✓ No anomalous sections found — the track is already clean, no fix needed.",
           card3_title: "3. Processing",
+          scroll_to_fix_btn: "Jump to “Fix”",
           btn_fix: "Fix track",
           btn_download_label: "⬇ Download fixed GPX",
           btn_download_label_done: "⬇ Download",
@@ -1514,6 +1562,15 @@
         });
         document.querySelectorAll("[data-i18n-alt]").forEach((el) => {
           el.alt = t(el.getAttribute("data-i18n-alt"));
+        });
+        document.querySelectorAll("[data-i18n-title]").forEach((el) => {
+          el.title = t(el.getAttribute("data-i18n-title"));
+        });
+        document.querySelectorAll("[data-i18n-aria-label]").forEach((el) => {
+          el.setAttribute(
+            "aria-label",
+            t(el.getAttribute("data-i18n-aria-label")),
+          );
         });
         document.querySelectorAll(".lang-switch button").forEach((btn) => {
           btn.classList.toggle("active", btn.dataset.lang === currentLang);
@@ -5658,6 +5715,34 @@
       const btnFix = document.getElementById("btn-fix");
       const btnDl = document.getElementById("btn-download");
 
+      // ─── Плавающая кнопка "К кнопке «Исправить»" ───────────────────────────────
+      // На телефоне после загрузки трека до кнопки "Исправить трек" нужно
+      // долго скроллить мимо превью карты, профиля высоты и параметров —
+      // кнопка появляется сразу после успешной загрузки файла и сама
+      // прокручивает к карточке "3. Обработка". Прячется автоматически, как
+      // только эта карточка попадает в видимую область (IntersectionObserver
+      // ниже), и снова появляется, если пользователь проскроллит обратно вверх.
+      const scrollToFixBtn = document.getElementById("scroll-to-fix-btn");
+      const cardFixEl = document.getElementById("card-fix");
+      let trackLoadedForScrollBtn = false;
+      let cardFixVisible = false;
+      function updateScrollToFixVisibility() {
+        scrollToFixBtn.style.display =
+          trackLoadedForScrollBtn && !cardFixVisible ? "flex" : "none";
+      }
+      if (scrollToFixBtn && cardFixEl) {
+        scrollToFixBtn.addEventListener("click", () => {
+          cardFixEl.scrollIntoView({ behavior: "smooth", block: "start" });
+        });
+        new IntersectionObserver(
+          (entries) => {
+            cardFixVisible = entries[0].isIntersecting;
+            updateScrollToFixVisibility();
+          },
+          { threshold: 0 },
+        ).observe(cardFixEl);
+      }
+
       // ─── Профили активности ────────────────────────────────────────────────────
       // Профиль — это только стартовая точка: поля ниже остаются редактируемыми.
       const ACTIVITY_PROFILES = [
@@ -6132,6 +6217,8 @@
                   log(t("alert_parse_fail", { msg: err.message }), "log-err");
                   btnFix.disabled = true;
                   gpxText = null;
+                  trackLoadedForScrollBtn = false;
+                  updateScrollToFixVisibility();
                   document.getElementById("color-mode-row").style.display =
                     "none";
                   document.getElementById(
@@ -6146,6 +6233,8 @@
                 // должна снова попытаться распарсить, а не тихо взять
                 // массивы ПРЕДЫДУЩЕГО файла).
                 cachedTrackArrays = null;
+                trackLoadedForScrollBtn = true;
+                updateScrollToFixVisibility();
                 log("");
                 logLines = [];
                 logEl.style.display = "none";
