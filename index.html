@@ -3569,20 +3569,30 @@
         ctx.stroke();
 
         // Подписи диапазона высоты и полной дистанции — как в легенде карты.
+        // Контрастная тёмная обводка (strokeText под fillText) нужна, чтобы
+        // подпись оставалась читаемой на любом участке графика — заливка
+        // профиля высоты может быть светлой в том же самом месте, где стоит
+        // подпись, и без обводки серый текст на светлом фоне сливается.
+        function labelWithOutline(text, x, y) {
+          ctx.lineWidth = 3;
+          ctx.strokeStyle = "rgba(15, 18, 26, 0.85)";
+          ctx.strokeText(text, x, y);
+          ctx.fillStyle = "#e4e8f2";
+          ctx.fillText(text, x, y);
+        }
         ctx.font =
           "11px -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif";
-        ctx.fillStyle = "#a3adc2";
         ctx.textBaseline = "top";
-        ctx.fillText(`${Math.round(maxEleRaw)} ${t("unit_m")}`, 6, 2);
+        labelWithOutline(`${Math.round(maxEleRaw)} ${t("unit_m")}`, 6, 2);
         ctx.textBaseline = "bottom";
-        ctx.fillText(
+        labelWithOutline(
           `${Math.round(minEleRaw)} ${t("unit_m")}`,
           6,
           cssHeight - 2,
         );
         ctx.textAlign = "right";
         ctx.textBaseline = "bottom";
-        ctx.fillText(
+        labelWithOutline(
           `${(total / 1000).toFixed(1)} ${t("unit_km")}`,
           cssWidth - 6,
           cssHeight - 2,
