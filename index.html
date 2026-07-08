@@ -1389,10 +1389,14 @@
             "\nЭпизод глушения: точки [{first}..{last}]  ({cnt} точек, {dur}с пробел){tail}",
           log_episode_tail_cut: "  [обрыв в конце трека, без возврата]",
           log_before_point: "  До  : {time}  ({lat}, {lon})  ele={ele}м",
+          log_before_none:
+            "  До  : — (глушение с самой первой точки трека)",
           log_after_point: "  После: {time}  ({lat}, {lon})  ele={ele}м",
           log_after_none:
             "  После: — (запись обрывается во время глушения, точки удаляются до конца трека)",
           log_removed_no_replace: "  Участок удалён без замены ({cnt} точек)",
+          log_removed_leading_no_before:
+            "  Участок в начале трека удалён без замены — нет опорной точки до глушения ({cnt} точек)",
           log_elevation: "  Высота: {before}м → {after}м{corrected}",
           log_elevation_corrected: "  [скорректирована с {orig}м]",
           log_episode_routed:
@@ -1552,11 +1556,15 @@
             "\nJammer episode: points [{first}..{last}]  ({cnt} points, {dur}s gap){tail}",
           log_episode_tail_cut: "  [track cut off at the end, no return]",
           log_before_point: "  Before: {time}  ({lat}, {lon})  ele={ele}m",
+          log_before_none:
+            "  Before: — (jamming starts at the very first track point)",
           log_after_point: "  After: {time}  ({lat}, {lon})  ele={ele}m",
           log_after_none:
             "  After: — (recording cuts off during jamming, points removed to the end of the track)",
           log_removed_no_replace:
             "  Section removed, no replacement ({cnt} points)",
+          log_removed_leading_no_before:
+            "  Section at the start of the track removed, no replacement — no reference point before jamming ({cnt} points)",
           log_elevation: "  Elevation: {before}m → {after}m{corrected}",
           log_elevation_corrected: "  [corrected from {orig}m]",
           log_episode_routed:
@@ -5715,9 +5723,10 @@
           totalRemoved += cnt;
           prevFinalLastBad = lastBad;
 
-
           const durS =
-            afterIdx < n ? (times[afterIdx] - times[beforeIdx]).toFixed(0) : 0;
+            afterIdx < n && beforeIdx >= 0
+              ? (times[afterIdx] - times[beforeIdx]).toFixed(0)
+              : 0;
           log(
             t("log_episode_header", {
               first: firstBad,
@@ -5728,14 +5737,16 @@
             }),
             "log-warn",
           );
-          log(
-            t("log_before_point", {
-              time: timeEls[beforeIdx]?.textContent,
-              lat: lats[beforeIdx].toFixed(5),
-              lon: lons[beforeIdx].toFixed(5),
-              ele: eles[beforeIdx].toFixed(1),
-            }),
-          );
+          if (beforeIdx >= 0)
+            log(
+              t("log_before_point", {
+                time: timeEls[beforeIdx]?.textContent,
+                lat: lats[beforeIdx].toFixed(5),
+                lon: lons[beforeIdx].toFixed(5),
+                ele: eles[beforeIdx].toFixed(1),
+              }),
+            );
+          else log(t("log_before_none"));
           if (afterIdx < n)
             log(
               t("log_after_point", {
@@ -5749,8 +5760,20 @@
 
           for (let i = firstBad; i <= lastBad; i++) removeSet.add(i);
 
-          if (mode === "remove") {
-            log(t("log_removed_no_replace", { cnt }), "log-warn");
+          // Нет опорной точки ДО эпизода (глушение с самой первой точки
+          // трека) — интерполировать/маршрутизировать не от чего, просто
+          // убираем битые точки без замены (симметрично хвостовому случаю
+          // "обрыв в конце трека, без возврата" выше).
+          if (mode === "remove" || beforeIdx < 0) {
+            log(
+              t(
+                beforeIdx < 0
+                  ? "log_removed_leading_no_before"
+                  : "log_removed_no_replace",
+                { cnt },
+              ),
+              "log-warn",
+            );
             continue;
           }
 
