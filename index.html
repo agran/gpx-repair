@@ -4239,7 +4239,78 @@
           );
           if (dJump < minClusterDist) {
             const dtJump = Math.max(1, times[firstBad] - times[tOut]);
-            if (dJump / dtJump >= maxSpeedMps * MICRO_OVERSPEED_MULT) {
+            let isExtremeMicro =
+              dJump / dtJump >= maxSpeedMps * MICRO_OVERSPEED_MULT;
+            // Умеренный по величине скачок (ниже MICRO_OVERSPEED_MULT) может
+            // быть частью того же многошагового джаминга, что и "экстремальные"
+            // случаи выше, — просто с более скромными по масштабу фейковыми
+            // смещениями (джаммер уводит координаты не на километры, а на
+            // сотни метров за скачок). Одной лишь скоростью такой случай от
+            // честного, но быстрого движения не отличить — maxSpeedMps часто
+            // занижен пользователем вручную, и тогда настоящая быстрая езда
+            // тоже иногда чуть превышает порог на ровном участке. Но у
+            // джаминга есть куда более надёжная сигнатура: несколько таких
+            // умеренных скачков подряд ЗА КОРОТКОЕ ВРЕМЯ, плюс хотя бы одна
+            // "замёрзшая" пара точек (байт-в-байт совпадение координат) рядом —
+            // сигнал глушения часто держит один и тот же фейковый фикс по
+            // нескольку сэмплов подряд, чего почти не бывает при настоящей
+            // езде (там даже на месте GPS слегка "дрожит"). Проверено на
+            // реальном треке: честный быстрый участок с завышенной для него
+            // скоростью (заниженный вручную maxSpeedMps) даёт целую серию
+            // близко идущих телепортов, но НИ ОДНОЙ замёрзшей пары координат;
+            // настоящий джаминг рядом даёт и то, и другое одновременно.
+            //
+            // Но и этих двух признаков недостаточно: у GPS-логгера иногда
+            // проскакивает дублированный по координатам (но НЕ по времени)
+            // сэмпл, а следующий за ним шаг "нагоняет" сразу два интервала
+            // движения — тоже даёт "замёрзшую" пару + скачок скорости, и
+            // нередко второй такой сдвоенный сэмпл попадается рядом (те же
+            // 2+ "телепорта" за короткое время), хотя это просто честная
+            // равномерная езда без единого реального разрыва трека. Отличить
+            // такой случай помогает эффективность пути: настоящий джаминг
+            // прыгает туда-сюда между фейковыми точками, так что сумма длин
+            // отдельных шагов на участке намного больше итогового смещения
+            // (много "лишнего" туда-обратно), а честная езда (даже с
+            // задвоенным сэмплом) идёт practически по прямой — сумма шагов
+            // и суммарное смещение почти совпадают.
+            if (!isExtremeMicro) {
+              const scanLimitG = Math.min(n, firstBad + 1 + MICRO_SCAN_POINTS);
+              let nearbyTeleports = 1;
+              let lastNearbyIdx = tOut;
+              for (let kk = k + 1; kk < teleports.length; kk++) {
+                if (teleports[kk] >= scanLimitG) break;
+                if (times[teleports[kk]] - times[tOut] > MICRO_SCAN_SECONDS)
+                  break;
+                nearbyTeleports++;
+                lastNearbyIdx = teleports[kk];
+              }
+              let hasFrozenDup = false;
+              for (let j = firstBad; j < scanLimitG; j++) {
+                if (times[j] - times[tOut] > MICRO_SCAN_SECONDS) break;
+                if (j > 0 && lats[j] === lats[j - 1] && lons[j] === lons[j - 1]) {
+                  hasFrozenDup = true;
+                  break;
+                }
+              }
+              if (nearbyTeleports >= 2 && hasFrozenDup) {
+                const clusterEnd = Math.min(n - 1, lastNearbyIdx + 1);
+                let pathSum = 0;
+                for (let j = tOut; j < clusterEnd; j++) {
+                  pathSum += haversine(lats[j], lons[j], lats[j + 1], lons[j + 1]);
+                }
+                const netDisp = haversine(
+                  lats[tOut],
+                  lons[tOut],
+                  lats[clusterEnd],
+                  lons[clusterEnd],
+                );
+                const PATH_EFFICIENCY_MAX = 0.85;
+                if (pathSum > 0 && netDisp / pathSum < PATH_EFFICIENCY_MAX) {
+                  isExtremeMicro = true;
+                }
+              }
+            }
+            if (isExtremeMicro) {
               const refLatM = lats[tOut],
                 refLonM = lons[tOut];
               const refTimeM = times[tOut];
