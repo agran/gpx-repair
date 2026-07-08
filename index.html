@@ -4153,6 +4153,40 @@
         const MICRO_SCAN_POINTS = 200;
         const MICRO_BACKWARD_DIST_M = 50.0;
 
+        // "Дальний" джаммер без возврата рядом с точкой выхода: устройство
+        // несколько раз подряд телепортируется в разные далёкие фейковые точки
+        // (иногда подолгу "замирая" на месте), а трек при этом реально едет
+        // дальше — то есть точка, где сигнал восстанавливается, сама далеко
+        // от места выхода и никогда не попадёт в кластер minClusterDist вокруг
+        // refLat/refLon. Для такого случая возврат ищем не по "похожести на
+        // разумную скорость" (это ловится и на самих фейковых точках — см.
+        // ниже), а по физической достижимости: раз скорость реального
+        // движения никогда не превышает maxSpeedMps, то расстояние от
+        // ИСХОДНОЙ точки выхода до кандидата на возврат не может быть больше
+        // maxSpeedMps * (прошедшее время). Первая точка, для которой это
+        // выполняется, — самый ранний момент, когда трек МОГ там оказаться
+        // по-настоящему; всё до неё остаётся частью эпизода.
+        //
+        // Проверялось на реальном многоскачковом эпизоде (3 подряд ложных
+        // телепорта, включая "замирание" на месте между ними) — критерий
+        // "скорость шага похожа на разумную" ложно срабатывает уже на первой
+        // фейковой точке (там, где джаммер плавно уводит координаты, и в т.ч.
+        // на самой "заморозке", у которой шаговая скорость точно 0 м/с — то
+        // есть тоже "разумна"), поэтому такой способ отбрасываем в пользу
+        // проверки достижимости от исходной точки.
+        const PLAUSIBLE_RETURN_MAX_SECONDS = 900.0;
+
+        function findPlausibleReturn(refLat, refLon, refTime, from) {
+          for (let j = from; j < n; j++) {
+            const dt = times[j] - refTime;
+            if (dt > PLAUSIBLE_RETURN_MAX_SECONDS) break;
+            if (dt <= 0) continue;
+            const dist = haversine(lats[j], lons[j], refLat, refLon);
+            if (dist <= maxSpeedMps * dt) return j;
+          }
+          return null;
+        }
+
         const findFirstReturn = buildTeleportReturnGrid(
           lats,
           lons,
@@ -4229,9 +4263,26 @@
             const afterIdx = tBack + 1;
             episodes.push({ firstBad, lastBad: tBack, afterIdx });
             k = m + 1;
-          } else {
-            k++;
+            continue;
           }
+
+          const resumeIdx = findPlausibleReturn(
+            refLat,
+            refLon,
+            times[tOut],
+            firstBad,
+          );
+          if (resumeIdx !== null) {
+            episodes.push({
+              firstBad,
+              lastBad: resumeIdx - 1,
+              afterIdx: resumeIdx,
+            });
+            while (k < teleports.length && teleports[k] < resumeIdx) k++;
+            continue;
+          }
+
+          k++;
         }
 
         // ─── Эпизод глушения без "скачка назад" ────────────────────────────────
