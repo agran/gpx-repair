@@ -355,6 +355,18 @@
       .relief-toggle input {
         cursor: pointer;
       }
+      .pause-fill-toggle {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 0.9rem;
+        color: #e0e0e0;
+        cursor: pointer;
+        user-select: none;
+      }
+      .pause-fill-toggle input {
+        cursor: pointer;
+      }
       .track-popup {
         font-size: 0.82rem;
         line-height: 1.5;
@@ -1069,6 +1081,20 @@
           api.open-meteo.com (высоты)</span
         >
       </div>
+      <div class="param-row profile-row">
+        <label class="pause-fill-toggle">
+          <input type="checkbox" id="p-fill-pauses" />
+          <span data-i18n="label_fill_pauses"
+            >Достраивать паузы записи</span
+          >
+        </label>
+        <span class="hint" data-i18n="hint_fill_pauses"
+          >Выключено по умолчанию. Если включить — длинные паузы в записи (трек
+          долго не писался, но ничего похожего на глушилку рядом нет) тоже
+          достраиваются выбранным способом заполнения, как и повреждённые
+          глушилкой участки</span
+        >
+      </div>
       <div class="params-grid" id="params-grid">
         <div class="param-row">
           <label data-i18n="label_maxspeed"
@@ -1293,6 +1319,9 @@
           gapfill_car: "Маршрут: авто",
           gapfill_remove: "Удалить участок (без замены)",
           gapfill_keep: "Оставить как было (не трогать)",
+          label_fill_pauses: "Достраивать паузы записи",
+          hint_fill_pauses:
+            "Выключено по умолчанию. Если включить — длинные паузы в записи (трек долго не писался, но ничего похожего на глушилку рядом нет) тоже достраиваются выбранным способом заполнения, как и повреждённые глушилкой участки",
           label_maxspeed: "Макс. горизонт. скорость (м/с)",
           hint_maxspeed:
             "Пеший поход: 10–15 &nbsp;|&nbsp; Велосипед: 25–40 &nbsp;|&nbsp; Авто: 80–120",
@@ -1308,8 +1337,10 @@
           episode_card_hint:
             "Для каждого найденного участка можно выбрать свой способ заполнения — включая полное удаление без замены или отказ от изменений.",
           episode_label: "Эпизод {n}",
+          episode_pause_label: "Пауза {n}",
           episode_tail: "обрыв в конце трека",
           episode_points: "{n} точек",
+          episode_pause_gap: "пауза записи",
           no_episodes_msg:
             "✓ Аномальных участков не найдено — трек уже в порядке, исправление не требуется.",
           card3_title: "3. Обработка",
@@ -1397,10 +1428,14 @@
             "⚠ Эпизодов с маршрутизацией много ({count}) — маршрутизация ограничена первыми {max}, остальные заполнятся простым соединением (офлайн).",
           log_episode_kept:
             "\nЭпизод глушения: точки [{first}..{last}] — оставлен без изменений (выбрано «оставить как было»)",
+          log_pause_kept:
+            "\nПауза записи: точки {before}→{after} — оставлена без изменений (выбрано «оставить как было»)",
           log_episode_merged:
             "  ⚠ Эпизод (с точки {first}) примыкает вплотную к предыдущему (с точки {prevFirst}) — мосты объединены в один",
           log_episode_header:
             "\nЭпизод глушения: точки [{first}..{last}]  ({cnt} точек, {dur}с пробел){tail}",
+          log_pause_header:
+            "\nПауза записи: точки {before}→{after}  ({dur}с пробел, точки не удалялись — только достраивается путь между ними){tail}",
           log_episode_tail_cut: "  [обрыв в конце трека, без возврата]",
           log_before_point: "  До  : {time}  ({lat}, {lon})  ele={ele}м",
           log_before_none:
@@ -1470,6 +1505,9 @@
           gapfill_car: "Route: car",
           gapfill_remove: "Delete section (no replacement)",
           gapfill_keep: "Keep as-is (don't touch)",
+          label_fill_pauses: "Fill recording pauses",
+          hint_fill_pauses:
+            "Off by default. When enabled, long recording pauses (the track wasn't recording for a while, but nothing near it looks like jamming) are also filled in using the selected gap-fill method, just like jammer-damaged sections",
           label_maxspeed: "Max. horizontal speed (m/s)",
           hint_maxspeed:
             "Hiking: 10–15 &nbsp;|&nbsp; Bike: 25–40 &nbsp;|&nbsp; Car: 80–120",
@@ -1486,8 +1524,10 @@
           episode_card_hint:
             "For each detected section you can choose its own fill method — including full removal with no replacement, or leaving it unchanged.",
           episode_label: "Episode {n}",
+          episode_pause_label: "Pause {n}",
           episode_tail: "track cut off at the end",
           episode_points: "{n} points",
+          episode_pause_gap: "recording pause",
           no_episodes_msg:
             "✓ No anomalous sections found — the track is already clean, no fix needed.",
           card3_title: "3. Processing",
@@ -1576,10 +1616,14 @@
             "⚠ Too many routed episodes ({count}) — routing limited to the first {max}, the rest will be filled with a simple offline join.",
           log_episode_kept:
             "\nJammer episode: points [{first}..{last}] — left unchanged (kept as-is)",
+          log_pause_kept:
+            "\nRecording pause: points {before}→{after} — left unchanged (kept as-is)",
           log_episode_merged:
             "  ⚠ Episode (from point {first}) is adjacent to the previous one (from point {prevFirst}) — bridges merged into one",
           log_episode_header:
             "\nJammer episode: points [{first}..{last}]  ({cnt} points, {dur}s gap){tail}",
+          log_pause_header:
+            "\nRecording pause: points {before}→{after}  ({dur}s gap, no points removed — only building a path between them){tail}",
           log_episode_tail_cut: "  [track cut off at the end, no return]",
           log_before_point: "  Before: {time}  ({lat}, {lon})  ele={ele}m",
           log_before_none:
@@ -4591,6 +4635,73 @@
         return merged;
       }
 
+      // ─── Достройка пауз записи (опциональная функция, выключена по умолчанию) ───
+      // В отличие от эпизодов глушения, здесь между соседними точками нет
+      // ничего "битого" — обе точки честные, просто устройство долго не
+      // писало трек (выключили запись/экран, сели в машину не поставив трек
+      // на паузу и т.п.). По умолчанию такой разрыв никак не заполняется —
+      // GPX так и остаётся с одним длинным прыжком по времени. Если
+      // пользователь явно включит этот режим, такие паузы тоже считаются
+      // "участками для достройки" и заполняются тем же способом (простое
+      // соединение или маршрут), что и обычные эпизоды — но БЕЗ удаления
+      // существующих точек (cnt всегда 0: firstBad = i+1 > lastBad = i).
+      //
+      // "Большой лаг" определяется не фиксированным числом, а относительно
+      // типичного интервала записи ЭТОГО трека (см. medianPositiveInterval) —
+      // трек с шагом записи в 1с и трек с шагом в 30с имеют совершенно разное
+      // представление о "подозрительно долгом" перерыве. Порог — не меньше
+      // PAUSE_FILL_MIN_GAP_S и не меньше медианного интервала, умноженного
+      // на PAUSE_FILL_MULT.
+      //
+      // "Другие странности похожие на глушилку" рядом с паузой отсеиваются
+      // простой проверкой физической правдоподобности: скорость по прямой
+      // между точками до и после паузы не должна превышать maxSpeedMps —
+      // иначе это уже настоящий скачок глушилки (или во всяком случае не
+      // просто пауза), и его должен ловить findJammerEpisodes, а не эта
+      // функция.
+      const PAUSE_FILL_MIN_GAP_S = 180;
+      const PAUSE_FILL_MULT = 8;
+
+      function findRecordingPauseGaps(lats, lons, times, maxSpeedMps) {
+        const n = lats.length;
+        const gaps = [];
+        if (n < 2) return gaps;
+        const medianDt = medianPositiveInterval(times);
+        const threshold = Math.max(
+          PAUSE_FILL_MIN_GAP_S,
+          medianDt * PAUSE_FILL_MULT,
+        );
+        for (let i = 0; i < n - 1; i++) {
+          if (!Number.isFinite(times[i]) || !Number.isFinite(times[i + 1]))
+            continue;
+          const dt = times[i + 1] - times[i];
+          if (dt <= 0 || dt < threshold) continue;
+          const d = haversine(lats[i], lons[i], lats[i + 1], lons[i + 1]);
+          if (d / dt > maxSpeedMps) continue; // похоже на скачок глушилки — не наша забота
+          gaps.push({ firstBad: i + 1, lastBad: i, afterIdx: i + 1, isPause: true });
+        }
+        return gaps;
+      }
+
+      // Объединяет найденные эпизоды глушения с найденными паузами записи —
+      // пауза, чей разрыв уже целиком лежит внутри диапазона [firstBad-1,
+      // afterIdx] какого-то эпизода глушения, пропускается (эту точку и так
+      // уже обрабатывает эпизод джаминга, дублировать вставку не нужно).
+      function mergeWithPauseGaps(jamEpisodes, pauseGaps) {
+        if (!pauseGaps.length) return jamEpisodes;
+        const filtered = pauseGaps.filter((pg) => {
+          for (const ep of jamEpisodes) {
+            if (pg.lastBad >= ep.firstBad - 1 && pg.lastBad <= ep.afterIdx) {
+              return false;
+            }
+          }
+          return true;
+        });
+        return jamEpisodes
+          .concat(filtered)
+          .sort((a, b) => a.firstBad - b.firstBad);
+      }
+
       // ─── Расширение назад: координаты + высота + "плато после крэша" ─────────────
 
       function extendEpisodeBackward(
@@ -5767,6 +5878,7 @@
           maxVert,
           interval,
           episodeModes,
+          fillPauses,
         } = params;
         const modeFor = (idx) =>
           (episodeModes && episodeModes[idx]) || "linear";
@@ -5828,13 +5940,19 @@
         );
 
         // Обнаружение эпизодов
-        const episodes = findJammerEpisodes(
+        const jamEpisodes = findJammerEpisodes(
           lats,
           lons,
           times,
           maxSpeed,
           minDist,
         );
+        const episodes = fillPauses
+          ? mergeWithPauseGaps(
+              jamEpisodes,
+              findRecordingPauseGaps(lats, lons, times, maxSpeed),
+            )
+          : jamEpisodes;
 
         if (!episodes.length) {
           log(t("log_no_episodes"), "log-warn");
@@ -5895,10 +6013,20 @@
           const mode = modeFor(epIdx);
 
           if (mode === "keep") {
-            log(
-              t("log_episode_kept", { first: ep.firstBad, last: ep.lastBad }),
-              "log-warn",
-            );
+            if (ep.isPause) {
+              log(
+                t("log_pause_kept", {
+                  before: ep.firstBad - 1,
+                  after: ep.afterIdx,
+                }),
+                "log-warn",
+              );
+            } else {
+              log(
+                t("log_episode_kept", { first: ep.firstBad, last: ep.lastBad }),
+                "log-warn",
+              );
+            }
             prevFinalLastBad = ep.lastBad;
             // Через "оставленный" эпизод сливаться нельзя — его точки
             // остаются в треке.
@@ -5908,6 +6036,14 @@
 
           let { firstBad, lastBad, afterIdx } = ep;
 
+          // Паузы записи (см. findRecordingPauseGaps) — не эпизод глушения:
+          // обе граничные точки честные, расширять диапазон "плохих" точек
+          // назад/вперёд не нужно (там их попросту нет — firstBad уже
+          // указывает сразу на afterIdx). Расширения ниже рассчитаны на
+          // поиск реального смещения/крэша ПЕРЕД глитчем и на настоящей
+          // паузе могли бы ошибочно затянуть в "битую" зону совершенно
+          // honest точки перед разрывом.
+          if (!ep.isPause) {
           // 1) Расширение назад по высотному крэшу («плато») — запускается
           // ПЕРВЫМ, т.к. у него нет ограничения на суммарное время отката
           // (аномалия сама себя ограничивает). Координатное расширение ниже
@@ -5966,6 +6102,13 @@
               lastBad = afterIdx - 1;
             }
           }
+          } // !ep.isPause
+
+          // Не даём расширению назад залезть на территорию уже
+          // обработанного предыдущего эпизода (для паузы это тоже нужно —
+          // если предыдущий эпизод после своих расширений дотянулся до
+          // самой точки перед паузой).
+          if (firstBad <= prevFinalLastBad) firstBad = prevFinalLastBad + 1;
 
           let beforeIdx = firstBad - 1;
 
@@ -6005,16 +6148,28 @@
             afterIdx < n && beforeIdx >= 0
               ? (times[afterIdx] - times[beforeIdx]).toFixed(0)
               : 0;
-          log(
-            t("log_episode_header", {
-              first: firstBad,
-              last: lastBad,
-              cnt,
-              dur: durS,
-              tail: afterIdx >= n ? t("log_episode_tail_cut") : "",
-            }),
-            "log-warn",
-          );
+          if (ep.isPause) {
+            log(
+              t("log_pause_header", {
+                before: beforeIdx,
+                after: afterIdx,
+                dur: durS,
+                tail: afterIdx >= n ? t("log_episode_tail_cut") : "",
+              }),
+              "log-warn",
+            );
+          } else {
+            log(
+              t("log_episode_header", {
+                first: firstBad,
+                last: lastBad,
+                cnt,
+                dur: durS,
+                tail: afterIdx >= n ? t("log_episode_tail_cut") : "",
+              }),
+              "log-warn",
+            );
+          }
           if (beforeIdx >= 0)
             log(
               t("log_before_point", {
@@ -6780,12 +6935,18 @@
           maxSpeed,
           minDist,
         );
-        episodePreview = episodes;
+        const finalEpisodes = document.getElementById("p-fill-pauses").checked
+          ? mergeWithPauseGaps(
+              episodes,
+              findRecordingPauseGaps(lats, lons, times, maxSpeed),
+            )
+          : episodes;
+        episodePreview = finalEpisodes;
         episodePreviewTimes = times;
         const defaultMode = resolveInterpMode({ lats, lons, times });
-        episodeChoices = episodes.map(() => defaultMode);
-        renderEpisodeList(episodes, times);
-        const hasEpisodes = episodes.length > 0;
+        episodeChoices = finalEpisodes.map(() => defaultMode);
+        renderEpisodeList(finalEpisodes, times);
+        const hasEpisodes = finalEpisodes.length > 0;
         episodeCard.style.display = hasEpisodes ? "block" : "none";
         noEpisodesMsg.style.display = hasEpisodes ? "none" : "block";
         btnFix.disabled = !hasEpisodes;
@@ -6810,16 +6971,21 @@
             ? Math.round(times[ep.afterIdx] - times[ep.firstBad - 1])
             : null;
           info.innerHTML =
-            `<strong>${t("episode_label", { n: idx + 1 })}</strong>: ${tFrom} → ${hasAfter ? formatEpisodeTime(times[ep.afterIdx]) : t("episode_tail")}` +
+            `<strong>${t(ep.isPause ? "episode_pause_label" : "episode_label", { n: idx + 1 })}</strong>: ${tFrom} → ${hasAfter ? formatEpisodeTime(times[ep.afterIdx]) : t("episode_tail")}` +
             (durS !== null
-              ? ` &nbsp;(${formatDuration(durS)}, ${t("episode_points", { n: cnt })})`
-              : ` &nbsp;(${t("episode_points", { n: cnt })})`);
+              ? ` &nbsp;(${formatDuration(durS)}, ${ep.isPause ? t("episode_pause_gap") : t("episode_points", { n: cnt })})`
+              : ` &nbsp;(${ep.isPause ? t("episode_pause_gap") : t("episode_points", { n: cnt })})`);
 
           const select = document.createElement("select");
           select.className = "episode-mode-select";
           for (const opt of GAP_FILL_OPTIONS) {
             if (!hasAfter && opt.value !== "remove" && opt.value !== "keep")
               continue; // хвостовой обрыв — маршрут строить некуда
+            // У паузы записи нет ни одной "битой" точки для удаления (обе
+            // граничные точки честные, cnt всегда 0) — режим "Удалить"
+            // ничего не удалял бы и был бы неотличим от "Оставить как было",
+            // только вводил бы пользователя в заблуждение.
+            if (ep.isPause && opt.value === "remove") continue;
             const o = document.createElement("option");
             o.value = opt.value;
             o.textContent = t("gapfill_" + opt.value);
@@ -6958,6 +7124,10 @@
               renderEpisodeList(episodePreview, episodePreviewTimes);
             }
           });
+
+        document
+          .getElementById("p-fill-pauses")
+          .addEventListener("change", () => updateEpisodeList());
       })();
 
       function loadFile(file) {
@@ -7206,6 +7376,7 @@
           interval:
             parseFloat(document.getElementById("p-interval").value) || 1,
           episodeModes: episodeChoices.slice(),
+          fillPauses: document.getElementById("p-fill-pauses").checked,
         };
 
         // Запускаем в следующем тике, чтобы успел отрисоваться UI
