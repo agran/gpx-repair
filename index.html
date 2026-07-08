@@ -748,32 +748,88 @@
          профиля высоты и параметров. */
       .scroll-to-fix-btn {
         position: fixed;
-        right: 16px;
-        bottom: 16px;
+        right: 18px;
+        bottom: 18px;
         z-index: 900;
         display: flex;
         align-items: center;
-        gap: 6px;
+        gap: 8px;
         border: none;
         border-radius: 999px;
-        background: #2563eb;
+        background: linear-gradient(135deg, #3b82f6, #1d4ed8);
         color: #fff;
         font-size: 0.85rem;
         font-weight: 600;
-        padding: 10px 16px;
-        box-shadow: 0 6px 20px rgba(0, 0, 0, 0.4);
+        padding: 12px 18px;
+        box-shadow:
+          0 8px 22px rgba(37, 99, 235, 0.45),
+          0 2px 6px rgba(0, 0, 0, 0.35);
         cursor: pointer;
+        transition:
+          transform 0.15s ease,
+          box-shadow 0.15s ease,
+          background 0.15s ease;
+        animation: scroll-to-fix-pop 0.25s ease;
       }
       .scroll-to-fix-btn:hover {
-        background: #1d4ed8;
+        background: linear-gradient(135deg, #60a5fa, #2563eb);
+        box-shadow:
+          0 10px 26px rgba(37, 99, 235, 0.55),
+          0 2px 6px rgba(0, 0, 0, 0.4);
+        transform: translateY(-2px);
+      }
+      .scroll-to-fix-btn:active {
+        transform: translateY(0) scale(0.95);
+        box-shadow:
+          0 4px 14px rgba(37, 99, 235, 0.45),
+          0 1px 4px rgba(0, 0, 0, 0.35);
+      }
+      .scroll-to-fix-icon {
+        width: 20px;
+        height: 20px;
+        flex-shrink: 0;
+        animation: scroll-to-fix-bounce 1.8s ease-in-out infinite;
+      }
+      @keyframes scroll-to-fix-bounce {
+        0%,
+        100% {
+          transform: translateY(0);
+        }
+        50% {
+          transform: translateY(3px);
+        }
+      }
+      @keyframes scroll-to-fix-pop {
+        from {
+          transform: scale(0.5);
+          opacity: 0;
+        }
+        to {
+          transform: scale(1);
+          opacity: 1;
+        }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .scroll-to-fix-btn {
+          animation: none;
+        }
+        .scroll-to-fix-icon {
+          animation: none;
+        }
       }
       @media (max-width: 480px) {
         .scroll-to-fix-btn span {
           display: none;
         }
         .scroll-to-fix-btn {
-          padding: 12px 14px;
-          font-size: 1.1rem;
+          width: 52px;
+          height: 52px;
+          padding: 0;
+          justify-content: center;
+        }
+        .scroll-to-fix-icon {
+          width: 24px;
+          height: 24px;
         }
       }
 
@@ -852,7 +908,21 @@
       data-i18n-title="scroll_to_fix_btn"
       data-i18n-aria-label="scroll_to_fix_btn"
     >
-      ⬇ <span data-i18n="scroll_to_fix_btn">К кнопке «Исправить»</span>
+      <svg
+        class="scroll-to-fix-icon"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="2"
+        aria-hidden="true"
+      >
+        <path
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          d="M12 4v15m0 0l-6-6m6 6l6-6"
+        />
+      </svg>
+      <span data-i18n="scroll_to_fix_btn">К кнопке «Исправить»</span>
     </button>
     <p class="subtitle" data-i18n="subtitle">
       Удаление артефактов GPS-глушилки. Обработка — локально на устройстве, файл
