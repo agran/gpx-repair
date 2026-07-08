@@ -1648,7 +1648,11 @@
       // ни честным движением, ни явной остановкой.
       const STOP_SPEED_THRESHOLD_MS = 0.6;
 
-      function computeMovingTimeStats(lats, lons, times) {
+      // Собирает итоговую статистику "времени в движении" из уже посчитанных
+      // (в основном цикле computeTrackStats) movingTime/movingDist — раньше
+      // это был отдельный проход по всем точкам со своим haversine, теперь
+      // накопление идёт в том же проходе, что и length/maxSpeed (см. F9).
+      function finalizeMovingStats(times, movingTime, movingDist) {
         if (!times || times.length < 2) return { hasMoving: false };
         const t0 = times[0],
           t1 = times[times.length - 1];
@@ -1656,20 +1660,6 @@
           return { hasMoving: false };
         }
         const duration = t1 - t0;
-        let movingTime = 0;
-        let movingDist = 0;
-        for (let i = 1; i < lats.length; i++) {
-          if (!Number.isFinite(times[i]) || !Number.isFinite(times[i - 1])) {
-            continue;
-          }
-          const dt = times[i] - times[i - 1];
-          if (dt <= 0 || dt > PAUSE_GAP_S) continue;
-          const d = haversine(lats[i - 1], lons[i - 1], lats[i], lons[i]);
-          if (d / dt > STOP_SPEED_THRESHOLD_MS) {
-            movingTime += dt;
-            movingDist += d;
-          }
-        }
         const stopTime = Math.max(0, duration - movingTime);
         const avgMovingSpeed = movingTime > 0 ? movingDist / movingTime : 0;
         return {
@@ -1687,6 +1677,11 @@
         let length = 0;
         let maxSpeed = 0;
         let hasSpeed = false;
+        // Накапливаем movingTime/movingDist в этом же проходе (см.
+        // finalizeMovingStats) — те же пары точек и то же d, что и для
+        // length/maxSpeed, второй проход с haversine по всем точкам не нужен.
+        let movingTime = 0;
+        let movingDist = 0;
         for (let i = 1; i < lats.length; i++) {
           const d = haversine(lats[i - 1], lons[i - 1], lats[i], lons[i]);
           length += d;
@@ -1700,6 +1695,10 @@
               hasSpeed = true;
               const v = d / dt;
               if (v > maxSpeed) maxSpeed = v;
+              if (dt <= PAUSE_GAP_S && v > STOP_SPEED_THRESHOLD_MS) {
+                movingTime += dt;
+                movingDist += d;
+              }
             }
           }
         }
@@ -1724,7 +1723,7 @@
           ? { minHr, maxHr, avgHr: sumHr / countHr }
           : { minHr: null, maxHr: null, avgHr: null };
 
-        const movingStats = computeMovingTimeStats(lats, lons, times);
+        const movingStats = finalizeMovingStats(times, movingTime, movingDist);
 
         const hasEle = eles.some((e) => !Number.isNaN(e));
         if (!hasEle) {
@@ -2152,18 +2151,29 @@
         const n = lats.length;
         const out = new Array(n).fill(NaN);
         if (!times) return out;
+
+        // Расстояние/интервал между КАЖДОЙ соседней парой точек нужны много
+        // раз (одна и та же пара входит в окна соседних i) — считаем один
+        // раз, а не заново на каждое i (haversine — не дешёвая тригонометрия).
+        const legDist = new Float64Array(Math.max(0, n - 1));
+        const legDt = new Float64Array(Math.max(0, n - 1));
+        for (let j = 0; j < n - 1; j++) {
+          legDist[j] = haversine(lats[j], lons[j], lats[j + 1], lons[j + 1]);
+          legDt[j] =
+            Number.isFinite(times[j]) && Number.isFinite(times[j + 1])
+              ? times[j + 1] - times[j]
+              : NaN;
+        }
+
         for (let i = 0; i < n; i++) {
           const { lo, hi } = timeWindowBounds(times, i, SPEED_HALF_S);
           if (hi <= lo) continue;
           let sumDist = 0,
             sumDt = 0;
           for (let j = lo; j < hi; j++) {
-            if (!Number.isFinite(times[j]) || !Number.isFinite(times[j + 1]))
-              continue;
-            const dt = times[j + 1] - times[j];
-            if (dt <= 0) continue;
-            sumDist += haversine(lats[j], lons[j], lats[j + 1], lons[j + 1]);
-            sumDt += dt;
+            if (!Number.isFinite(legDt[j]) || legDt[j] <= 0) continue;
+            sumDist += legDist[j];
+            sumDt += legDt[j];
           }
           out[i] = sumDt > 0 ? (sumDist / sumDt) * 3.6 : NaN;
         }
@@ -2241,13 +2251,23 @@
         return { lo, hi };
       }
 
-      function smoothedGradeSeries(lats, lons, eles, times) {
+      // smoothedEle/cumDist можно передать уже готовыми (см.
+      // computeAllSmoothedSeries) — оба и так считаются там же для
+      // "elevation" и для кэша карты, повторный расчёт тут не нужен.
+      function smoothedGradeSeries(
+        lats,
+        lons,
+        eles,
+        times,
+        smoothedEle,
+        cumDist,
+      ) {
         const n = lats.length;
         const out = new Array(n).fill(NaN);
         const hasEle = eles && eles.some((e) => Number.isFinite(e));
         if (!hasEle || !times) return out;
-        const smoothedEle = smoothedElevationSeries(eles, times);
-        const cumDist = buildCumDist(lats, lons);
+        if (!smoothedEle) smoothedEle = smoothedElevationSeries(eles, times);
+        if (!cumDist) cumDist = buildCumDist(lats, lons);
         for (let i = 0; i < n; i++) {
           const { lo, hi } = gradeWindowBounds(cumDist, times, i);
           const d = cumDist[hi] - cumDist[lo];
@@ -2283,11 +2303,24 @@
 
       // Считает сглаженные значения ВСЕХ 4 метрик сразу (по точке) — общий
       // источник и для цвета трека, и для попапа, чтобы они не расходились.
-      function computeAllSmoothedSeries(lats, lons, eles, times, hrs) {
+      // cumDist можно передать уже готовым (см. showTrackMap) — не считаем
+      // его повторно внутри smoothedGradeSeries.
+      function computeAllSmoothedSeries(lats, lons, eles, times, hrs, cumDist) {
+        // elevation нужен и как отдельный ряд, и как основа для grade —
+        // считаем один раз и переиспользуем.
+        const elevation = smoothedElevationSeries(eles, times);
+        if (!cumDist) cumDist = buildCumDist(lats, lons);
         return {
           speed: smoothedSpeedSeries(lats, lons, times),
-          grade: smoothedGradeSeries(lats, lons, eles, times),
-          elevation: smoothedElevationSeries(eles, times),
+          grade: smoothedGradeSeries(
+            lats,
+            lons,
+            eles,
+            times,
+            elevation,
+            cumDist,
+          ),
+          elevation,
           hr: smoothedHrSeries(hrs),
         };
       }
@@ -2788,6 +2821,20 @@
         if (idxs[idxs.length - 1] !== lastIdx) idxs.push(lastIdx);
         const latlngs = idxs.map((i) => [smoothLats[i], smoothLons[i]]);
 
+        // Перерисовка с теми же самыми массивами (смена режима раскраски,
+        // переключение изолиний — см. redrawMapsForColorMode) передаёт в
+        // showTrackMap ровно те же ссылки lats/lons, что и в прошлый раз —
+        // данные трека не изменились, и buildCumDist/computeAllSmoothedSeries
+        // (самая тяжёлая часть) можно не пересчитывать заново.
+        const existing = mapTrackData[containerId];
+        const sameData =
+          existing && existing.lats === lats && existing.lons === lons;
+
+        const cumDist = sameData ? existing.cumDist : buildCumDist(lats, lons);
+        const series = sameData
+          ? existing.series
+          : computeAllSmoothedSeries(lats, lons, eles, times, hrs, cumDist);
+
         mapTrackData[containerId] = {
           lats,
           lons,
@@ -2795,8 +2842,8 @@
           times,
           hrs,
           color,
-          cumDist: buildCumDist(lats, lons),
-          series: computeAllSmoothedSeries(lats, lons, eles, times, hrs),
+          cumDist,
+          series,
         };
         // interpSegments передаётся явно только при первой отрисовке после
         // обработки — при перерисовке из-за смены режима раскраски (undefined)
@@ -2807,10 +2854,9 @@
         // Маска "эта точка основного трека попадает во вставленный участок" —
         // нужна только для приглушённой штриховки на профиле высоты, к самой
         // карте отношения не имеет.
-        mapTrackData[containerId].interpMask = buildInterpMask(
-          containerId,
-          times,
-        );
+        mapTrackData[containerId].interpMask = sameData
+          ? existing.interpMask
+          : buildInterpMask(containerId, times);
 
         let inst = mapInstances[containerId];
         if (!inst) {
@@ -5435,6 +5481,13 @@
       let gpxText = null,
         gpxFileName = "",
         lastFileSuffixKey = null;
+      // Кэш lats/lons/eles/times/hrs текущего gpxText — updateEpisodeList()
+      // вызывается и при загрузке файла, и при каждом изменении полей
+      // "макс. скорость"/"мин. расстояние", а разбор одного и того же
+      // 17-мегабайтного XML через DOMParser заново на каждый ввод — дорого.
+      // Сбрасывается в null всякий раз, когда gpxText меняется/становится
+      // недействительным.
+      let cachedTrackArrays = null;
       // Увеличивается при каждой загрузке нового файла — позволяет уже
       // запущенной (асинхронной) операции "Исправить трек" распознать,
       // что пользователь тем временем загрузил другой файл, и не
@@ -5655,8 +5708,13 @@
       let episodePreview = []; // последний обнаруженный список эпизодов
       let episodePreviewTimes = []; // times[] трека, для которого построен episodePreview
 
-      function updateEpisodeList() {
+      // precomputed (необязательно) — уже готовые {lats,lons,eles,times} для
+      // ТЕКУЩЕГО gpxText, чтобы не парсить его через DOMParser второй раз
+      // (loadFile уже вызывал extractTrackData для превью-карты). Если не
+      // передан — берём кэш (см. cachedTrackArrays) или парсим сами.
+      function updateEpisodeList(precomputed) {
         if (!gpxText) {
+          cachedTrackArrays = null;
           episodeCard.style.display = "none";
           noEpisodesMsg.style.display = "none";
           episodeChoices = [];
@@ -5665,8 +5723,18 @@
         }
         let lats, lons, eles, times;
         try {
-          ({ lats, lons, eles, times } = extractTrackData(gpxText));
+          if (precomputed) {
+            ({ lats, lons, eles, times } = precomputed);
+            cachedTrackArrays = precomputed;
+          } else if (cachedTrackArrays) {
+            ({ lats, lons, eles, times } = cachedTrackArrays);
+          } else {
+            const extracted = extractTrackData(gpxText);
+            cachedTrackArrays = extracted;
+            ({ lats, lons, eles, times } = extracted);
+          }
         } catch (e) {
+          cachedTrackArrays = null;
           episodeCard.style.display = "none";
           noEpisodesMsg.style.display = "none";
           btnFix.disabled = true;
@@ -5903,6 +5971,12 @@
                   updateEpisodeList();
                   return;
                 }
+                // Новый (успешно распарсенный на этом шаге) текст трека —
+                // старый кэш массивов точно недействителен, даже если ниже
+                // extractTrackData вдруг тоже упадёт (тогда updateEpisodeList
+                // должна снова попытаться распарсить, а не тихо взять
+                // массивы ПРЕДЫДУЩЕГО файла).
+                cachedTrackArrays = null;
                 log("");
                 logLines = [];
                 logEl.style.display = "none";
@@ -5930,9 +6004,14 @@
                 delete mapInterpData["map-after"];
                 delete mapTrackData["map-after"];
 
+                // Разбираем XML ОДИН раз здесь и переиспользуем результат в
+                // updateEpisodeList() ниже — раньше она парсила тот же
+                // gpxText через DOMParser ещё раз (на 17 МБ файле это
+                // заметная лишняя работа при каждой загрузке).
+                let extracted = null;
                 try {
-                  const { lats, lons, eles, times, hrs } =
-                    extractTrackData(gpxText);
+                  extracted = extractTrackData(gpxText);
+                  const { lats, lons, eles, times, hrs } = extracted;
                   showTrackMap(
                     "map-before",
                     lats,
@@ -5959,7 +6038,7 @@
                 } catch (err) {
                   // превью необязательно, ошибку покажем при нажатии "Исправить"
                 }
-                updateEpisodeList();
+                updateEpisodeList(extracted || undefined);
               } finally {
                 hideBusyOverlay();
               }
