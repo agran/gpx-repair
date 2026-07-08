@@ -4544,8 +4544,7 @@
         // движения/шума на стоянке (скорость пусть и мала, но не нулевая) —
         // независимо от того, длинный dt или короткий.
         const FREEZE_MAX_SPEED_MPS = 0.3;
-        function isFrozenCandidate(j) {
-          if (isBadFix(j)) return true;
+        function isLowMotionCandidate(j) {
           if (j > 0) {
             const dtBack = Math.max(times[j] - times[j - 1], 0.001);
             if (
@@ -4562,6 +4561,11 @@
             )
               return true;
           }
+          return false;
+        }
+        function isFrozenCandidate(j) {
+          if (isBadFix(j)) return true;
+          if (isLowMotionCandidate(j)) return true;
           return false;
         }
 
@@ -4792,16 +4796,39 @@
                 // считается эпизодом вовсе — точечный сбой такого масштаба
                 // (заведомо < minClusterDist) не ломает трек и не стоит
                 // ни предупреждения, ни интерполяции.
+                // Для одиночного всплеска без каких-либо других признаков
+                // джаминга (нет соседних телепортов, нет "залипания" координат)
+                // допускаем БОЛЕЕ ранний "быстрый" возврат, даже если HDOP там
+                // ещё высокий: на реальном трассовом треке это бывает просто
+                // плавное схождение GPS после разового сбоя, а не глушилка.
+                let isolatedResumeIdx = resumeIdx;
+                if (isolatedResumeIdx - firstBad > 10) {
+                  const quickScanEnd = Math.min(n, firstBad + 11);
+                  for (let j = firstBad + 1; j < quickScanEnd; j++) {
+                    const dtAfter = Math.max(1, times[j] - refTimeM);
+                    const dAfter = haversine(lats[j], lons[j], refLatM, refLonM);
+                    if (
+                      !isLowMotionCandidate(j) &&
+                      dAfter / dtAfter <= maxSpeedMps
+                    ) {
+                      isolatedResumeIdx = j;
+                      break;
+                    }
+                  }
+                }
                 let isIsolatedSpike = false;
-                if (resumeIdx - firstBad <= 10) {
+                if (isolatedResumeIdx - firstBad <= 10) {
                   isIsolatedSpike = true;
                   const scanFrom = Math.max(0, tOut - MICRO_SCAN_POINTS);
-                  const scanTo = Math.min(n - 1, resumeIdx + MICRO_SCAN_POINTS);
+                  const scanTo = Math.min(
+                    n - 1,
+                    isolatedResumeIdx + MICRO_SCAN_POINTS,
+                  );
                   for (let j = scanFrom; j <= scanTo; j++) {
                     if (j === tOut) continue;
                     if (Math.abs(times[j] - times[tOut]) > MICRO_SCAN_SECONDS)
                       continue;
-                    if (teleportSet.has(j) || isFrozenCandidate(j)) {
+                    if (teleportSet.has(j) || isLowMotionCandidate(j)) {
                       isIsolatedSpike = false;
                       break;
                     }
