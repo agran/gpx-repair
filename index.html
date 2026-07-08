@@ -1564,6 +1564,8 @@
             "лимит эпизодов с маршрутизацией ({max}) исчерпан",
           reason_no_route: "маршрут не найден (сервис недоступен)",
           reason_far_from_road: "граница пробела далеко от дороги/тропы",
+          log_fallback_profile:
+            "не нашлось автодороги рядом — пробуем маршрут «{mode}»",
           reason_big_detour: "маршрут — слишком большой крюк",
           reason_too_slow: "маршрут не проходим за время пробела",
         },
@@ -1762,6 +1764,8 @@
           reason_routing_limit: "routed-episode limit ({max}) reached",
           reason_no_route: "route not found (service unavailable)",
           reason_far_from_road: "gap boundary is far from a road/trail",
+          log_fallback_profile:
+            "no nearby road found — trying a \"{mode}\" route instead",
           reason_big_detour: "route is too much of a detour",
           reason_too_slow: "route isn't traversable within the gap time",
         },
@@ -1877,6 +1881,7 @@
       function extractTrkptFields(p) {
         const eleEl = p.querySelector("ele");
         const timeEl = p.querySelector("time");
+        const hdopEl = p.querySelector("hdop");
         let hr = NaN,
           cad = NaN,
           atemp = NaN;
@@ -1891,29 +1896,31 @@
             else if (name === "atemp") atemp = parseFloat(el.textContent);
           }
         }
-        return { eleEl, timeEl, hr, cad, atemp };
+        return { eleEl, timeEl, hdopEl, hr, cad, atemp };
       }
 
       function extractTrackData(xmlText) {
         const parser = new DOMParser();
         const doc = parser.parseFromString(xmlText, "application/xml");
         if (doc.querySelector("parsererror"))
-          return { lats: [], lons: [], eles: [], times: [], hrs: [] };
+          return { lats: [], lons: [], eles: [], times: [], hrs: [], hdops: [] };
         const pts = doc.querySelectorAll("trkpt");
         const lats = new Array(pts.length);
         const lons = new Array(pts.length);
         const eles = new Array(pts.length);
         const times = new Array(pts.length);
         const hrs = new Array(pts.length);
+        const hdops = new Array(pts.length);
         pts.forEach((p, i) => {
           lats[i] = parseFloat(p.getAttribute("lat"));
           lons[i] = parseFloat(p.getAttribute("lon"));
-          const { eleEl, timeEl, hr } = extractTrkptFields(p);
+          const { eleEl, timeEl, hdopEl, hr } = extractTrkptFields(p);
           eles[i] = eleEl ? parseFloat(eleEl.textContent) : NaN;
           times[i] = timeEl ? parseTime(timeEl.textContent) : NaN;
           hrs[i] = hr;
+          hdops[i] = hdopEl ? parseFloat(hdopEl.textContent) : NaN;
         });
-        return { lats, lons, eles, times, hrs };
+        return { lats, lons, eles, times, hrs, hdops };
       }
 
       function fillMissingEle(eles) {
@@ -4339,8 +4346,22 @@
         times,
         maxSpeedMps,
         minClusterDist,
+        hdops,
       ) {
         const n = lats.length;
+        // Порог HDOP, выше которого зафиксированная позиция считается
+        // ненадёжной (приёмник сам сигнализирует о потере честного сигнала —
+        // см. isFrozenCandidate). Опционален: если в GPX нет <hdop>, hdops
+        // не передан или все значения NaN — проверка просто не срабатывает.
+        const HDOP_BAD_THRESHOLD = 20;
+        const hasHdop = Array.isArray(hdops);
+        function isBadFix(j) {
+          return (
+            hasHdop &&
+            Number.isFinite(hdops[j]) &&
+            hdops[j] > HDOP_BAD_THRESHOLD
+          );
+        }
         const teleports = [];
         for (let i = 0; i < n - 1; i++) {
           const dt = Math.max(1, times[i + 1] - times[i]);
@@ -4401,10 +4422,45 @@
         // физической достижимости (если прошло много времени), но это лишь
         // продолжение той же самой заморозки/новая фейковая "стоянка", а не
         // настоящее возобновление движения после восстановления сигнала.
+        // Раньше "заморозка" проверялась только байт-в-байт совпадением
+        // координат с соседним сэмплом. Но приёмник, зависший на очередной
+        // фейковой позиции, обычно всё же чуть "дрожит" (доли метра) — точного
+        // совпадения нет, хотя по сути точка так же неподвижна и так же не
+        // является настоящим движением. Порог в несколько метров ловит и
+        // такие случаи, оставаясь далеко ниже любого реального перемещения
+        // между сэмплами на разумной скорости.
+        const FREEZE_EPS_M = 3.0;
         function isFrozenCandidate(j) {
-          if (lats[j] === lats[j - 1] && lons[j] === lons[j - 1]) return true;
-          if (j + 1 < n && lats[j + 1] === lats[j] && lons[j + 1] === lons[j])
+          if (isBadFix(j)) return true;
+          if (j > 0 && haversine(lats[j], lons[j], lats[j - 1], lons[j - 1]) < FREEZE_EPS_M)
             return true;
+          if (j + 1 < n && haversine(lats[j], lons[j], lats[j + 1], lons[j + 1]) < FREEZE_EPS_M)
+            return true;
+          return false;
+        }
+
+        // Кандидат на возврат может сам оказаться ещё одной фейковой позицией
+        // многоканального джаминга — координаты "прыгают" по нескольким
+        // заранее заданным точкам, ненадолго замирая на каждой (см.
+        // isFrozenCandidate). Отдельно взятая такая точка проходит проверки
+        // "не застряла на месте" (после неё уже нет byte-в-byte/близкого
+        // повтора) и "физически достижима" (реальный скачок укладывается в
+        // maxSpeedMps при достаточном dt) — но если совсем скоро после неё
+        // трек снова резко "телепортируется" (ещё один скачок из уже
+        // накопленного списка teleports), то сама эта точка — лишь
+        // промежуточная остановка того же глушения, а не настоящее
+        // восстановление сигнала. Проверено на реальном треке (Тырныауз):
+        // после выхода из джаминга трек последовательно "садится" на 3-4
+        // разных фейковых точки подряд (кратковременно подвисая на каждой),
+        // прежде чем действительно вернуться к честному движению — без этой
+        // проверки первая же такая промежуточная точка ошибочно принималась
+        // за место возврата, и мост строился прямо туда.
+        function isSuspiciousResume(idx) {
+          for (const t of teleports) {
+            if (t < idx) continue;
+            if (times[t] - times[idx] > MICRO_SCAN_SECONDS) break;
+            return true;
+          }
           return false;
         }
 
@@ -4414,7 +4470,7 @@
             if (dt <= 0) continue;
             if (isFrozenCandidate(j)) continue;
             const dist = haversine(lats[j], lons[j], refLat, refLon);
-            if (dist <= maxSpeedMps * dt) return j;
+            if (dist <= maxSpeedMps * dt && !isSuspiciousResume(j)) return j;
           }
           return null;
         }
@@ -5800,43 +5856,74 @@
         if (routedBudget.used >= routedBudget.max) {
           return fallback(t("reason_routing_limit", { max: routedBudget.max }));
         }
-        routedBudget.used++;
 
-        let route;
-        try {
-          route = await fetchRoute(
-            profile,
-            { lat: lat0, lon: lon0 },
-            { lat: lat1, lon: lon1 },
+        // Пытаемся построить маршрут запрошенным профилем; если он "далеко от
+        // дороги" (обычный автомобильный профиль не видит троп) или вовсе не
+        // нашёл путь — пробуем ещё раз пешим профилем ПЕРЕД тем, как сдаться
+        // и провести прямую линию. Реальная точка вполне может лежать в
+        // горах у пешей/туристической тропы, которой нет в автодорожном
+        // графе, но которая есть в пешем — так что "далеко от дороги" для
+        // машины не значит "далеко от любого пути вообще".
+        // Проверено на реальном треке (Тырныауз): граница эпизода лежала в
+        // ~40 м от тропы, но в >1 км от ближайшей автодороги — с одним лишь
+        // автопрофилем это давало бессмысленную прямую линию через долину.
+        const profilesToTry =
+          profile === "car" ? ["car", "foot"] : [profile];
+
+        let lastReason = "reason_no_route";
+        for (const p of profilesToTry) {
+          if (routedBudget.used >= routedBudget.max) {
+            return fallback(
+              t("reason_routing_limit", { max: routedBudget.max }),
+            );
+          }
+          routedBudget.used++;
+
+          let route;
+          try {
+            route = await fetchRoute(
+              p,
+              { lat: lat0, lon: lon0 },
+              { lat: lat1, lon: lon1 },
+            );
+          } catch (e) {
+            route = null;
+          }
+          if (!route) {
+            lastReason = "reason_no_route";
+            continue;
+          }
+
+          const r = route.routes[0];
+          const wp = route.waypoints;
+          if (
+            !wp ||
+            wp.length < 2 ||
+            wp[0].distance > 300 ||
+            wp[1].distance > 300
+          ) {
+            lastReason = "reason_far_from_road";
+            continue;
+          }
+          const routeDist = r.distance;
+          if (routeDist / Math.max(D, 1) > 4) {
+            lastReason = "reason_big_detour";
+            continue;
+          }
+          if (routeDist / totalS > maxSpeedParam) {
+            lastReason = "reason_too_slow";
+            continue;
+          }
+
+          if (p !== profile) {
+            log(t("log_fallback_profile", { mode: t("modeword_" + p) }), "log-warn");
+          }
+
+          const { points: sampled, totalLength: routeLen } = resampleRoute(
+            r.geometry.coordinates,
+            totalS,
+            intervalS,
           );
-        } catch (e) {
-          route = null;
-        }
-        if (!route) return fallback(t("reason_no_route"));
-
-        const r = route.routes[0];
-        const wp = route.waypoints;
-        if (
-          !wp ||
-          wp.length < 2 ||
-          wp[0].distance > 300 ||
-          wp[1].distance > 300
-        ) {
-          return fallback(t("reason_far_from_road"));
-        }
-        const routeDist = r.distance;
-        if (routeDist / Math.max(D, 1) > 4) {
-          return fallback(t("reason_big_detour"));
-        }
-        if (routeDist / totalS > maxSpeedParam) {
-          return fallback(t("reason_too_slow"));
-        }
-
-        const { points: sampled, totalLength: routeLen } = resampleRoute(
-          r.geometry.coordinates,
-          totalS,
-          intervalS,
-        );
 
         // ─── Плавное примыкание маршрута к реальному треку ──────────────────
         // OSRM привязывает граничные точки к БЛИЖАЙШЕЙ дороге/тропе (до 300 м
@@ -6002,6 +6089,8 @@
           demOk,
           distanceKm: routeDist / 1000,
         };
+        }
+        return fallback(t(lastReason));
       }
 
       // Строит один "перегон" заполнения эпизода (маршрутизацией или прямой
@@ -6232,12 +6321,19 @@
         const hrs = new Array(n);
         const cads = new Array(n);
         const atemps = new Array(n);
+        // HDOP (снижение точности по горизонтали) — приёмник, потерявший
+        // честный сигнал из-за глушения, часто продолжает выдавать "замороженную"
+        // (последнюю известную) позицию, но резко занижает свою уверенность
+        // в ней ростом HDOP (иногда до сотен/тысяч). Это прямой физический
+        // признак "фейковой" точки, надёжнее любой чисто геометрической
+        // эвристики — используем его при поиске точки возврата из глушения.
+        const hdops = new Array(n);
         // Один проход по каждой точке (extractTrkptFields делает один
         // querySelector на <extensions> вместо трёх отдельных для hr/cad/atemp,
         // и корректно находит их даже при namespace-префиксе,
         // например <ns3:hr> — плоский querySelector("hr") такие точки не находил).
         for (let i = 0; i < n; i++) {
-          const { eleEl, timeEl, hr, cad, atemp } = extractTrkptFields(
+          const { eleEl, timeEl, hdopEl, hr, cad, atemp } = extractTrkptFields(
             allPts[i],
           );
           eles[i] = eleEl ? parseFloat(eleEl.textContent) : 0;
@@ -6246,6 +6342,7 @@
           hrs[i] = hr;
           cads[i] = cad;
           atemps[i] = atemp;
+          hdops[i] = hdopEl ? parseFloat(hdopEl.textContent) : NaN;
         }
 
         log(t("log_loaded_points", { n }), "log-info");
@@ -6270,6 +6367,7 @@
           times,
           maxSpeed,
           minDist,
+          hdops,
         );
         const episodes = mergeWithPauseGaps(
           jamEpisodes,
@@ -6439,27 +6537,38 @@
           // сразу за прошлым), то beforeIdx указывает на уже УДАЛЁННУЮ
           // (фейковую) точку предыдущего эпизода — интерполяция стартовала бы
           // из ложной локации, и в исправленном треке остался бы скачок
-          // глушилки. Вместо этого строим один общий мост: отменяем вставку
-          // предыдущего эпизода и наследуем его опорную точку «до».
+          // глушилки.
+          //
+          // Но если предыдущий эпизод уже имеет явную «точку возврата»
+          // (insertAfterIdx) ровно в стыке, выгоднее использовать ЕЁ как
+          // новую опорную точку (beforeIdx=firstBad) и не строить один длинный
+          // объединённый мост через оба эпизода. Иначе при неудачной
+          // маршрутизации второго эпизода (far_from_road/no_route) весь
+          // объединённый участок падает в длинную прямую линию.
           if (prevEp && firstBad === prevEp.lastBad + 1) {
-            if (
-              prevEp.insertAfterIdx !== null &&
-              insertionBefore.has(prevEp.insertAfterIdx)
-            ) {
-              totalInserted -= insertionBefore.get(
-                prevEp.insertAfterIdx,
-              ).length;
-              insertionBefore.delete(prevEp.insertAfterIdx);
-              if (prevEp.pushedSegment) interpSegments.pop();
+            if (prevEp.insertAfterIdx === firstBad) {
+              beforeIdx = firstBad;
+              firstBad = Math.min(lastBad + 1, firstBad + 1);
+            } else {
+              if (
+                prevEp.insertAfterIdx !== null &&
+                insertionBefore.has(prevEp.insertAfterIdx)
+              ) {
+                totalInserted -= insertionBefore.get(
+                  prevEp.insertAfterIdx,
+                ).length;
+                insertionBefore.delete(prevEp.insertAfterIdx);
+                if (prevEp.pushedSegment) interpSegments.pop();
+              }
+              beforeIdx = prevEp.beforeIdx;
+              log(
+                t("log_episode_merged", {
+                  first: firstBad,
+                  prevFirst: prevEp.beforeIdx + 1,
+                }),
+                "log-warn",
+              );
             }
-            beforeIdx = prevEp.beforeIdx;
-            log(
-              t("log_episode_merged", {
-                first: firstBad,
-                prevFirst: prevEp.beforeIdx + 1,
-              }),
-              "log-warn",
-            );
           }
 
           const cnt = lastBad - firstBad + 1;
@@ -6688,7 +6797,8 @@
         // ─── Перестройка сегмента ─────────────────────────────────────────────────
 
         // Собираем оставшиеся trkpt и вставляем интерполированные
-        const seg = doc.querySelector("trkseg");
+        const segs = Array.from(doc.querySelectorAll("trkseg"));
+        const seg = segs[0];
         if (!seg) throw new Error(t("err_no_trkseg"));
 
         // Сериализуем оставшиеся точки в строки (быстрее DOM-манипуляций на 60k точках)
@@ -6755,6 +6865,12 @@
         // их от <trkseg> (дёшево — просто отсоединение узлов, без кодирования
         // текста), и сериализуем уже пустой сегмент.
         while (seg.firstChild) seg.removeChild(seg.firstChild);
+        // allPts собран по ВСЕМ сегментам документа; итоговый блок trkpt
+        // вставляем в первый сегмент, а остальные исходные сегменты удаляем,
+        // иначе они останутся в XML хвостом и продублируют старые точки.
+        for (let i = 1; i < segs.length; i++) {
+          segs[i].parentNode?.removeChild(segs[i]);
+        }
         let outXml = serializer.serializeToString(doc);
 
         // Более надёжный способ: строковая замена между <trkseg> и </trkseg>
@@ -7470,17 +7586,17 @@
           clearEpisodeHighlight("map-after");
           return;
         }
-        let lats, lons, eles, times;
+        let lats, lons, eles, times, hdops;
         try {
           if (precomputed) {
-            ({ lats, lons, eles, times } = precomputed);
+            ({ lats, lons, eles, times, hdops } = precomputed);
             cachedTrackArrays = precomputed;
           } else if (cachedTrackArrays) {
-            ({ lats, lons, eles, times } = cachedTrackArrays);
+            ({ lats, lons, eles, times, hdops } = cachedTrackArrays);
           } else {
             const extracted = extractTrackData(gpxText);
             cachedTrackArrays = extracted;
-            ({ lats, lons, eles, times } = extracted);
+            ({ lats, lons, eles, times, hdops } = extracted);
           }
         } catch (e) {
           cachedTrackArrays = null;
@@ -7510,6 +7626,7 @@
           times,
           maxSpeed,
           minDist,
+          hdops,
         );
         // Паузы записи ищем всегда — но их режим по умолчанию "оставить как
         // было" (см. ниже), а не выбранный способ заполнения, так что без
