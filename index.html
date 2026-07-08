@@ -4156,6 +4156,7 @@
           if (d / dt > maxSpeedMps) teleports.push(i);
         }
         if (!teleports.length) return [];
+        const teleportSet = new Set(teleports);
 
         // Локальные микро-выбросы: короткая эрратичная серия точек (GPS-шум/
         // мультипуть, например под лесным пологом), где скачок НЕ дотягивает
@@ -4363,16 +4364,55 @@
                 // maxSpeedMps (из-за большого dt), хотя по факту они уже
                 // далеко от места возврата (resumeIdx) - то есть являются
                 // частью того же самого микро-выброса.
-                const refLatR = lats[resumeIdx],
-                  refLonR = lons[resumeIdx];
-                let j = tOut;
-                let stepsBack = 0;
-                while (j >= 0 && stepsBack < MICRO_SCAN_POINTS) {
-                  const dLocal = haversine(lats[j], lons[j], refLatR, refLonR);
-                  if (dLocal < MICRO_BACKWARD_DIST_M) break;
-                  firstBad = j;
-                  j--;
-                  stepsBack++;
+                //
+                // Но если весь "выброс" — это ОДНА-ЕДИНСТВЕННАЯ изолированная
+                // аномальная точка (рядом с tOut, в широком окне вперёд и
+                // назад, больше нет ни одного другого телепорта и ни одной
+                // замёрзшей пары координат) и восстановление найдено сразу
+                // же (буквально через несколько точек), то это, скорее всего,
+                // одиночный случайный GPS-сбой посреди иначе честного и
+                // быстрого движения (например, прямая трасса) — а не начало
+                // настоящего джаминга. На такой честной трассе расстояние от
+                // точки ДО tOut до места возврата только растёт по мере
+                // углубления в прошлое (трек реально удаляется, а не дрейфует
+                // обратно), поэтому цикл ниже слепо захватывал назад все
+                // MICRO_SCAN_POINTS точек нормального движения — несколько
+                // минут честной езды превращались в "эпизод джаминга" из-за
+                // одного случайного выброса. В таком изолированном случае
+                // расширение назад не делаем вовсе — эпизодом остаётся только
+                // сам выброс (firstBad = tOut + 1).
+                let isIsolatedSpike = false;
+                if (resumeIdx - firstBad <= 10) {
+                  isIsolatedSpike = true;
+                  const scanFrom = Math.max(0, tOut - MICRO_SCAN_POINTS);
+                  const scanTo = Math.min(n - 1, resumeIdx + MICRO_SCAN_POINTS);
+                  for (let j = scanFrom; j <= scanTo; j++) {
+                    if (j === tOut) continue;
+                    if (Math.abs(times[j] - times[tOut]) > MICRO_SCAN_SECONDS)
+                      continue;
+                    if (teleportSet.has(j) || isFrozenCandidate(j)) {
+                      isIsolatedSpike = false;
+                      break;
+                    }
+                  }
+                }
+                if (!isIsolatedSpike) {
+                  const refLatR = lats[resumeIdx],
+                    refLonR = lons[resumeIdx];
+                  let j = tOut;
+                  let stepsBack = 0;
+                  while (j >= 0 && stepsBack < MICRO_SCAN_POINTS) {
+                    const dLocal = haversine(
+                      lats[j],
+                      lons[j],
+                      refLatR,
+                      refLonR,
+                    );
+                    if (dLocal < MICRO_BACKWARD_DIST_M) break;
+                    firstBad = j;
+                    j--;
+                    stepsBack++;
+                  }
                 }
                 episodes.push({
                   firstBad,
