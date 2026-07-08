@@ -1042,7 +1042,7 @@
       <div class="param-row profile-row">
         <label data-i18n="label_profile">Тип активности</label>
         <select id="p-profile"></select>
-        <span class="hint" data-i18n="hint_profile"
+        <span class="hint" id="profile-hint" data-i18n="hint_profile"
           >Профиль подставляет параметры ниже — их всё равно можно подправить
           вручную</span
         >
@@ -1050,7 +1050,10 @@
       <div class="param-row profile-row">
         <label data-i18n="label_interp_mode">Заполнение пробелов</label>
         <select id="p-interp-mode">
-          <option value="linear" data-i18n="gapfill_linear" selected>
+          <option value="auto" data-i18n="gapfill_auto" selected>
+            Авто (по скорости трека)
+          </option>
+          <option value="linear" data-i18n="gapfill_linear">
             Простое соединение (офлайн)
           </option>
           <option value="foot" data-i18n="gapfill_foot">Маршрут: пешком</option>
@@ -1066,7 +1069,7 @@
           api.open-meteo.com (высоты)</span
         >
       </div>
-      <div class="params-grid">
+      <div class="params-grid" id="params-grid">
         <div class="param-row">
           <label data-i18n="label_maxspeed"
             >Макс. горизонт. скорость (м/с)</label
@@ -1278,9 +1281,12 @@
           label_profile: "Тип активности",
           hint_profile:
             "Профиль подставляет параметры ниже — их всё равно можно подправить вручную",
+          hint_profile_auto:
+            "Пороги подбираются автоматически по распределению скоростей самого трека — тип активности знать не нужно",
           label_interp_mode: "Заполнение пробелов",
           hint_interp_mode:
             'Режимы "Маршрут" прокладывают пропущенный участок по реальной тропе или дороге (а не прямой линией) — для этого координаты границ пробела отправляются на routing.openstreetmap.de (построение маршрута) и api.open-meteo.com (высоты)',
+          gapfill_auto: "Авто (по скорости трека)",
           gapfill_linear: "Простое соединение (офлайн)",
           gapfill_foot: "Маршрут: пешком",
           gapfill_bike: "Маршрут: велосипед",
@@ -1332,13 +1338,19 @@
           alert_parse_fail: "Не удалось разобрать файл: {msg}",
           busy_loading: "Обрабатываем трек…",
           busy_fixing: "Исправляем трек…",
+          log_auto_params:
+            "🤖 Авто-параметры по треку: макс. скорость {maxSpeed} м/с, кластер глушилки от {minDist} м, ранний дрейф {preJitter} м, верт. скорость {maxVert} м/с, шаг интерполяции {interval} с",
+          log_auto_interp:
+            "🤖 Авто-заполнение пробелов: типичная скорость трека {p90} м/с ({kmh} км/ч) → маршрут: {mode}",
+          log_auto_interp_linear:
+            "🤖 Авто-заполнение пробелов: точек недостаточно → простое соединение",
           suffix_tcx: " (конвертирован из TCX)",
           suffix_fit: " (конвертирован из FIT)",
           update_available: "Доступно обновление GPX Repair",
           update_btn: "Обновить",
           alt_done: "Готово",
-          profile_hiking: "🥾 Пеший поход",
-          profile_running: "🏃 Бег / трейлраннинг",
+          profile_auto: "🤖 Авто (по данным трека)",
+          profile_hiking: "🥾 Пеший поход",          profile_running: "🏃 Бег / трейлраннинг",
           profile_kayak: "🛶 Сплав / каяк / SUP",
           profile_horse: "🐎 Верховая езда",
           profile_mtb: "🚴 Велосипед (МТБ)",
@@ -1385,6 +1397,8 @@
             "⚠ Эпизодов с маршрутизацией много ({count}) — маршрутизация ограничена первыми {max}, остальные заполнятся простым соединением (офлайн).",
           log_episode_kept:
             "\nЭпизод глушения: точки [{first}..{last}] — оставлен без изменений (выбрано «оставить как было»)",
+          log_episode_merged:
+            "  ⚠ Эпизод (с точки {first}) примыкает вплотную к предыдущему (с точки {prevFirst}) — мосты объединены в один",
           log_episode_header:
             "\nЭпизод глушения: точки [{first}..{last}]  ({cnt} точек, {dur}с пробел){tail}",
           log_episode_tail_cut: "  [обрыв в конце трека, без возврата]",
@@ -1444,9 +1458,12 @@
           label_profile: "Activity type",
           hint_profile:
             "The profile fills in the parameters below — you can still adjust them manually",
+          hint_profile_auto:
+            "Thresholds are derived automatically from the track's own speed distribution — no need to know the activity type",
           label_interp_mode: "Gap fill mode",
           hint_interp_mode:
             '"Route" modes fill the gap along the actual trail or road (not a straight line) — this sends the gap-boundary coordinates to routing.openstreetmap.de (routing) and api.open-meteo.com (elevation)',
+          gapfill_auto: "Auto (from track speed)",
           gapfill_linear: "Simple join (offline)",
           gapfill_foot: "Route: on foot",
           gapfill_bike: "Route: bicycle",
@@ -1499,11 +1516,18 @@
           alert_parse_fail: "Failed to parse file: {msg}",
           busy_loading: "Processing track…",
           busy_fixing: "Fixing track…",
+          log_auto_params:
+            "🤖 Auto params from track: max speed {maxSpeed} m/s, jammer cluster from {minDist} m, early drift {preJitter} m, vert. speed {maxVert} m/s, interpolation step {interval} s",
+          log_auto_interp:
+            "🤖 Auto gap fill: typical track speed {p90} m/s ({kmh} km/h) → route: {mode}",
+          log_auto_interp_linear:
+            "🤖 Auto gap fill: not enough points → simple join",
           suffix_tcx: " (converted from TCX)",
           suffix_fit: " (converted from FIT)",
           update_available: "GPX Repair update available",
           update_btn: "Update",
           alt_done: "Done",
+          profile_auto: "🤖 Auto (from track data)",
           profile_hiking: "🥾 Hiking",
           profile_running: "🏃 Running / trail running",
           profile_kayak: "🛶 Rafting / kayak / SUP",
@@ -1552,6 +1576,8 @@
             "⚠ Too many routed episodes ({count}) — routing limited to the first {max}, the rest will be filled with a simple offline join.",
           log_episode_kept:
             "\nJammer episode: points [{first}..{last}] — left unchanged (kept as-is)",
+          log_episode_merged:
+            "  ⚠ Episode (from point {first}) is adjacent to the previous one (from point {prevFirst}) — bridges merged into one",
           log_episode_header:
             "\nJammer episode: points [{first}..{last}]  ({cnt} points, {dur}s gap){tail}",
           log_episode_tail_cut: "  [track cut off at the end, no return]",
@@ -4371,16 +4397,21 @@
                 // замёрзшей пары координат) и восстановление найдено сразу
                 // же (буквально через несколько точек), то это, скорее всего,
                 // одиночный случайный GPS-сбой посреди иначе честного и
-                // быстрого движения (например, прямая трасса) — а не начало
-                // настоящего джаминга. На такой честной трассе расстояние от
-                // точки ДО tOut до места возврата только растёт по мере
-                // углубления в прошлое (трек реально удаляется, а не дрейфует
-                // обратно), поэтому цикл ниже слепо захватывал назад все
-                // MICRO_SCAN_POINTS точек нормального движения — несколько
-                // минут честной езды превращались в "эпизод джаминга" из-за
-                // одного случайного выброса. В таком изолированном случае
-                // расширение назад не делаем вовсе — эпизодом остаётся только
-                // сам выброс (firstBad = tOut + 1).
+                // быстрого движения (например, прямая трасса) — а не джаминг.
+                // Проверено на реальном треке (трасса, ~22 м/с): после
+                // одиночного скачка на ~215 м приёмник за 4-5 точек плавно,
+                // с совершенно нормальной скоростью, сходится обратно к
+                // реальной траектории — это штатная работа фильтра
+                // GPS-приёмника после точечного сбоя, у неё нет ни одного
+                // признака глушения. Раньше такой всплеск превращался в
+                // "эпизод" (сначала вообще с захватом MICRO_SCAN_POINTS
+                // точек честной езды назад — расстояние от точек до места
+                // возврата на прямой трассе только растёт вглубь прошлого;
+                // затем — хотя бы коротким, но всё равно ложным эпизодом из
+                // нескольких точек). Теперь изолированный всплеск не
+                // считается эпизодом вовсе — точечный сбой такого масштаба
+                // (заведомо < minClusterDist) не ломает трек и не стоит
+                // ни предупреждения, ни интерполяции.
                 let isIsolatedSpike = false;
                 if (resumeIdx - firstBad <= 10) {
                   isIsolatedSpike = true;
@@ -4396,23 +4427,25 @@
                     }
                   }
                 }
-                if (!isIsolatedSpike) {
-                  const refLatR = lats[resumeIdx],
-                    refLonR = lons[resumeIdx];
-                  let j = tOut;
-                  let stepsBack = 0;
-                  while (j >= 0 && stepsBack < MICRO_SCAN_POINTS) {
-                    const dLocal = haversine(
-                      lats[j],
-                      lons[j],
-                      refLatR,
-                      refLonR,
-                    );
-                    if (dLocal < MICRO_BACKWARD_DIST_M) break;
-                    firstBad = j;
-                    j--;
-                    stepsBack++;
-                  }
+                if (isIsolatedSpike) {
+                  k++;
+                  continue;
+                }
+                const refLatR = lats[resumeIdx],
+                  refLonR = lons[resumeIdx];
+                let j = tOut;
+                let stepsBack = 0;
+                while (j >= 0 && stepsBack < MICRO_SCAN_POINTS) {
+                  const dLocal = haversine(
+                    lats[j],
+                    lons[j],
+                    refLatR,
+                    refLonR,
+                  );
+                  if (dLocal < MICRO_BACKWARD_DIST_M) break;
+                  firstBad = j;
+                  j--;
+                  stepsBack++;
                 }
                 episodes.push({
                   firstBad,
@@ -5806,6 +5839,12 @@
         // впритык, и extendEpisodeBackward может утянуть границу назад
         // дальше их стыка).
         let prevFinalLastBad = -1;
+        // Информация о предыдущем обработанном эпизоде — нужна для слияния:
+        // если после расширений эпизоды стали смежными, опорная точка
+        // beforeIdx текущего эпизода оказалась бы внутри уже удалённой
+        // (фейковой) зоны предыдущего, и интерполяция стартовала бы из
+        // ложной локации — в исправленном треке остался бы скачок глушилки.
+        let prevEp = null;
 
         // Определяем ns3-префикс для расширений Garmin
         const nsExtPrefix = (() => {
@@ -5829,6 +5868,9 @@
               "log-warn",
             );
             prevFinalLastBad = ep.lastBad;
+            // Через "оставленный" эпизод сливаться нельзя — его точки
+            // остаются в треке.
+            prevEp = null;
             continue;
           }
 
@@ -5893,7 +5935,36 @@
             }
           }
 
-          const beforeIdx = firstBad - 1;
+          let beforeIdx = firstBad - 1;
+
+          // Слияние с предыдущим эпизодом: если после всех расширений между
+          // эпизодами не осталось ни одной честной точки (текущий начинается
+          // сразу за прошлым), то beforeIdx указывает на уже УДАЛЁННУЮ
+          // (фейковую) точку предыдущего эпизода — интерполяция стартовала бы
+          // из ложной локации, и в исправленном треке остался бы скачок
+          // глушилки. Вместо этого строим один общий мост: отменяем вставку
+          // предыдущего эпизода и наследуем его опорную точку «до».
+          if (prevEp && firstBad === prevEp.lastBad + 1) {
+            if (
+              prevEp.insertAfterIdx !== null &&
+              insertionBefore.has(prevEp.insertAfterIdx)
+            ) {
+              totalInserted -= insertionBefore.get(
+                prevEp.insertAfterIdx,
+              ).length;
+              insertionBefore.delete(prevEp.insertAfterIdx);
+              if (prevEp.pushedSegment) interpSegments.pop();
+            }
+            beforeIdx = prevEp.beforeIdx;
+            log(
+              t("log_episode_merged", {
+                first: firstBad,
+                prevFirst: prevEp.beforeIdx + 1,
+              }),
+              "log-warn",
+            );
+          }
+
           const cnt = lastBad - firstBad + 1;
           totalRemoved += cnt;
           prevFinalLastBad = lastBad;
@@ -5949,6 +6020,12 @@
               ),
               "log-warn",
             );
+            prevEp = {
+              lastBad,
+              beforeIdx,
+              insertAfterIdx: null,
+              pushedSegment: false,
+            };
             continue;
           }
 
@@ -6085,6 +6162,13 @@
               ],
             });
           }
+
+          prevEp = {
+            lastBad,
+            beforeIdx,
+            insertAfterIdx: afterIdx < n ? afterIdx : null,
+            pushedSegment: afterIdx < n,
+          };
         }
 
         // ─── Перестройка сегмента ─────────────────────────────────────────────────
@@ -6374,8 +6458,9 @@
           },
         ],
       ];
-      const DEFAULT_PROFILE = "hiking";
+      const DEFAULT_PROFILE = "auto";
       const CUSTOM_PROFILE_KEY = "custom";
+      const AUTO_PROFILE_KEY = "auto";
       const PROFILE_PARAM_IDS = [
         "p-maxspeed",
         "p-mindist",
@@ -6388,6 +6473,7 @@
       // Профили без дорожной сети (вода, воздух, снег, рельсы, бездорожье) —
       // "linear": маршрутизация OSRM по автодорогам/тропам там не поможет.
       const PROFILE_INTERP_MODE = {
+        auto: "auto",
         hiking: "foot",
         running: "foot",
         horse: "foot",
@@ -6422,6 +6508,157 @@
         document.getElementById("p-vertspeed").value = p.maxVert;
         document.getElementById("p-interval").value = p.interval;
         flashParams(PROFILE_PARAM_IDS);
+      }
+
+      // ─── Авто-профиль: трек сам задаёт норму ────────────────────────────────
+      // Вместо жёстко заданного "физического потолка" конкретного вида
+      // активности выводим порог скорости из распределения скоростей самого
+      // трека. Калибруемся на НИЗКИХ перцентилях (p95), потому что верхние
+      // (p99+) на треке с длинным эпизодом глушения уже заражены самим
+      // джамингом (на реальном пешем треке с глушилкой ~11% точек p99 был
+      // 22 м/с вместо честных 1.75). Множитель 2 и клампы подобраны
+      // регрессионно на 9 реальных треках (пешие/вело/мото/авто/параплан,
+      // с глушилкой и без): результат совпадает с ручными профилями либо
+      // лучше их (авто-порог нашёл на "Чегемское" эпизод, который ручной
+      // профиль "Авто 70 м/с" пропускал).
+      function computeAutoParams({ lats, lons, eles, times }) {
+        const speeds = [];
+        const dts = [];
+        const verts = [];
+        for (let i = 0; i < lats.length - 1; i++) {
+          const dtRaw = times[i + 1] - times[i];
+          const dt = Math.max(1, dtRaw);
+          if (dtRaw > 0) dts.push(dtRaw);
+          speeds.push(
+            haversine(lats[i], lons[i], lats[i + 1], lons[i + 1]) / dt,
+          );
+          if (
+            eles &&
+            Number.isFinite(eles[i]) &&
+            Number.isFinite(eles[i + 1])
+          ) {
+            verts.push(Math.abs(eles[i + 1] - eles[i]) / dt);
+          }
+        }
+        if (!speeds.length) return null;
+        speeds.sort((a, b) => a - b);
+        const q = (arr, p) =>
+          arr[Math.min(arr.length - 1, Math.floor(p * arr.length))];
+        // Пол 3 м/с — ниже уровня шума GPS порог опускать нет смысла;
+        // потолок 120 м/с — быстрее по земле честно не ездят.
+        const maxSpeed =
+          Math.round(Math.min(120, Math.max(3, 2 * q(speeds, 0.95))) * 10) /
+          10;
+        const minDist = Math.round(
+          Math.min(10000, Math.max(500, 100 * maxSpeed)),
+        );
+        // В ручных профилях preJitter ≈ 20 × maxSpeed (пеший 200/10,
+        // авто 1500/70) — сохраняем то же соотношение.
+        const preJitter = Math.round(
+          Math.min(2000, Math.max(100, 20 * maxSpeed)),
+        );
+        let maxVert = 5;
+        if (verts.length) {
+          verts.sort((a, b) => a - b);
+          maxVert =
+            Math.round(Math.min(25, Math.max(3, 3 * q(verts, 0.95))) * 10) /
+            10;
+        }
+        let interval = 1;
+        if (dts.length) {
+          dts.sort((a, b) => a - b);
+          interval = Math.min(60, Math.max(0.5, dts[Math.floor(dts.length / 2)]));
+        }
+        return { maxSpeed, minDist, preJitter, maxVert, interval };
+      }
+
+      function applyAutoParams(arrays) {
+        const p = computeAutoParams(arrays);
+        if (!p) return;
+        document.getElementById("p-maxspeed").value = p.maxSpeed;
+        document.getElementById("p-mindist").value = p.minDist;
+        document.getElementById("p-prejitter").value = p.preJitter;
+        document.getElementById("p-vertspeed").value = p.maxVert;
+        document.getElementById("p-interval").value = p.interval;
+      }
+
+      // Авто-режим заполнения пробелов: угадываем способ маршрутизации по
+      // типичной (p90) скорости трека. Медиана не годится — у трека с
+      // долгими стоянками (обед, привал) она занижена почти до нуля, а
+      // p90 отражает именно "крейсерскую" скорость движения. Пороги
+      // грубые намеренно: пешеход <3 м/с (10.8 км/ч), велосипед <12 м/с
+      // (43 км/ч), быстрее — авто. Параплан/лодку от машины по одной
+      // скорости не отличить — для них пользователь выбирает режим
+      // вручную (или конкретный профиль активности).
+      function computeAutoInterpMode({ lats, lons, times }) {
+        const speeds = [];
+        for (let i = 0; i < lats.length - 1; i++) {
+          const dt = Math.max(1, times[i + 1] - times[i]);
+          speeds.push(
+            haversine(lats[i], lons[i], lats[i + 1], lons[i + 1]) / dt,
+          );
+        }
+        if (!speeds.length) return { mode: "linear", p90: null };
+        speeds.sort((a, b) => a - b);
+        const p90 = speeds[Math.min(speeds.length - 1, Math.floor(0.9 * speeds.length))];
+        if (p90 < 3) return { mode: "foot", p90 };
+        if (p90 < 12) return { mode: "bike", p90 };
+        return { mode: "car", p90 };
+      }
+
+      // Превращает значение селекта "Заполнение пробелов" в конкретный
+      // режим: "auto" разрешается по данным текущего трека (или в "linear",
+      // если трека ещё нет), остальные значения возвращаются как есть.
+      function resolveInterpMode(arrays) {
+        const raw = document.getElementById("p-interp-mode").value;
+        if (raw !== "auto") return raw;
+        const a = arrays || cachedTrackArrays;
+        if (!a || !a.lats || !a.lats.length) return "linear";
+        return computeAutoInterpMode(a).mode;
+      }
+
+      // Пишет в лог, что именно вычислили авто-режимы для текущего трека —
+      // иначе пользователю непонятно, по каким порогам шёл поиск аномалий
+      // и каким способом будут заполняться пробелы.
+      function logAutoModes() {
+        const a = cachedTrackArrays;
+        if (!a || !a.lats || !a.lats.length) return;
+        if (
+          document.getElementById("p-profile").value === AUTO_PROFILE_KEY
+        ) {
+          const p = computeAutoParams(a);
+          if (p) log(t("log_auto_params", p));
+        }
+        if (document.getElementById("p-interp-mode").value === "auto") {
+          const g = computeAutoInterpMode(a);
+          if (g.p90 === null) {
+            log(t("log_auto_interp_linear"));
+          } else {
+            log(
+              t("log_auto_interp", {
+                p90: g.p90.toFixed(1),
+                kmh: (g.p90 * 3.6).toFixed(0),
+                mode: interpModeLabel(g.mode),
+              }),
+            );
+          }
+        }
+      }
+
+      // Сетка ручных параметров видна только когда выбран конкретный профиль
+      // (или "пользовательский"); в режиме "Авто" все пороги вычисляются из
+      // трека, и показывать/редактировать их не нужно.
+      function updateParamsVisibility() {
+        const isAuto =
+          document.getElementById("p-profile").value === AUTO_PROFILE_KEY;
+        const grid = document.getElementById("params-grid");
+        if (grid) grid.style.display = isAuto ? "none" : "";
+        const hint = document.getElementById("profile-hint");
+        if (hint) {
+          const key = isAuto ? "hint_profile_auto" : "hint_profile";
+          hint.setAttribute("data-i18n", key);
+          hint.textContent = t(key);
+        }
       }
 
       // Кратко подсвечивает переданные поля — наглядно показывает, что их
@@ -6495,6 +6732,11 @@
           btnFix.disabled = true;
           return;
         }
+        if (
+          document.getElementById("p-profile").value === AUTO_PROFILE_KEY
+        ) {
+          applyAutoParams({ lats, lons, eles, times });
+        }
         const maxSpeed =
           parseFloat(document.getElementById("p-maxspeed").value) || 20;
         const minDist =
@@ -6508,7 +6750,7 @@
         );
         episodePreview = episodes;
         episodePreviewTimes = times;
-        const defaultMode = document.getElementById("p-interp-mode").value;
+        const defaultMode = resolveInterpMode({ lats, lons, times });
         episodeChoices = episodes.map(() => defaultMode);
         renderEpisodeList(episodes, times);
         const hasEpisodes = episodes.length > 0;
@@ -6635,6 +6877,10 @@
         };
 
         const select = document.getElementById("p-profile");
+        const autoOpt = document.createElement("option");
+        autoOpt.value = AUTO_PROFILE_KEY;
+        autoOpt.textContent = t("profile_" + AUTO_PROFILE_KEY);
+        select.appendChild(autoOpt);
         for (const [key, p] of ACTIVITY_PROFILES) {
           const opt = document.createElement("option");
           opt.value = key;
@@ -6652,9 +6898,11 @@
         select.value = DEFAULT_PROFILE;
         applyProfile(DEFAULT_PROFILE);
         applyInterpModeForProfile(DEFAULT_PROFILE);
+        updateParamsVisibility();
         select.addEventListener("change", () => {
           applyProfile(select.value);
           applyInterpModeForProfile(select.value);
+          updateParamsVisibility();
           updateEpisodeList();
         });
 
@@ -6672,7 +6920,7 @@
         document
           .getElementById("p-interp-mode")
           .addEventListener("change", () => {
-            const mode = document.getElementById("p-interp-mode").value;
+            const mode = resolveInterpMode();
             if (episodePreview.length) {
               episodeChoices = episodePreview.map(() => mode);
               renderEpisodeList(episodePreview, episodePreviewTimes);
@@ -6912,6 +7160,7 @@
         document.getElementById("done-img").style.display = "none";
         btnFix.disabled = true;
         showBusyOverlay(t("busy_fixing"));
+        logAutoModes();
 
         const params = {
           maxSpeed:
