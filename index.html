@@ -595,6 +595,15 @@
       .elevation-profile-info .track-popup b {
         color: #e5e7eb;
       }
+      .elevation-profile-info .track-popup .value-dot {
+        display: inline-block;
+        width: 9px;
+        height: 9px;
+        border-radius: 50%;
+        margin-left: 6px;
+        vertical-align: middle;
+        border: 1px solid rgba(255, 255, 255, 0.35);
+      }
       .elevation-profile-info-empty {
         color: #6b7385;
         font-style: italic;
@@ -2553,7 +2562,12 @@
         speedVal,
         gradeVal,
         percentVal,
+        colors,
       ) {
+        const dot = (color) =>
+          color
+            ? `<span class="value-dot" style="background:${color}"></span>`
+            : "";
         const rows = [`<b>${lat.toFixed(6)}, ${lon.toFixed(6)}</b>`];
         if (Number.isFinite(timeUnix)) {
           rows.push(`${t("popup_time")}: ${formatEpisodeTime(timeUnix)}`);
@@ -2568,22 +2582,22 @@
         }
         if (Number.isFinite(ele)) {
           rows.push(
-            `${t("color_mode_elevation")}: ${ele.toFixed(1)} ${t("unit_m")}`,
+            `${t("color_mode_elevation")}: ${ele.toFixed(1)} ${t("unit_m")}${dot(colors && colors.eleColor)}`,
           );
         }
         if (Number.isFinite(speedVal)) {
           rows.push(
-            `${t("color_mode_speed")}: ${speedVal.toFixed(1)} ${t("unit_kmh")}`,
+            `${t("color_mode_speed")}: ${speedVal.toFixed(1)} ${t("unit_kmh")}${dot(colors && colors.speedColor)}`,
           );
         }
         if (Number.isFinite(gradeVal)) {
           rows.push(
-            `${t("color_mode_grade")}: ${gradeVal >= 0 ? "+" : ""}${gradeVal.toFixed(1)}%`,
+            `${t("color_mode_grade")}: ${gradeVal >= 0 ? "+" : ""}${gradeVal.toFixed(1)}%${dot(colors && colors.gradeColor)}`,
           );
         }
         if (Number.isFinite(hr)) {
           rows.push(
-            `${t("color_mode_hr")}: ${Math.round(hr)} ${t("unit_bpm")}`,
+            `${t("color_mode_hr")}: ${Math.round(hr)} ${t("unit_bpm")}${dot(colors && colors.hrColor)}`,
           );
         }
         return `<div class="track-popup">${rows.map((r) => `<div>${r}</div>`).join("")}</div>`;
@@ -2627,18 +2641,16 @@
         return onMainTrackClick(containerId);
       }
 
-      // Считает сглаженную метрику раскраски на каждом отрезке между соседними
-      // точками (из уже прореженного списка индексов idxs) — как среднее
-      // сглаженных точечных значений двух концов отрезка (series строится
-      // computeAllSmoothedSeries по ПОЛНЫМ, не прореженным массивам) — и
-      // переводит её в цвет через квантованные уровни (см. quantizeLevel).
-      function computeColorSegments(mode, series, idxs) {
-        if (mode === "plain" || !idxs || idxs.length < 2 || !series)
-          return { segColors: null, segLevels: null, legend: null };
-
-        const vals = series[mode];
-        if (!vals) return { segColors: null, segLevels: null, legend: null };
-
+      // "Сырые" (по одному значению на отрезок idxs[k]..idxs[k+1]) значения
+      // метрики mode — среднее сглаженных точечных значений двух концов
+      // отрезка (series строится computeAllSmoothedSeries по ПОЛНЫМ, не
+      // прореженным массивам). Общий строительный блок и для расчёта
+      // легенды/квантования цвета активного режима (computeColorSegments),
+      // и для легенд всех метрик сразу — см. computeAllMetricLegends
+      // (нужны для кружков-индикаторов цвета в инфо-панели профиля).
+      function buildRawSegmentValues(mode, series, idxs) {
+        const vals = series && series[mode];
+        if (!vals || !idxs || idxs.length < 2) return null;
         const n = idxs.length;
         const raw = new Array(n - 1);
         for (let k = 0; k < n - 1; k++) {
@@ -2651,10 +2663,16 @@
                 ? v0
                 : v1;
         }
+        return raw;
+      }
 
+      // Легенда (min/max/unit) для метрики mode по её "сырым" отрезочным
+      // значениям (см. buildRawSegmentValues) — общая логика для активного
+      // режима раскраски и для остальных метрик (кружки в инфо-панели).
+      function computeLegendForMode(mode, raw) {
+        if (!raw) return null;
         const finite = raw.filter(Number.isFinite);
-        if (!finite.length)
-          return { segColors: null, segLevels: null, legend: null };
+        if (!finite.length) return null;
 
         let min, max;
         if (mode === "grade") {
@@ -2669,16 +2687,6 @@
           max = p.max;
         }
 
-        const legendForColor = { min, max };
-        const segLevels = raw.map((v) =>
-          quantizeLevel(v, legendForColor, COLOR_QUANTIZE_LEVELS),
-        );
-        const segColors = segLevels.map((lvl) =>
-          lvl === null
-            ? "#5b6478"
-            : colorScale((lvl + 0.5) / COLOR_QUANTIZE_LEVELS),
-        );
-
         const unit =
           mode === "speed"
             ? t("unit_kmh")
@@ -2688,7 +2696,45 @@
                 ? t("unit_m")
                 : t("unit_bpm");
 
-        return { segColors, segLevels, legend: { min, max, unit } };
+        return { min, max, unit };
+      }
+
+      // Считает сглаженную метрику раскраски на каждом отрезке между соседними
+      // точками (из уже прореженного списка индексов idxs) и переводит её в
+      // цвет через квантованные уровни (см. quantizeLevel).
+      function computeColorSegments(mode, series, idxs) {
+        if (mode === "plain" || !idxs || idxs.length < 2 || !series)
+          return { segColors: null, segLevels: null, legend: null };
+
+        const raw = buildRawSegmentValues(mode, series, idxs);
+        const legend = computeLegendForMode(mode, raw);
+        if (!legend) return { segColors: null, segLevels: null, legend: null };
+
+        const segLevels = raw.map((v) =>
+          quantizeLevel(v, legend, COLOR_QUANTIZE_LEVELS),
+        );
+        const segColors = segLevels.map((lvl) =>
+          lvl === null
+            ? "#5b6478"
+            : colorScale((lvl + 0.5) / COLOR_QUANTIZE_LEVELS),
+        );
+
+        return { segColors, segLevels, legend };
+      }
+
+      // Легенды ВСЕХ 4 метрик сразу (не только активного режима раскраски) —
+      // нужны, чтобы в инфо-панели профиля высот показать у каждого значения
+      // кружок именно того цвета, каким была бы окрашена точка трека в
+      // соответствующем режиме (см. buildProfileInfoHtml/buildPointPopupHtml).
+      function computeAllMetricLegends(series, idxs) {
+        const legends = {};
+        for (const mode of ["speed", "grade", "elevation", "hr"]) {
+          legends[mode] = computeLegendForMode(
+            mode,
+            buildRawSegmentValues(mode, series, idxs),
+          );
+        }
+        return legends;
       }
 
       // Каждая карта ("до"/"после") имеет свой переключатель и свою легенду —
@@ -2834,6 +2880,14 @@
         const series = sameData
           ? existing.series
           : computeAllSmoothedSeries(lats, lons, eles, times, hrs, cumDist);
+        // Легенды всех 4 метрик (не только активного режима раскраски) —
+        // для кружков-индикаторов в инфо-панели профиля (см.
+        // buildProfileInfoHtml). idxs при неизменных lats/lons всегда
+        // получаются те же самые (прореживание зависит только от
+        // lats.length), поэтому кэшируются вместе с series.
+        const metricLegends = sameData
+          ? existing.metricLegends
+          : computeAllMetricLegends(series, idxs);
 
         mapTrackData[containerId] = {
           lats,
@@ -2844,6 +2898,7 @@
           color,
           cumDist,
           series,
+          metricLegends,
         };
         // interpSegments передаётся явно только при первой отрисовке после
         // обработки — при перерисовке из-за смены режима раскраски (undefined)
@@ -3457,6 +3512,15 @@
           idx,
           data.lats.length,
         );
+        // Кружок рядом со значением — тот же цвет, каким была бы окрашена
+        // эта точка трека в соответствующем режиме раскраски (см.
+        // computeAllMetricLegends/colorForValue) — не только в активном
+        // сейчас режиме, а для каждой метрики отдельно.
+        const legends = data.metricLegends || {};
+        const eleColor = colorForValue(ele, legends.elevation);
+        const speedColor = colorForValue(speedVal, legends.speed);
+        const gradeColor = colorForValue(gradeVal, legends.grade);
+        const hrColor = colorForValue(hr, legends.hr);
         return buildPointPopupHtml(
           lat,
           lon,
@@ -3467,6 +3531,7 @@
           speedVal,
           gradeVal,
           percentVal,
+          { eleColor, speedColor, gradeColor, hrColor },
         );
       }
 
