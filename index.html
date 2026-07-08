@@ -4430,6 +4430,63 @@
         return newStart;
       }
 
+      // Симметричный аналог extendAltitudeBackward, но вперёд: барометр после
+      // выхода из глушения тоже не восстанавливается мгновенно, а "доезжает"
+      // до реальной высоты по затухающей кривой (классический паттерн —
+      // резкий скачок сразу за afterIdx, который плавно спадает несколько
+      // секунд/точек, пока производная не уйдёт под maxVertSpeed). Без этой
+      // проверки afterIdx считается уже "хорошей" точкой, и интерполяция
+      // эпизода целится своим концом ПРЯМО в ещё не осевшее, завышенное
+      // значение высоты — визуально это выглядит как резкий шип на графике
+      // высоты сразу перед возвратом к нормальному профилю.
+      function extendAltitudeForward(eles, times, epEnd, maxVertSpeed) {
+        const n = eles.length;
+        let newEnd = epEnd;
+        let i = epEnd;
+        let frozenFwdS = 0;
+        const FROZEN_EPS_M = 0.005;
+        const MAX_FROZEN_FWD_S = 60;
+
+        while (i < n - 1) {
+          const dtOut = Math.abs(times[i + 1] - times[i]);
+          if (dtOut > 30) break;
+
+          const dhOut = Math.abs(eles[i + 1] - eles[i]);
+          const outAnomaly = dtOut > 0 && dhOut / dtOut > maxVertSpeed;
+
+          if (outAnomaly) {
+            newEnd = i + 1;
+            frozenFwdS = 0; // настоящая аномалия сбрасывает лимит
+            i++;
+            continue;
+          }
+          // Проверяем следующий шаг — "плато перед окончательным затуханием"
+          if (i + 2 < n) {
+            const dtNext = Math.abs(times[i + 2] - times[i + 1]);
+            if (dtNext > 0 && dtNext <= 30) {
+              const dhNext = Math.abs(eles[i + 2] - eles[i + 1]);
+              if (dhNext / dtNext > maxVertSpeed) {
+                newEnd = i + 1;
+                i++;
+                continue;
+              }
+            }
+          }
+
+          // "Замороженное" показание высоты сразу после возврата — считаем
+          // частью того же глитча, но не дальше MAX_FROZEN_FWD_S вперёд.
+          if (dhOut < FROZEN_EPS_M && frozenFwdS < MAX_FROZEN_FWD_S) {
+            frozenFwdS += dtOut;
+            newEnd = i + 1;
+            i++;
+            continue;
+          }
+
+          break;
+        }
+        return newEnd;
+      }
+
       // ─── Стабильная высота ДО эпизода ───────────────────────────────────────────
 
       function getPreEpisodeEle(
@@ -5541,6 +5598,28 @@
               preJitter,
               maxVert,
             );
+          }
+
+          // 3) Расширение ВПЕРЁД по высотному крэшу — симметрично шагу 1,
+          // но после точки возврата: барометр "доезжает" до реальной высоты
+          // не мгновенно, а за несколько точек по затухающей кривой. Без
+          // этого afterIdx может указывать на точку, высота которой ещё не
+          // осела, и интерполяция эпизода целится в это завышенное/заниженное
+          // значение — на графике высоты это выглядит как резкий шип прямо
+          // перед возвратом к нормальному профилю.
+          if (maxVert > 0 && afterIdx < n) {
+            let altEnd = extendAltitudeForward(eles, times, afterIdx, maxVert);
+            // Не даём расширению вперёд залезть в начало следующего эпизода
+            // (соседние глитчи могут идти почти подряд) — иначе одна и та же
+            // точка окажется "afterIdx"/точкой вставки сразу у двух эпизодов.
+            const nextEp = episodes[epIdx + 1];
+            if (nextEp && altEnd >= nextEp.firstBad) {
+              altEnd = Math.max(afterIdx, nextEp.firstBad - 1);
+            }
+            if (altEnd > afterIdx) {
+              afterIdx = altEnd;
+              lastBad = afterIdx - 1;
+            }
           }
 
           const beforeIdx = firstBad - 1;
