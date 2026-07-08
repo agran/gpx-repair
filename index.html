@@ -4729,6 +4729,12 @@
       const OSRM_FALLBACK = "https://router.project-osrm.org";
       const ELEVATION_PRIMARY = "https://api.open-meteo.com/v1/elevation";
       const ELEVATION_FALLBACK = "https://api.opentopodata.org/v1/srtm30m";
+      // Некоторым пользователям (например, из-за сетевых блокировок) сервисы
+      // высот выше недоступны напрямую. Если оба прямых запроса не удались,
+      // повторяем их же через собственный PHP-прокси на другом сервере —
+      // маршрутизация (OSRM) не проксируется, проблема только с высотами.
+      const ELEVATION_PROXY =
+        "https://server50.erudit23.ru/gpx-repair/elevation-proxy.php";
       const NETWORK_TIMEOUT_MS = 10_000;
       const NETWORK_PACE_MS = 250;
       const MAX_ROUTED_EPISODES = 30;
@@ -4964,13 +4970,25 @@
         return lat.toFixed(4) + "," + lon.toFixed(4);
       }
 
+      // Запросы к сервисам высот у части пользователей не проходят напрямую
+      // из-за сетевых блокировок, поэтому идём сразу через ELEVATION_PROXY
+      // (маршрутизация OSRM не проксируется — там таких проблем нет).
+      async function fetchJsonDirectOrProxied(url) {
+        try {
+          const proxied = `${ELEVATION_PROXY}?url=${encodeURIComponent(url)}`;
+          return await fetchJsonTimeout(proxied);
+        } catch (e) {}
+        return null;
+      }
+
       async function fetchElevationsRaw(coordPairs) {
         const latStr = coordPairs.map((p) => p.lat.toFixed(6)).join(",");
         const lonStr = coordPairs.map((p) => p.lon.toFixed(6)).join(",");
-        try {
+        {
           const url = `${ELEVATION_PRIMARY}?latitude=${latStr}&longitude=${lonStr}`;
-          const data = await fetchJsonTimeout(url);
+          const data = await fetchJsonDirectOrProxied(url);
           if (
+            data &&
             Array.isArray(data.elevation) &&
             data.elevation.length === coordPairs.length
           ) {
@@ -4978,14 +4996,15 @@
               typeof v === "number" ? v : null,
             );
           }
-        } catch (e) {}
-        try {
+        }
+        {
           const locStr = coordPairs
             .map((p) => `${p.lat.toFixed(6)},${p.lon.toFixed(6)}`)
             .join("|");
           const url = `${ELEVATION_FALLBACK}?locations=${locStr}`;
-          const data = await fetchJsonTimeout(url);
+          const data = await fetchJsonDirectOrProxied(url);
           if (
+            data &&
             Array.isArray(data.results) &&
             data.results.length === coordPairs.length
           ) {
@@ -4993,7 +5012,7 @@
               r && typeof r.elevation === "number" ? r.elevation : null,
             );
           }
-        } catch (e) {}
+        }
         return null;
       }
 
