@@ -184,21 +184,11 @@
         .track-map {
           height: 240px;
         }
-        .elevation-profile-wrap {
-          flex-direction: column;
-          height: 17.4em;
-        }
-        .elevation-profile {
-          flex: 0 0 7.4em;
-          height: 7.4em;
-        }
-        .elevation-profile-info {
-          flex: 1 1 auto;
-          max-width: 100%;
-          height: auto;
-          border-left: none;
-          border-top: 1px solid #0f3460;
-        }
+        /* Мобильные переопределения .elevation-profile-wrap/-profile/-info
+           перенесены ниже, после их базовых (не медийных) объявлений — при
+           одинаковой специфичности селектора побеждает то правило, что идёт
+           позже в файле, независимо от @media, так что здесь они бы всё
+           равно перебивались базовыми правилами. */
         .stats-group {
           grid-template-columns: repeat(auto-fit, minmax(90px, 1fr));
         }
@@ -627,6 +617,38 @@
       .elevation-profile-info-close:hover {
         color: #e5e7eb;
         border-color: #7eb8f7;
+      }
+      /* Мобильное переопределение размеров профиля/инфо-карточки. Идёт
+         ПОСЛЕ базовых правил .elevation-profile-wrap/-profile/-info выше —
+         иначе при равной специфичности селектора победил бы более поздний
+         в файле базовый вариант, а не этот media-блок (именно так раньше
+         терялась мобильная раскладка и карточка попапа точки вылезала
+         поверх .stats-group). */
+      @media (max-width: 480px) {
+        .elevation-profile-wrap {
+          flex-direction: column;
+          /* Раньше тут была фиксированная height: 17.4em, а у
+             .elevation-profile-info ниже — height: auto. Из-за дефолтного
+             min-height:auto у flex-элементов в колонке карточка с попапом
+             точки (много строк) не сжималась под лимит родителя и вылезала
+             поверх .stats-group под профилем. Теперь высота обёртки сама
+             подстраивается под контент, а карточка ограничена max-height
+             со своим скроллом (см. ниже). */
+          height: auto;
+        }
+        .elevation-profile {
+          flex: 0 0 7.4em;
+          height: 7.4em;
+        }
+        .elevation-profile-info {
+          flex: 1 1 auto;
+          max-width: 100%;
+          height: auto;
+          max-height: 15em;
+          min-height: 0;
+          border-left: none;
+          border-top: 1px solid #0f3460;
+        }
       }
       .track-label {
         display: none;
