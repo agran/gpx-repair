@@ -5028,6 +5028,102 @@
         return out;
       }
 
+      // ─── Отладка: сравнение нескольких сервисов высот (консоль браузера) ───────
+      //
+      // Приложение использует Open-Meteo как основной сервис и Opentopodata
+      // (srtm30m) как резервный. Для конкретного региона точность разных DEM
+      // может заметно отличаться, поэтому в консоли браузера доступна команда
+      // compareElevationServices(lat, lon), которая одновременно опрашивает
+      // несколько публичных бесплатных сервисов/датасетов и выводит результат
+      // в виде таблицы — так проще выбрать наиболее точный источник для
+      // своего региона. Ошибки/недоступность конкретного сервиса не влияют
+      // на остальные — каждый запрос независим.
+      const ELEVATION_COMPARE_SERVICES = [
+        {
+          name: "open-meteo",
+          url: (lat, lon) =>
+            `https://api.open-meteo.com/v1/elevation?latitude=${lat}&longitude=${lon}`,
+          parse: (data) =>
+            Array.isArray(data.elevation) &&
+            typeof data.elevation[0] === "number"
+              ? data.elevation[0]
+              : null,
+        },
+        {
+          name: "open-elevation",
+          url: (lat, lon) =>
+            `https://api.open-elevation.com/api/v1/lookup?locations=${lat},${lon}`,
+          parse: (data) =>
+            Array.isArray(data.results) &&
+            typeof data.results[0]?.elevation === "number"
+              ? data.results[0].elevation
+              : null,
+        },
+        ...[
+          "srtm30m",
+          "srtm90m",
+          "aster30m",
+          "mapzen",
+          "eudem25m",
+          "ned10m",
+          "etopo1",
+        ].map((dataset) => ({
+          name: "opentopodata:" + dataset,
+          url: (lat, lon) =>
+            `https://api.opentopodata.org/v1/${dataset}?locations=${lat},${lon}`,
+          parse: (data) =>
+            Array.isArray(data.results) &&
+            typeof data.results[0]?.elevation === "number"
+              ? data.results[0].elevation
+              : null,
+        })),
+      ];
+
+      async function compareElevationServices(lat, lon) {
+        if (typeof lat !== "number" || typeof lon !== "number") {
+          console.error(
+            "Использование: compareElevationServices(lat, lon), например compareElevationServices(55.7558, 37.6173)",
+          );
+          return null;
+        }
+        const rows = await Promise.all(
+          ELEVATION_COMPARE_SERVICES.map(async (svc) => {
+            const startedAt = performance.now();
+            try {
+              const ctrl = new AbortController();
+              const timer = setTimeout(() => ctrl.abort(), NETWORK_TIMEOUT_MS);
+              let data;
+              try {
+                const resp = await fetch(svc.url(lat, lon), {
+                  signal: ctrl.signal,
+                });
+                if (!resp.ok) throw new Error("HTTP " + resp.status);
+                data = await resp.json();
+              } finally {
+                clearTimeout(timer);
+              }
+              const elevation = svc.parse(data);
+              return {
+                service: svc.name,
+                "elevation (m)": elevation,
+                "time (ms)": Math.round(performance.now() - startedAt),
+                error: elevation === null ? "no data" : "",
+              };
+            } catch (e) {
+              return {
+                service: svc.name,
+                "elevation (m)": null,
+                "time (ms)": Math.round(performance.now() - startedAt),
+                error: e && e.message ? e.message : String(e),
+              };
+            }
+          }),
+        );
+        console.table(rows);
+        return rows;
+      }
+      window.compareElevationServices = compareElevationServices;
+
       // Барометрическая/DEM высота имеют смещение друг от друга (10-30м) — плавно
       // перетекаем от известного смещения на старте к известному смещению на конце,
       // чтобы на швах эпизода не было ступеньки высоты.
