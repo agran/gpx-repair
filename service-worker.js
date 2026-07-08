@@ -10,7 +10,7 @@
 // загрузиться напрямую с сайта, а если сети/доступа нет — просто не
 // показываются (см. onerror в index.html), без подстановки кэша-заглушки.
 
-const CACHE_NAME = "gpx-repair-v4";
+const CACHE_NAME = "gpx-repair-v5";
 
 const PRECACHE_URLS = [
   "./",
@@ -58,6 +58,14 @@ self.addEventListener("fetch", (event) => {
   // Декоративные картинки erudit23.ru не перехватываем: пусть грузятся
   // напрямую с сайта или проваливаются "как обычно" (без кэша-заглушки).
   if (url.hostname === "www.erudit23.ru" || url.hostname === "erudit23.ru") {
+    return;
+  }
+
+  // PHP-прокси для сервисов высот (server50.erudit23.ru) — тоже не кэшируем:
+  // ответы динамические (зависят от координат в query-строке), а сама высота
+  // уже кэшируется в памяти приложения (elevationCache в index.html).
+  // Долгосрочный офлайн-кэш service worker для них не нужен.
+  if (url.hostname === "server50.erudit23.ru") {
     return;
   }
 
