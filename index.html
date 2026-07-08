@@ -5082,8 +5082,7 @@
       async function compareElevationServices(lat, lon) {
         if (typeof lat !== "number" || typeof lon !== "number") {
           console.error(
-            "Usage / Использование: compareElevationServices(lat, lon), " +
-              "e.g. compareElevationServices(55.7558, 37.6173)",
+            `Usage / Использование: compareElevationServices(lat, lon), e.g. compareElevationServices(55.7558, 37.6173)`,
           );
           return null;
         }
@@ -5115,7 +5114,7 @@
                 service: svc.name,
                 "elevation (m)": null,
                 "time (ms)": Math.round(performance.now() - startedAt),
-                error: e && e.message ? e.message : String(e),
+                error: e?.message ? e.message : String(e),
               };
             }
           }),
