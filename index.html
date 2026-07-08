@@ -280,10 +280,73 @@
         flex: 0 0 auto;
         max-width: 100%;
       }
+      .episode-actions {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex: 0 0 auto;
+      }
+      .episode-waypoint-btn {
+        background: #0d1b35;
+        border: 1px solid #0f3460;
+        color: #e0e0e0;
+        border-radius: 6px;
+        padding: 6px 9px;
+        font-size: 0.8rem;
+        cursor: pointer;
+        white-space: nowrap;
+      }
+      .episode-waypoint-btn:disabled {
+        opacity: 0.45;
+        cursor: not-allowed;
+      }
+      .episode-waypoint-btn.picking {
+        background: #7eb8f7;
+        border-color: #7eb8f7;
+        color: #0d1b35;
+        font-weight: 600;
+      }
+      .episode-waypoint-info {
+        font-size: 0.76rem;
+        color: #a3adc2;
+        display: flex;
+        align-items: center;
+        gap: 4px;
+      }
+      .episode-waypoint-clear {
+        background: none;
+        border: none;
+        color: #f87171;
+        cursor: pointer;
+        font-size: 0.9rem;
+        line-height: 1;
+        padding: 0 2px;
+      }
       @media (max-width: 480px) {
         .episode-info {
           flex: 0 0 auto;
         }
+      }
+      .episode-waypoint-pin {
+        width: 22px;
+        height: 22px;
+        border-radius: 50% 50% 50% 0;
+        background: #f59e0b;
+        border: 2px solid #7c3200;
+        transform: rotate(-45deg);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        box-shadow: 0 1px 4px rgba(0, 0, 0, 0.5);
+      }
+      .episode-waypoint-pin span {
+        transform: rotate(45deg);
+        color: #1a1a1a;
+        font-size: 0.72rem;
+        font-weight: 700;
+      }
+      .map-picking-waypoint {
+        cursor: crosshair !important;
       }
 
       /* Раскраска трека на карте (скорость / пульс / высота / уклон) */
@@ -353,18 +416,6 @@
         user-select: none;
       }
       .relief-toggle input {
-        cursor: pointer;
-      }
-      .pause-fill-toggle {
-        display: flex;
-        align-items: center;
-        gap: 6px;
-        font-size: 0.9rem;
-        color: #e0e0e0;
-        cursor: pointer;
-        user-select: none;
-      }
-      .pause-fill-toggle input {
         cursor: pointer;
       }
       .track-popup {
@@ -1081,20 +1132,6 @@
           api.open-meteo.com (высоты)</span
         >
       </div>
-      <div class="param-row profile-row">
-        <label class="pause-fill-toggle">
-          <input type="checkbox" id="p-fill-pauses" />
-          <span data-i18n="label_fill_pauses"
-            >Достраивать паузы записи</span
-          >
-        </label>
-        <span class="hint" data-i18n="hint_fill_pauses"
-          >Выключено по умолчанию. Если включить — длинные паузы в записи (трек
-          долго не писался, но ничего похожего на глушилку рядом нет) тоже
-          достраиваются выбранным способом заполнения, как и повреждённые
-          глушилкой участки</span
-        >
-      </div>
       <div class="params-grid" id="params-grid">
         <div class="param-row">
           <label data-i18n="label_maxspeed"
@@ -1319,9 +1356,6 @@
           gapfill_car: "Маршрут: авто",
           gapfill_remove: "Удалить участок (без замены)",
           gapfill_keep: "Оставить как было (не трогать)",
-          label_fill_pauses: "Достраивать паузы записи",
-          hint_fill_pauses:
-            "Выключено по умолчанию. Если включить — длинные паузы в записи (трек долго не писался, но ничего похожего на глушилку рядом нет) тоже достраиваются выбранным способом заполнения, как и повреждённые глушилкой участки",
           label_maxspeed: "Макс. горизонт. скорость (м/с)",
           hint_maxspeed:
             "Пеший поход: 10–15 &nbsp;|&nbsp; Велосипед: 25–40 &nbsp;|&nbsp; Авто: 80–120",
@@ -1341,6 +1375,14 @@
           episode_tail: "обрыв в конце трека",
           episode_points: "{n} точек",
           episode_pause_gap: "пауза записи",
+          btn_waypoint_pick: "📍 Указать точку",
+          btn_waypoint_change: "📍 Изменить точку",
+          btn_waypoint_picking: "Кликните на карте…",
+          btn_waypoint_clear: "Убрать точку",
+          hint_waypoint_need_fix:
+            "Сначала нажмите «Исправить трек» — точку можно выбрать на карте результата",
+          hint_waypoint_routeless:
+            "Недоступно для «Удалить»/«Оставить как было» — маршрут не строится",
           no_episodes_msg:
             "✓ Аномальных участков не найдено — трек уже в порядке, исправление не требуется.",
           card3_title: "3. Обработка",
@@ -1436,6 +1478,8 @@
             "\nЭпизод глушения: точки [{first}..{last}]  ({cnt} точек, {dur}с пробел){tail}",
           log_pause_header:
             "\nПауза записи: точки {before}→{after}  ({dur}с пробел, точки не удалялись — только достраивается путь между ними){tail}",
+          log_waypoint_set:
+            "  📍 Эпизод {n}: задана обязательная точка {lat}, {lon} — маршрут перестроен через неё",
           log_episode_tail_cut: "  [обрыв в конце трека, без возврата]",
           log_before_point: "  До  : {time}  ({lat}, {lon})  ele={ele}м",
           log_before_none:
@@ -1505,9 +1549,6 @@
           gapfill_car: "Route: car",
           gapfill_remove: "Delete section (no replacement)",
           gapfill_keep: "Keep as-is (don't touch)",
-          label_fill_pauses: "Fill recording pauses",
-          hint_fill_pauses:
-            "Off by default. When enabled, long recording pauses (the track wasn't recording for a while, but nothing near it looks like jamming) are also filled in using the selected gap-fill method, just like jammer-damaged sections",
           label_maxspeed: "Max. horizontal speed (m/s)",
           hint_maxspeed:
             "Hiking: 10–15 &nbsp;|&nbsp; Bike: 25–40 &nbsp;|&nbsp; Car: 80–120",
@@ -1528,6 +1569,14 @@
           episode_tail: "track cut off at the end",
           episode_points: "{n} points",
           episode_pause_gap: "recording pause",
+          btn_waypoint_pick: "📍 Pick waypoint",
+          btn_waypoint_change: "📍 Change waypoint",
+          btn_waypoint_picking: "Click on the map…",
+          btn_waypoint_clear: "Remove waypoint",
+          hint_waypoint_need_fix:
+            "Click \"Fix track\" first — the waypoint can be picked on the result map",
+          hint_waypoint_routeless:
+            "Not available for \"Remove\"/\"Keep as-is\" — no route is built",
           no_episodes_msg:
             "✓ No anomalous sections found — the track is already clean, no fix needed.",
           card3_title: "3. Processing",
@@ -1624,6 +1673,8 @@
             "\nJammer episode: points [{first}..{last}]  ({cnt} points, {dur}s gap){tail}",
           log_pause_header:
             "\nRecording pause: points {before}→{after}  ({dur}s gap, no points removed — only building a path between them){tail}",
+          log_waypoint_set:
+            "  📍 Episode {n}: required waypoint set at {lat}, {lon} — route rebuilt through it",
           log_episode_tail_cut: "  [track cut off at the end, no return]",
           log_before_point: "  Before: {time}  ({lat}, {lon})  ele={ele}m",
           log_before_none:
@@ -2360,6 +2411,11 @@
 
       // Границы окна вокруг точки i по времени: не дальше halfSeconds в обе
       // стороны и не пересекая паузу записи (dt между соседними точками > PAUSE_GAP_S).
+      // Ближайший сосед включается ВСЕГДА (даже если сам интервал записи уже
+      // больше halfSeconds) — иначе на треках с редкой записью (например,
+      // OsmAnd раз в 10–60+ секунд вместо раза в секунду) окно почти для
+      // каждой точки схлопывалось бы в саму точку, и скорость нигде не
+      // считалась бы (см. смежный отчёт: почти вся скорость трека — NaN).
       function timeWindowBounds(times, i, halfSeconds) {
         let lo = i,
           hi = i;
@@ -2368,13 +2424,13 @@
         while (lo > 0) {
           const dt = times[lo] - times[lo - 1];
           if (!Number.isFinite(dt) || dt <= 0 || dt > PAUSE_GAP_S) break;
-          if (t0 - times[lo - 1] > halfSeconds) break;
+          if (lo !== i && t0 - times[lo - 1] > halfSeconds) break;
           lo--;
         }
         while (hi < times.length - 1) {
           const dt = times[hi + 1] - times[hi];
           if (!Number.isFinite(dt) || dt <= 0 || dt > PAUSE_GAP_S) break;
-          if (times[hi + 1] - t0 > halfSeconds) break;
+          if (hi !== i && times[hi + 1] - t0 > halfSeconds) break;
           hi++;
         }
         return { lo, hi };
@@ -2839,6 +2895,13 @@
       // ровно на ту же вершину трека, что была закреплена).
       function onMainTrackClick(containerId) {
         return function (e) {
+          if (
+            containerId === "map-after" &&
+            waypointPickModeIdx !== null
+          ) {
+            setEpisodeWaypoint(waypointPickModeIdx, e.latlng);
+            return;
+          }
           const inst = mapInstances[containerId];
           const data = mapTrackData[containerId];
           if (!data || !data.lats.length) return;
@@ -3171,9 +3234,25 @@
             lastLegend: null,
             idxs: null,
             hoverMarker: null,
+            // Маркеры обязательных точек (per episode), актуально только
+            // для map-after — см. setEpisodeWaypoint/redrawWaypointMarkers.
+            waypointMarkers: new Map(),
           };
           mapInstances[containerId] = inst;
           wireMapHoverSync(containerId);
+          if (containerId === "map-after") {
+            // Клик по слоям трека (полилиния/цветные отрезки) перехватывается
+            // onMainTrackClick — он тоже проверяет waypointPickModeIdx. Этот
+            // необработанный клик по карте нужен, чтобы точку можно было
+            // поставить и рядом с треком, не попадая точно в линию (Leaflet
+            // Path-слои вызывают stopPropagation, и голый клик по карте до
+            // сюда бы не дошёл, если бы попал прямо на линию).
+            map.on("click", (e) => {
+              if (waypointPickModeIdx !== null) {
+                setEpisodeWaypoint(waypointPickModeIdx, e.latlng);
+              }
+            });
+          }
           // Кнопка "показать весь трек" появляется, только когда трек (хотя
           // бы частично) не помещается в текущую видимую область карты.
           map.on("moveend", () => updateFitButtonVisibility(containerId));
@@ -5868,6 +5947,190 @@
         };
       }
 
+      // Строит один "перегон" заполнения эпизода (маршрутизацией или прямой
+      // кривой) между двумя точками — то же самое, что раньше было инлайн-веткой
+      // if(routed){...}else{...} внутри fixGpx. Вынесено в отдельную функцию,
+      // чтобы её можно было вызвать дважды при наличии обязательной точки
+      // (см. buildInterpolatedWithWaypoint ниже).
+      async function buildEpisodeLeg(
+        routed,
+        lat0,
+        lon0,
+        ele0,
+        t0,
+        lat1,
+        lon1,
+        ele1,
+        t1,
+        intervalS,
+        sensors0,
+        sensors1,
+        mode,
+        maxSpeedParam,
+        routedBudget,
+        headingRefBefore,
+        headingRefAfter,
+      ) {
+        if (routed) {
+          return buildRoutedInterpolated(
+            lat0,
+            lon0,
+            ele0,
+            t0,
+            lat1,
+            lon1,
+            ele1,
+            t1,
+            intervalS,
+            sensors0,
+            sensors1,
+            mode,
+            maxSpeedParam,
+            routedBudget,
+            headingRefBefore,
+            headingRefAfter,
+          );
+        }
+        return {
+          points: buildInterpolated(
+            lat0,
+            lon0,
+            ele0,
+            t0,
+            lat1,
+            lon1,
+            ele1,
+            t1,
+            intervalS,
+            sensors0,
+            sensors1,
+            headingRefBefore,
+            headingRefAfter,
+          ),
+          method: "linear",
+        };
+      }
+
+      // Заполняет эпизод в два "перегона" через обязательную точку (via),
+      // выбранную пользователем кликом по карте: before → via → after.
+      // Позиция via по времени/высоте/сенсорам оценивается пропорционально
+      // расстоянию (доля D(before,via) от суммарной D(before,via)+D(via,after)) —
+      // упрощение, но обе половины при этом используют всю обычную логику
+      // (маршрутизация + калибровка высоты по DEM + плавное примыкание),
+      // так что результат остаётся физически правдоподобным.
+      async function buildInterpolatedWithWaypoint(
+        routed,
+        lat0,
+        lon0,
+        ele0,
+        t0,
+        viaLat,
+        viaLon,
+        lat1,
+        lon1,
+        ele1,
+        t1,
+        intervalS,
+        sensors0,
+        sensors1,
+        mode,
+        maxSpeedParam,
+        routedBudget,
+        headingRefBefore,
+        headingRefAfter,
+      ) {
+        const d1 = haversine(lat0, lon0, viaLat, viaLon);
+        const d2 = haversine(viaLat, viaLon, lat1, lon1);
+        const frac1 = d1 + d2 > 0 ? d1 / (d1 + d2) : 0.5;
+        const viaT = t0 + frac1 * (t1 - t0);
+        const viaEle = ele0 + frac1 * (ele1 - ele0);
+        const canInterp = (s0, s1) =>
+          Number.isFinite(s0) && Number.isFinite(s1);
+        const viaSensors = {
+          hr: canInterp(sensors0.hr, sensors1.hr)
+            ? sensors0.hr + frac1 * (sensors1.hr - sensors0.hr)
+            : NaN,
+          cad: canInterp(sensors0.cad, sensors1.cad)
+            ? sensors0.cad + frac1 * (sensors1.cad - sensors0.cad)
+            : NaN,
+          atemp: canInterp(sensors0.atemp, sensors1.atemp)
+            ? sensors0.atemp + frac1 * (sensors1.atemp - sensors0.atemp)
+            : NaN,
+        };
+
+        const leg1 = await buildEpisodeLeg(
+          routed,
+          lat0,
+          lon0,
+          ele0,
+          t0,
+          viaLat,
+          viaLon,
+          viaEle,
+          viaT,
+          intervalS,
+          sensors0,
+          viaSensors,
+          mode,
+          maxSpeedParam,
+          routedBudget,
+          headingRefBefore,
+          null,
+        );
+        const leg2 = await buildEpisodeLeg(
+          routed,
+          viaLat,
+          viaLon,
+          viaEle,
+          viaT,
+          lat1,
+          lon1,
+          ele1,
+          t1,
+          intervalS,
+          viaSensors,
+          sensors1,
+          mode,
+          maxSpeedParam,
+          routedBudget,
+          null,
+          headingRefAfter,
+        );
+
+        const prevPt = leg1.points.length
+          ? leg1.points[leg1.points.length - 1]
+          : { lat: lat0, lon: lon0, time: t0 };
+        const dtVia = viaT - prevPt.time;
+        const viaPoint = {
+          lat: viaLat,
+          lon: viaLon,
+          ele: viaEle,
+          time: viaT,
+          speed:
+            dtVia > 0 ? haversine(prevPt.lat, prevPt.lon, viaLat, viaLon) / dtVia : 0,
+        };
+        if (Number.isFinite(viaSensors.hr)) viaPoint.hr = Math.round(viaSensors.hr);
+        if (Number.isFinite(viaSensors.cad))
+          viaPoint.cad = Math.round(viaSensors.cad);
+        if (Number.isFinite(viaSensors.atemp)) viaPoint.atemp = viaSensors.atemp;
+
+        const points = [...leg1.points, viaPoint, ...leg2.points];
+        if (leg1.method === "routed" && leg2.method === "routed") {
+          return {
+            points,
+            method: "routed",
+            demOk: !!(leg1.demOk && leg2.demOk),
+            distanceKm: (leg1.distanceKm || 0) + (leg2.distanceKm || 0),
+          };
+        }
+        const reasons = [leg1.reason, leg2.reason].filter(Boolean);
+        return {
+          points,
+          method: "linear",
+          reason: reasons.length ? reasons.join("; ") : undefined,
+        };
+      }
+
       // ─── Основная функция обработки ──────────────────────────────────────────────
 
       async function fixGpx(xmlText, params) {
@@ -5878,10 +6141,11 @@
           maxVert,
           interval,
           episodeModes,
-          fillPauses,
+          waypoints,
         } = params;
         const modeFor = (idx) =>
           (episodeModes && episodeModes[idx]) || "linear";
+        const waypointFor = (idx) => (waypoints && waypoints[idx]) || null;
 
         const parser = new DOMParser();
         const doc = parser.parseFromString(xmlText, "application/xml");
@@ -5939,7 +6203,10 @@
           "log-info",
         );
 
-        // Обнаружение эпизодов
+        // Обнаружение эпизодов. Паузы записи ищем всегда (см.
+        // findRecordingPauseGaps) — но по умолчанию режим для них "оставить
+        // как было" (см. modeFor/episodeChoices ниже и в updateEpisodeList),
+        // так что без явного выбора пользователя они остаются нетронутыми.
         const jamEpisodes = findJammerEpisodes(
           lats,
           lons,
@@ -5947,12 +6214,10 @@
           maxSpeed,
           minDist,
         );
-        const episodes = fillPauses
-          ? mergeWithPauseGaps(
-              jamEpisodes,
-              findRecordingPauseGaps(lats, lons, times, maxSpeed),
-            )
-          : jamEpisodes;
+        const episodes = mergeWithPauseGaps(
+          jamEpisodes,
+          findRecordingPauseGaps(lats, lons, times, maxSpeed),
+        );
 
         if (!episodes.length) {
           log(t("log_no_episodes"), "log-warn");
@@ -6251,8 +6516,32 @@
               beforeIdx > 0 ? getHeadingRef(lats, lons, beforeIdx, -1) : null;
             const headingRefAfter =
               afterIdx < n - 1 ? getHeadingRef(lats, lons, afterIdx, 1) : null;
-            if (routed) {
-              interpResult = await buildRoutedInterpolated(
+            const viaPoint = waypointFor(epIdx);
+            if (viaPoint) {
+              interpResult = await buildInterpolatedWithWaypoint(
+                routed,
+                lats[beforeIdx],
+                lons[beforeIdx],
+                stableEle,
+                times[beforeIdx],
+                viaPoint.lat,
+                viaPoint.lon,
+                lats[afterIdx],
+                lons[afterIdx],
+                eles[afterIdx],
+                times[afterIdx],
+                interval,
+                sensors0,
+                sensors1,
+                mode,
+                maxSpeed,
+                routedBudget,
+                headingRefBefore,
+                headingRefAfter,
+              );
+            } else {
+              interpResult = await buildEpisodeLeg(
+                routed,
                 lats[beforeIdx],
                 lons[beforeIdx],
                 stableEle,
@@ -6270,25 +6559,6 @@
                 headingRefBefore,
                 headingRefAfter,
               );
-            } else {
-              interpResult = {
-                points: buildInterpolated(
-                  lats[beforeIdx],
-                  lons[beforeIdx],
-                  stableEle,
-                  times[beforeIdx],
-                  lats[afterIdx],
-                  lons[afterIdx],
-                  eles[afterIdx],
-                  times[afterIdx],
-                  interval,
-                  sensors0,
-                  sensors1,
-                  headingRefBefore,
-                  headingRefAfter,
-                ),
-                method: "linear",
-              };
             }
 
             if (routed) {
@@ -6880,6 +7150,91 @@
       let episodeChoices = []; // режим на каждый обнаруженный эпизод, по индексу
       let episodePreview = []; // последний обнаруженный список эпизодов
       let episodePreviewTimes = []; // times[] трека, для которого построен episodePreview
+      // Обязательные точки (клик по карте "после"), через которые должен
+      // пройти маршрут/кривая заполнения конкретного эпизода. Ключ — индекс
+      // эпизода в episodePreview, значение — {lat, lon}.
+      let episodeWaypoints = new Map();
+      // Индекс эпизода, для которого сейчас активен режим выбора точки
+      // кликом по нижней карте (map-after), либо null, если режим выключен.
+      let waypointPickModeIdx = null;
+
+      // Убирает все маркеры обязательных точек с указанной карты (не трогая
+      // сами данные episodeWaypoints) — используется перед перерисовкой и
+      // при сбросе списка эпизодов (старые индексы больше не актуальны).
+      function clearWaypointMarkers(containerId) {
+        const inst = mapInstances[containerId];
+        if (!inst || !inst.waypointMarkers) return;
+        for (const marker of inst.waypointMarkers.values()) {
+          if (inst.map.hasLayer(marker)) inst.map.removeLayer(marker);
+        }
+        inst.waypointMarkers.clear();
+      }
+
+      // Перерисовывает маркеры всех текущих обязательных точек на карте
+      // "после" — вызывается и сразу при выборе новой точки, и после
+      // каждой перерисовки трека (showTrackMap), чтобы выбранные точки не
+      // терялись между перестройками ("Исправить трек" заново).
+      function redrawWaypointMarkers(containerId) {
+        const inst = mapInstances[containerId];
+        if (!inst) return;
+        clearWaypointMarkers(containerId);
+        episodeWaypoints.forEach((pt, idx) => {
+          const marker = L.marker([pt.lat, pt.lon], {
+            icon: L.divIcon({
+              className: "",
+              html: `<div class="episode-waypoint-pin"><span>${idx + 1}</span></div>`,
+              iconSize: [22, 22],
+              iconAnchor: [11, 22],
+            }),
+            zIndexOffset: 1000,
+          }).addTo(inst.map);
+          inst.waypointMarkers.set(idx, marker);
+        });
+      }
+
+      // Клик по карте "после" в режиме выбора точки (см. onMainTrackClick и
+      // "голый" map.on("click") в showTrackMap) — фиксирует обязательную
+      // точку для эпизода idx и выключает режим выбора.
+      function setEpisodeWaypoint(idx, latlng) {
+        episodeWaypoints.set(idx, { lat: latlng.lat, lon: latlng.lng });
+        waypointPickModeIdx = null;
+        redrawWaypointMarkers("map-after");
+        const mapEl = document.getElementById("map-after");
+        if (mapEl) mapEl.classList.remove("map-picking-waypoint");
+        renderEpisodeList(episodePreview, episodePreviewTimes);
+        log(
+          t("log_waypoint_set", {
+            n: idx + 1,
+            lat: latlng.lat.toFixed(5),
+            lon: latlng.lng.toFixed(5),
+          }),
+          "log-info",
+        );
+      }
+
+      // Включает/выключает режим выбора точки для эпизода idx (повторный
+      // клик по той же кнопке — выключает режим без выбора точки).
+      function toggleWaypointPickMode(idx) {
+        const mapEl = document.getElementById("map-after");
+        if (waypointPickModeIdx === idx) {
+          waypointPickModeIdx = null;
+          if (mapEl) mapEl.classList.remove("map-picking-waypoint");
+        } else {
+          waypointPickModeIdx = idx;
+          if (mapEl) mapEl.classList.add("map-picking-waypoint");
+        }
+        renderEpisodeList(episodePreview, episodePreviewTimes);
+      }
+
+      // Убирает ранее выбранную обязательную точку эпизода idx.
+      function clearEpisodeWaypoint(idx) {
+        episodeWaypoints.delete(idx);
+        if (waypointPickModeIdx === idx) waypointPickModeIdx = null;
+        redrawWaypointMarkers("map-after");
+        const mapEl = document.getElementById("map-after");
+        if (mapEl) mapEl.classList.remove("map-picking-waypoint");
+        renderEpisodeList(episodePreview, episodePreviewTimes);
+      }
 
       // precomputed (необязательно) — уже готовые {lats,lons,eles,times} для
       // ТЕКУЩЕГО gpxText, чтобы не парсить его через DOMParser второй раз
@@ -6892,6 +7247,8 @@
           noEpisodesMsg.style.display = "none";
           episodeChoices = [];
           episodePreview = [];
+          episodeWaypoints.clear();
+          waypointPickModeIdx = null;
           return;
         }
         let lats, lons, eles, times;
@@ -6935,16 +7292,25 @@
           maxSpeed,
           minDist,
         );
-        const finalEpisodes = document.getElementById("p-fill-pauses").checked
-          ? mergeWithPauseGaps(
-              episodes,
-              findRecordingPauseGaps(lats, lons, times, maxSpeed),
-            )
-          : episodes;
+        // Паузы записи ищем всегда — но их режим по умолчанию "оставить как
+        // было" (см. ниже), а не выбранный способ заполнения, так что без
+        // явного действия пользователя они не трогаются.
+        const finalEpisodes = mergeWithPauseGaps(
+          episodes,
+          findRecordingPauseGaps(lats, lons, times, maxSpeed),
+        );
         episodePreview = finalEpisodes;
         episodePreviewTimes = times;
+        // Список эпизодов может измениться (другие параметры детекции) —
+        // старые индексы обязательных точек больше не соответствуют новым
+        // эпизодам, поэтому сбрасываем их вместе с активным режимом выбора.
+        episodeWaypoints.clear();
+        waypointPickModeIdx = null;
+        clearWaypointMarkers("map-after");
         const defaultMode = resolveInterpMode({ lats, lons, times });
-        episodeChoices = finalEpisodes.map(() => defaultMode);
+        episodeChoices = finalEpisodes.map((ep) =>
+          ep.isPause ? "keep" : defaultMode,
+        );
         renderEpisodeList(finalEpisodes, times);
         const hasEpisodes = finalEpisodes.length > 0;
         episodeCard.style.display = hasEpisodes ? "block" : "none";
@@ -6994,10 +7360,69 @@
           select.value = episodeChoices[idx];
           select.addEventListener("change", () => {
             episodeChoices[idx] = select.value;
+            // "Удалить"/"Оставить как было" не строят маршрут через
+            // эпизод — обязательная точка тогда бессмысленна, поэтому
+            // перерисовываем список, чтобы актуализировать состояние кнопки.
+            renderEpisodeList(episodePreview, episodePreviewTimes);
           });
 
+          const actions = document.createElement("div");
+          actions.className = "episode-actions";
+          actions.appendChild(select);
+
+          // Кнопка выбора обязательной точки доступна только когда есть
+          // граница "после" (иначе строить маршрут не через что) и только
+          // после первого "Исправить трек" — до этого карта "после" ещё не
+          // отрисована и кликать было бы негде.
+          if (hasAfter) {
+            const mapAfterEl = document.getElementById("map-after");
+            const mapReady =
+              mapAfterEl && mapAfterEl.style.display === "block";
+            const modeVal = episodeChoices[idx];
+            const routeless = modeVal === "keep" || modeVal === "remove";
+            const picking = waypointPickModeIdx === idx;
+            const hasWp = episodeWaypoints.has(idx);
+
+            const wpBtn = document.createElement("button");
+            wpBtn.type = "button";
+            wpBtn.className = "episode-waypoint-btn";
+            wpBtn.disabled = !mapReady || routeless;
+            wpBtn.title = !mapReady
+              ? t("hint_waypoint_need_fix")
+              : routeless
+                ? t("hint_waypoint_routeless")
+                : "";
+            if (picking) {
+              wpBtn.classList.add("picking");
+              wpBtn.textContent = t("btn_waypoint_picking");
+            } else {
+              wpBtn.textContent = t(
+                hasWp ? "btn_waypoint_change" : "btn_waypoint_pick",
+              );
+            }
+            wpBtn.addEventListener("click", () => toggleWaypointPickMode(idx));
+            actions.appendChild(wpBtn);
+
+            if (hasWp) {
+              const wp = episodeWaypoints.get(idx);
+              const wpInfo = document.createElement("span");
+              wpInfo.className = "episode-waypoint-info";
+              wpInfo.textContent = `📍 ${wp.lat.toFixed(5)}, ${wp.lon.toFixed(5)}`;
+              const clearBtn = document.createElement("button");
+              clearBtn.type = "button";
+              clearBtn.className = "episode-waypoint-clear";
+              clearBtn.textContent = "✕";
+              clearBtn.title = t("btn_waypoint_clear");
+              clearBtn.addEventListener("click", () =>
+                clearEpisodeWaypoint(idx),
+              );
+              wpInfo.appendChild(clearBtn);
+              actions.appendChild(wpInfo);
+            }
+          }
+
           row.appendChild(info);
-          row.appendChild(select);
+          row.appendChild(actions);
           episodeListEl.appendChild(row);
         });
       }
@@ -7120,14 +7545,14 @@
           .addEventListener("change", () => {
             const mode = resolveInterpMode();
             if (episodePreview.length) {
-              episodeChoices = episodePreview.map(() => mode);
+              // Паузы записи по-прежнему по умолчанию "оставить как было" —
+              // смена общего режима заполнения не должна их сдвигать.
+              episodeChoices = episodePreview.map((ep) =>
+                ep.isPause ? "keep" : mode,
+              );
               renderEpisodeList(episodePreview, episodePreviewTimes);
             }
           });
-
-        document
-          .getElementById("p-fill-pauses")
-          .addEventListener("change", () => updateEpisodeList());
       })();
 
       function loadFile(file) {
@@ -7363,6 +7788,12 @@
         btnFix.disabled = true;
         showBusyOverlay(t("busy_fixing"));
         logAutoModes();
+        // Не оставляем активным режим выбора точки на время перестройки —
+        // после неё карта "после" будет пересоздана заново.
+        waypointPickModeIdx = null;
+        const mapAfterElBeforeFix = document.getElementById("map-after");
+        if (mapAfterElBeforeFix)
+          mapAfterElBeforeFix.classList.remove("map-picking-waypoint");
 
         const params = {
           maxSpeed:
@@ -7376,7 +7807,9 @@
           interval:
             parseFloat(document.getElementById("p-interval").value) || 1,
           episodeModes: episodeChoices.slice(),
-          fillPauses: document.getElementById("p-fill-pauses").checked,
+          waypoints: episodePreview.map(
+            (_, idx) => episodeWaypoints.get(idx) || null,
+          ),
         };
 
         // Запускаем в следующем тике, чтобы успел отрисоваться UI
@@ -7445,6 +7878,15 @@
                 ),
               );
             }
+            // Карта "после" теперь отрисована (или пересоздана) — кнопка
+            // выбора обязательной точки могла быть недоступна до этого,
+            // перерисовываем список эпизодов, чтобы обновить её состояние,
+            // и восстанавливаем маркеры уже выбранных точек поверх новой
+            // карты.
+            if (episodePreview.length) {
+              renderEpisodeList(episodePreview, episodePreviewTimes);
+            }
+            redrawWaypointMarkers("map-after");
 
             // Прокручиваем так, чтобы блок с логом обработки оказался у
             // верхнего края экрана — ниже сразу видно результат (карту,
