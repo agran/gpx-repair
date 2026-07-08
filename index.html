@@ -1534,6 +1534,36 @@
 
       // ─── Визуализация схемы трека ──────────────────────────────────────────────
 
+      // Извлекает ele/time/hr/cad/atemp за ОДИН проход по <trkpt> (плюс один
+      // проход по его <extensions>, если есть) — вместо 3-5 отдельных
+      // querySelector() на точку. На треках в десятки тысяч точек каждый
+      // лишний querySelector() (сопоставление селектора + поиск) заметно
+      // складывается, поэтому это напрямую влияет на скорость загрузки/
+      // обработки больших файлов.
+      // hr/cad/atemp обычно лежат в <extensions>/<TrackPointExtension> с
+      // namespace-префиксом (например <ns3:hr>), из-за которого обычный
+      // querySelector("hr") их вообще не находит — ищем по локальному имени
+      // тега одним проходом по <extensions>.
+      function extractTrkptFields(p) {
+        const eleEl = p.querySelector("ele");
+        const timeEl = p.querySelector("time");
+        let hr = NaN,
+          cad = NaN,
+          atemp = NaN;
+        const ext = p.querySelector("extensions");
+        if (ext) {
+          const all = ext.getElementsByTagName("*");
+          for (let i = 0; i < all.length; i++) {
+            const el = all[i];
+            const name = (el.localName || el.tagName).toLowerCase();
+            if (name === "hr") hr = parseFloat(el.textContent);
+            else if (name === "cad") cad = parseFloat(el.textContent);
+            else if (name === "atemp") atemp = parseFloat(el.textContent);
+          }
+        }
+        return { eleEl, timeEl, hr, cad, atemp };
+      }
+
       function extractTrackData(xmlText) {
         const parser = new DOMParser();
         const doc = parser.parseFromString(xmlText, "application/xml");
@@ -1548,31 +1578,12 @@
         pts.forEach((p, i) => {
           lats[i] = parseFloat(p.getAttribute("lat"));
           lons[i] = parseFloat(p.getAttribute("lon"));
-          const eleEl = p.querySelector("ele");
+          const { eleEl, timeEl, hr } = extractTrkptFields(p);
           eles[i] = eleEl ? parseFloat(eleEl.textContent) : NaN;
-          const timeEl = p.querySelector("time");
           times[i] = timeEl ? parseTime(timeEl.textContent) : NaN;
-          hrs[i] = getExtensionNumber(p, "hr");
+          hrs[i] = hr;
         });
         return { lats, lons, eles, times, hrs };
-      }
-
-      // Значения датчиков (пульс и т.п.) обычно лежат в <extensions> с
-      // namespace-префиксом (например <gpxtpx:hr>), из-за которого обычный
-      // querySelector("hr") их не находит — ищем по локальному имени тега.
-      function getExtensionNumber(trkpt, localName) {
-        const ext = trkpt.querySelector("extensions");
-        if (!ext) return NaN;
-        const all = ext.getElementsByTagName("*");
-        for (let i = 0; i < all.length; i++) {
-          const el = all[i];
-          const name = el.localName || el.tagName;
-          if (name.toLowerCase() === localName.toLowerCase()) {
-            const v = parseFloat(el.textContent);
-            return Number.isFinite(v) ? v : NaN;
-          }
-        }
-        return NaN;
       }
 
       function fillMissingEle(eles) {
@@ -5001,27 +5012,29 @@
         const n = allPts.length;
         const lats = allPts.map((p) => parseFloat(p.getAttribute("lat")));
         const lons = allPts.map((p) => parseFloat(p.getAttribute("lon")));
-        const eles = allPts.map((p) => {
-          const e = p.querySelector("ele");
-          return e ? parseFloat(e.textContent) : 0;
-        });
-        const timeEls = allPts.map((p) => p.querySelector("time"));
-        const times = timeEls.map((e) => (e ? parseTime(e.textContent) : 0));
-
+        const eles = new Array(n);
+        const timeEls = new Array(n);
+        const times = new Array(n);
         // Сенсорные данные (пульс/каденс/температура) из TrackPointExtension —
         // нужны, чтобы интерполировать их для вставленных точек, а не писать нули.
-        const hrs = allPts.map((p) => {
-          const e = p.querySelector("hr");
-          return e ? parseFloat(e.textContent) : NaN;
-        });
-        const cads = allPts.map((p) => {
-          const e = p.querySelector("cad");
-          return e ? parseFloat(e.textContent) : NaN;
-        });
-        const atemps = allPts.map((p) => {
-          const e = p.querySelector("atemp");
-          return e ? parseFloat(e.textContent) : NaN;
-        });
+        const hrs = new Array(n);
+        const cads = new Array(n);
+        const atemps = new Array(n);
+        // Один проход по каждой точке (extractTrkptFields делает один
+        // querySelector на <extensions> вместо трёх отдельных для hr/cad/atemp,
+        // и корректно находит их даже при namespace-префиксе,
+        // например <ns3:hr> — плоский querySelector("hr") такие точки не находил).
+        for (let i = 0; i < n; i++) {
+          const { eleEl, timeEl, hr, cad, atemp } = extractTrkptFields(
+            allPts[i],
+          );
+          eles[i] = eleEl ? parseFloat(eleEl.textContent) : 0;
+          timeEls[i] = timeEl;
+          times[i] = timeEl ? parseTime(timeEl.textContent) : 0;
+          hrs[i] = hr;
+          cads[i] = cad;
+          atemps[i] = atemp;
+        }
 
         log(t("log_loaded_points", { n }), "log-info");
 
@@ -5328,11 +5341,27 @@
           prevLon = lon;
         };
 
+        // Числовые ряды итогового трека собираем тут же, попутно — это
+        // избавляет вызывающий код от необходимости заново парсить весь
+        // выходной XML через DOMParser (ещё один полный проход по 50-60k+
+        // точкам) только чтобы получить те же самые lat/lon/ele/time/hr для
+        // карты и статистики "после".
+        const afterLats = [];
+        const afterLons = [];
+        const afterEles = [];
+        const afterTimes = [];
+        const afterHrs = [];
+
         for (let i = 0; i < n; i++) {
           if (insertionBefore.has(i)) {
             for (const pt of insertionBefore.get(i)) {
               newPtLines.push(makeTrkptXml(pt, nsExtPrefix));
               addLeg(pt.lat, pt.lon);
+              afterLats.push(pt.lat);
+              afterLons.push(pt.lon);
+              afterEles.push(pt.ele);
+              afterTimes.push(pt.time);
+              afterHrs.push(Number.isFinite(pt.hr) ? pt.hr : NaN);
             }
           }
           if (!removeSet.has(i)) {
@@ -5343,18 +5372,36 @@
                   .replace(/ xmlns(:[a-z0-9]+)?="[^"]*"/g, ""),
             ); // убираем дублирующиеся xmlns
             addLeg(lats[i], lons[i]);
+            afterLats.push(lats[i]);
+            afterLons.push(lons[i]);
+            afterEles.push(eles[i]);
+            afterTimes.push(times[i]);
+            afterHrs.push(hrs[i]);
           }
         }
 
         // Заменяем содержимое trkseg
-        // Используем строковый подход для скорости и сохранения оригинального форматирования
+        // Используем строковый подход для скорости и сохранения оригинального форматирования.
+        // Оригинальные точки ЕЩЁ находятся в DOM в этот момент (мы их только
+        // отмечали в removeSet/serializeToString-строках выше, не удаляли) —
+        // если сериализовать документ как есть, XMLSerializer заново кодирует
+        // все десятки тысяч исходных <trkpt>, которые тут же будут выброшены
+        // регэкспом ниже. Чтобы не платить за это дважды, сначала отвязываем
+        // их от <trkseg> (дёшево — просто отсоединение узлов, без кодирования
+        // текста), и сериализуем уже пустой сегмент.
+        while (seg.firstChild) seg.removeChild(seg.firstChild);
         let outXml = serializer.serializeToString(doc);
 
         // Более надёжный способ: строковая замена между <trkseg> и </trkseg>
+        // (сегмент теперь пуст, поэтому regex ищет короткую пустую/self-closing
+        // форму, а не сканирует потенциально гигабайтный блок текста).
         const trkptBlock = newPtLines.join("\n");
         outXml = outXml.replace(
-          /(<trkseg[^>]*>)([\s\S]*?)(<\/trkseg>)/,
-          `$1\n${trkptBlock}\n\t\t$3`,
+          /<trkseg([^>]*)\/>|<trkseg([^>]*)>\s*<\/trkseg>/,
+          (_, attrsSelf, attrsOpen) => {
+            const attrs = attrsSelf !== undefined ? attrsSelf : attrsOpen;
+            return `<trkseg${attrs}>\n${trkptBlock}\n\t\t</trkseg>`;
+          },
         );
 
         log(t("log_removed_total", { n: totalRemoved }), "log-ok");
@@ -5372,7 +5419,15 @@
           "log-ok",
         );
 
-        return { xml: outXml, interpSegments };
+        return {
+          xml: outXml,
+          interpSegments,
+          afterLats,
+          afterLons,
+          afterEles,
+          afterTimes,
+          afterHrs,
+        };
       }
 
       // ─── UI ──────────────────────────────────────────────────────────────────────
@@ -6031,10 +6086,15 @@
         // Запускаем в следующем тике, чтобы успел отрисоваться UI
         setTimeout(async () => {
           try {
-            const { xml: result, interpSegments } = await fixGpx(
-              gpxText,
-              params,
-            );
+            const {
+              xml: result,
+              interpSegments,
+              afterLats,
+              afterLons,
+              afterEles,
+              afterTimes,
+              afterHrs,
+            } = await fixGpx(gpxText, params);
 
             if (myGeneration !== opGeneration) {
               // Пока шло исправление, пользователь загрузил другой файл —
@@ -6059,13 +6119,6 @@
             log(t("log_done"), "log-ok");
             document.getElementById("done-img").style.display = "block";
 
-            const {
-              lats: afterLats,
-              lons: afterLons,
-              eles: afterEles,
-              times: afterTimes,
-              hrs: afterHrs,
-            } = extractTrackData(result);
             showTrackMap(
               "map-after",
               afterLats,
