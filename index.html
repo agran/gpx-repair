@@ -644,6 +644,7 @@
       }
       .elevation-profile-wrap {
         display: none;
+        position: relative;
         align-items: stretch;
         gap: 0;
         height: 11.4em;
@@ -655,11 +656,16 @@
       }
       .elevation-profile {
         display: block;
-        flex: 1 1 auto;
-        min-width: 0;
+        width: 100%;
         height: 100%;
         cursor: crosshair;
         touch-action: none;
+      }
+      .elevation-profile-canvas-wrap {
+        position: relative;
+        flex: 1 1 auto;
+        min-width: 0;
+        height: 100%;
       }
       /* Курсор-крестик над уже закреплённой точкой (на профиле или на карте) —
          подсказывает, что клик по ней открепит точку. */
@@ -695,6 +701,30 @@
         margin-left: 6px;
         vertical-align: middle;
         border: 1px solid rgba(255, 255, 255, 0.35);
+      }
+      .elevation-profile-episode-tag {
+        position: absolute;
+        top: 6px;
+        right: 6px;
+        z-index: 5;
+        padding: 1px 8px;
+        border-radius: 8px;
+        font-size: 0.72rem;
+        font-weight: 600;
+        white-space: nowrap;
+        pointer-events: none;
+        background: rgba(249, 115, 22, 0.22);
+        color: #fdba74;
+        border: 1px solid rgba(249, 115, 22, 0.45);
+        display: none;
+      }
+      .elevation-profile-episode-tag.elevation-profile-episode-tag--visible {
+        display: block;
+      }
+      .elevation-profile-episode-tag--pause {
+        background: rgba(56, 189, 248, 0.22);
+        color: #7dd3fc;
+        border-color: rgba(56, 189, 248, 0.45);
       }
       .elevation-profile-info-empty {
         color: #6b7385;
@@ -738,7 +768,7 @@
              со своим скроллом (см. ниже). */
           height: auto;
         }
-        .elevation-profile {
+        .elevation-profile-canvas-wrap {
           flex: 0 0 7.4em;
           height: 7.4em;
         }
@@ -1120,10 +1150,16 @@
         </button>
       </div>
       <div class="elevation-profile-wrap" id="elevation-profile-wrap-before">
-        <canvas
-          class="elevation-profile"
-          id="elevation-profile-before"
-        ></canvas>
+        <div class="elevation-profile-canvas-wrap">
+          <canvas
+            class="elevation-profile"
+            id="elevation-profile-before"
+          ></canvas>
+          <div
+            class="elevation-profile-episode-tag"
+            id="elevation-profile-episode-tag-before"
+          ></div>
+        </div>
         <div
           class="elevation-profile-info"
           id="elevation-profile-info-before"
@@ -1352,7 +1388,13 @@
         </button>
       </div>
       <div class="elevation-profile-wrap" id="elevation-profile-wrap-after">
-        <canvas class="elevation-profile" id="elevation-profile-after"></canvas>
+        <div class="elevation-profile-canvas-wrap">
+          <canvas class="elevation-profile" id="elevation-profile-after"></canvas>
+          <div
+            class="elevation-profile-episode-tag"
+            id="elevation-profile-episode-tag-after"
+          ></div>
+        </div>
         <div
           class="elevation-profile-info"
           id="elevation-profile-info-after"
@@ -1393,8 +1435,8 @@
           gapfill_foot: "Маршрут: пешком",
           gapfill_bike: "Маршрут: велосипед",
           gapfill_car: "Маршрут: авто",
-          gapfill_remove: "Удалить участок (без замены)",
-          gapfill_keep: "Оставить как было (не трогать)",
+          gapfill_remove: "Удалить без замены",
+          gapfill_keep: "Оставить как было",
           label_maxspeed: "Макс. горизонт. скорость (м/с)",
           hint_maxspeed:
             "Пеший поход: 10–15 &nbsp;|&nbsp; Велосипед: 25–40 &nbsp;|&nbsp; Авто: 80–120",
@@ -1531,6 +1573,10 @@
           log_removed_no_replace: "  Участок удалён без замены ({cnt} точек)",
           log_removed_leading_no_before:
             "  Участок в начале трека удалён без замены — нет опорной точки до глушения ({cnt} точек)",
+          log_pause_removed_leading:
+            "\nПауза записи: точки {before}→{after} — часть трека ДО паузы удалена без замены ({cnt} точек), трек теперь начинается с точки {after}",
+          log_pause_removed_trailing:
+            "\nПауза записи: точки {before}→{after} — часть трека ПОСЛЕ паузы удалена без замены ({cnt} точек), трек теперь заканчивается точкой {before}",
           log_elevation: "  Высота: {before}м → {after}м{corrected}",
           log_elevation_corrected: "  [скорректирована с {orig}м]",
           log_episode_routed:
@@ -1590,8 +1636,8 @@
           gapfill_foot: "Route: on foot",
           gapfill_bike: "Route: bicycle",
           gapfill_car: "Route: car",
-          gapfill_remove: "Delete section (no replacement)",
-          gapfill_keep: "Keep as-is (don't touch)",
+          gapfill_remove: "Delete without replacement",
+          gapfill_keep: "Leave unchanged",
           label_maxspeed: "Max. horizontal speed (m/s)",
           hint_maxspeed:
             "Hiking: 10–15 &nbsp;|&nbsp; Bike: 25–40 &nbsp;|&nbsp; Car: 80–120",
@@ -1731,6 +1777,10 @@
             "  Section removed, no replacement ({cnt} points)",
           log_removed_leading_no_before:
             "  Section at the start of the track removed, no replacement — no reference point before jamming ({cnt} points)",
+          log_pause_removed_leading:
+            "\nRecording pause: points {before}→{after} — the part of the track BEFORE the pause was removed, no replacement ({cnt} points), the track now starts at point {after}",
+          log_pause_removed_trailing:
+            "\nRecording pause: points {before}→{after} — the part of the track AFTER the pause was removed, no replacement ({cnt} points), the track now ends at point {before}",
           log_elevation: "  Elevation: {before}m → {after}m{corrected}",
           log_elevation_corrected: "  [corrected from {orig}m]",
           log_episode_routed:
@@ -3594,11 +3644,13 @@
           wrap: "elevation-profile-wrap-before",
           canvas: "elevation-profile-before",
           info: "elevation-profile-info-before",
+          tag: "elevation-profile-episode-tag-before",
         },
         "map-after": {
           wrap: "elevation-profile-wrap-after",
           canvas: "elevation-profile-after",
           info: "elevation-profile-info-after",
+          tag: "elevation-profile-episode-tag-after",
         },
       };
 
@@ -3859,6 +3911,58 @@
         return lo;
       }
 
+      // Определяет, к какому обнаруженному эпизоду/паузе из списка выше
+      // (episodePreview) относится момент времени timeUnix — используется в
+      // инфо-панели профиля высоты, чтобы подсказать "Эпизод N"/"Пауза N".
+      // Границы диапазона берём по ВРЕМЕНИ (episodePreviewTimes), а не по
+      // индексу — для карты "после" индексы точек уже не совпадают с
+      // исходным треком (вставки/удаления сдвигают их), а время сохраняется.
+      function findEpisodeForTime(timeUnix) {
+        if (!Number.isFinite(timeUnix) || !episodePreview.length) return null;
+        const times = episodePreviewTimes;
+        const n = times.length;
+        if (!n) return null;
+        for (let i = 0; i < episodePreview.length; i++) {
+          const ep = episodePreview[i];
+          const rawStart = ep.isPause ? ep.lastBad : ep.firstBad;
+          const rawEnd = ep.isPause ? ep.afterIdx : ep.lastBad;
+          const idx0 = Math.max(0, Math.min(n - 1, rawStart));
+          const idx1 = Math.max(0, Math.min(n - 1, rawEnd));
+          const t0 = times[idx0];
+          const t1 = times[idx1];
+          if (!Number.isFinite(t0) || !Number.isFinite(t1)) continue;
+          if (timeUnix >= t0 - 1e-6 && timeUnix <= t1 + 1e-6) {
+            return { ep, idx: i };
+          }
+        }
+        return null;
+      }
+
+      // Обновляет плашку "Эпизод N"/"Пауза N" в правом верхнем углу профиля
+      // высоты (см. #elevation-profile-episode-tag-before/-after) —
+      // отдельный элемент поверх canvas, а не часть текста в инфо-панели
+      // справа, чтобы не занимать там лишнюю строку (там и так тесно).
+      function updateEpisodeTagOverlay(containerId, timeUnix) {
+        const ui = ELEVATION_PROFILE_UI[containerId];
+        const tagEl = ui && document.getElementById(ui.tag);
+        if (!tagEl) return;
+        const found = findEpisodeForTime(timeUnix);
+        if (!found) {
+          tagEl.classList.remove("elevation-profile-episode-tag--visible");
+          tagEl.textContent = "";
+          return;
+        }
+        tagEl.textContent = t(
+          found.ep.isPause ? "episode_pause_label" : "episode_label",
+          { n: found.idx + 1 },
+        );
+        tagEl.classList.toggle(
+          "elevation-profile-episode-tag--pause",
+          !!found.ep.isPause,
+        );
+        tagEl.classList.add("elevation-profile-episode-tag--visible");
+      }
+
       // Инфо-панель справа от профиля — та же разметка/данные, что и попап
       // по клику на трек (buildPointPopupHtml): координаты, время, высота,
       // скорость, уклон, пульс — только обновляется по наведению, а не клику.
@@ -3887,6 +3991,7 @@
         const speedColor = colorForValue(speedVal, legends.speed);
         const gradeColor = colorForValue(gradeVal, legends.grade);
         const hrColor = colorForValue(hr, legends.hr);
+        updateEpisodeTagOverlay(containerId, timeUnix);
         return buildPointPopupHtml(
           lat,
           lon,
@@ -3908,6 +4013,7 @@
         if (infoEl) {
           infoEl.innerHTML = `<div class="elevation-profile-info-empty">${t("profile_hover_hint")}</div>`;
         }
+        updateEpisodeTagOverlay(containerId, NaN);
       }
 
       // Переводит индекс ТОЧКИ ОСНОВНОГО ТРЕКА (полное разрешение) в индекс k
@@ -4422,20 +4528,40 @@
         // физической достижимости (если прошло много времени), но это лишь
         // продолжение той же самой заморозки/новая фейковая "стоянка", а не
         // настоящее возобновление движения после восстановления сигнала.
-        // Раньше "заморозка" проверялась только байт-в-байт совпадением
-        // координат с соседним сэмплом. Но приёмник, зависший на очередной
-        // фейковой позиции, обычно всё же чуть "дрожит" (доли метра) — точного
-        // совпадения нет, хотя по сути точка так же неподвижна и так же не
-        // является настоящим движением. Порог в несколько метров ловит и
-        // такие случаи, оставаясь далеко ниже любого реального перемещения
-        // между сэмплами на разумной скорости.
-        const FREEZE_EPS_M = 3.0;
+        // Раньше здесь был фиксированный порог в МЕТРАХ (3м) — но абсолютное
+        // расстояние без учёта dt ложно ловит и честные данные: на треке с
+        // частой записью (dt~1с) человек на привале/медленном шаге между
+        // соседними honest-сэмплами почти всегда сдвигается меньше чем на
+        // 3м — такая точка неверно бралась за "заморозку", кандидат на
+        // возврат браковался, и вся дальнейшая честная стоянка/медленный
+        // участок (иногда сотни точек, десятки минут) целиком уходила в один
+        // фейковый "эпизод глушения" с прямой/маршрутной подменой. Проверено
+        // на реальном треке (Чегемское — Архонский): лагерная стоянка на
+        // высоте (~800 честных точек, дрейф GPS на месте + медленный уход со
+        // стоянки) была полностью подменена мостом всего 0.2 км. Порог по
+        // СКОРОСТИ (расстояние/dt) корректно отличает настоящую заморозку
+        // (скорость ~0 м/с сколько угодно долго) от честного медленного
+        // движения/шума на стоянке (скорость пусть и мала, но не нулевая) —
+        // независимо от того, длинный dt или короткий.
+        const FREEZE_MAX_SPEED_MPS = 0.3;
         function isFrozenCandidate(j) {
           if (isBadFix(j)) return true;
-          if (j > 0 && haversine(lats[j], lons[j], lats[j - 1], lons[j - 1]) < FREEZE_EPS_M)
-            return true;
-          if (j + 1 < n && haversine(lats[j], lons[j], lats[j + 1], lons[j + 1]) < FREEZE_EPS_M)
-            return true;
+          if (j > 0) {
+            const dtBack = Math.max(times[j] - times[j - 1], 0.001);
+            if (
+              haversine(lats[j], lons[j], lats[j - 1], lons[j - 1]) / dtBack <
+              FREEZE_MAX_SPEED_MPS
+            )
+              return true;
+          }
+          if (j + 1 < n) {
+            const dtFwd = Math.max(times[j + 1] - times[j], 0.001);
+            if (
+              haversine(lats[j], lons[j], lats[j + 1], lons[j + 1]) / dtFwd <
+              FREEZE_MAX_SPEED_MPS
+            )
+              return true;
+          }
           return false;
         }
 
@@ -6454,6 +6580,58 @@
             continue;
           }
 
+          // Пауза записи не имеет "плохих" точек (обе границы честные), так
+          // что "удалить участок" применительно к ней означает не вырезание
+          // точек внутри паузы (там нечего вырезать), а отрезание целого
+          // довеска трека ДО или ПОСЛЕ паузы — и это имеет смысл только
+          // тогда, когда пауза находится на самом краю списка обнаруженных
+          // аномалий (т.е. первая/последняя пауза или эпизод во всём
+          // треке). Для паузы в середине трека такой выбор ничего не
+          // вырезает (обе стороны — полноценная часть маршрута).
+          if (ep.isPause && mode === "remove") {
+            const isFirstOverall = epIdx === 0;
+            const isLastOverall = epIdx === episodes.length - 1;
+            if (!isFirstOverall && !isLastOverall) {
+              log(
+                t("log_pause_kept", {
+                  before: ep.firstBad - 1,
+                  after: ep.afterIdx,
+                }),
+                "log-warn",
+              );
+            } else {
+              if (isFirstOverall) {
+                const cnt = ep.lastBad + 1;
+                for (let i = 0; i <= ep.lastBad; i++) removeSet.add(i);
+                totalRemoved += cnt;
+                log(
+                  t("log_pause_removed_leading", {
+                    before: ep.firstBad - 1,
+                    after: ep.afterIdx,
+                    cnt,
+                  }),
+                  "log-warn",
+                );
+              }
+              if (isLastOverall) {
+                const cnt = n - ep.afterIdx;
+                for (let i = ep.afterIdx; i < n; i++) removeSet.add(i);
+                totalRemoved += cnt;
+                log(
+                  t("log_pause_removed_trailing", {
+                    before: ep.firstBad - 1,
+                    after: ep.afterIdx,
+                    cnt,
+                  }),
+                  "log-warn",
+                );
+              }
+            }
+            prevFinalLastBad = ep.lastBad;
+            prevEp = null;
+            continue;
+          }
+
           let { firstBad, lastBad, afterIdx } = ep;
 
           // Паузы записи (см. findRecordingPauseGaps) — не эпизод глушения:
@@ -7686,16 +7864,34 @@
           info.title = t("hint_episode_locate");
           info.addEventListener("click", () => highlightEpisodeOnMaps(idx));
 
+          // Ведущий эпизод глушения (firstBad === 0) не имеет опорной точки
+          // "до" — так же, как хвостовой не имеет точки "после" (hasAfter
+          // выше). fixGpx в этом случае всё равно ведёт себя как "удалить"
+          // независимо от выбранного режима, так что показывать остальные
+          // варианты маршрутизации было бы вводящим в заблуждение.
+          const hasBefore = ep.firstBad - 1 >= 0;
+          // Пауза на самом краю списка обнаруженных аномалий (первая или
+          // последняя во всём треке) может быть удалена вместе с целым
+          // "довеском" трека по одну сторону от неё — см. fixGpx. Пауза в
+          // середине трека не может: обе стороны от неё честные, удалять
+          // нечего, и "Удалить" ничем не отличалось бы от "Оставить как
+          // было".
+          const pauseRemovableEdge =
+            ep.isPause && (idx === 0 || idx === episodes.length - 1);
           const select = document.createElement("select");
           select.className = "episode-mode-select";
           for (const opt of GAP_FILL_OPTIONS) {
             if (!hasAfter && opt.value !== "remove" && opt.value !== "keep")
               continue; // хвостовой обрыв — маршрут строить некуда
-            // У паузы записи нет ни одной "битой" точки для удаления (обе
-            // граничные точки честные, cnt всегда 0) — режим "Удалить"
-            // ничего не удалял бы и был бы неотличим от "Оставить как было",
-            // только вводил бы пользователя в заблуждение.
-            if (ep.isPause && opt.value === "remove") continue;
+            if (
+              !ep.isPause &&
+              !hasBefore &&
+              opt.value !== "remove" &&
+              opt.value !== "keep"
+            )
+              continue; // ведущий обрыв — маршрут строить некуда
+            if (ep.isPause && opt.value === "remove" && !pauseRemovableEdge)
+              continue;
             const o = document.createElement("option");
             o.value = opt.value;
             o.textContent = t("gapfill_" + opt.value);
