@@ -4191,10 +4191,25 @@
         // точки возврата обрубался этим потолком, и весь остаток трека после
         // джаммера ошибочно уходил в отдельный "хвостовой" эпизод без
         // возможности восстановления.
+        // Пропускаем кандидата на возврат, если он сам застрял на месте —
+        // совпадает по координатам с соседней точкой. Джаммер часто
+        // "замирает" на очередной фейковой позиции по несколько сэмплов
+        // подряд; такая точка технически может пройти проверку скорости или
+        // физической достижимости (если прошло много времени), но это лишь
+        // продолжение той же самой заморозки/новая фейковая "стоянка", а не
+        // настоящее возобновление движения после восстановления сигнала.
+        function isFrozenCandidate(j) {
+          if (lats[j] === lats[j - 1] && lons[j] === lons[j - 1]) return true;
+          if (j + 1 < n && lats[j + 1] === lats[j] && lons[j + 1] === lons[j])
+            return true;
+          return false;
+        }
+
         function findPlausibleReturn(refLat, refLon, refTime, from) {
           for (let j = from; j < n; j++) {
             const dt = times[j] - refTime;
             if (dt <= 0) continue;
+            if (isFrozenCandidate(j)) continue;
             const dist = haversine(lats[j], lons[j], refLat, refLon);
             if (dist <= maxSpeedMps * dt) return j;
           }
@@ -4233,11 +4248,33 @@
               for (let j = firstBad + 1; j < scanEnd; j++) {
                 const dtAfter = Math.max(1, times[j] - refTimeM);
                 if (dtAfter > MICRO_SCAN_SECONDS) break;
+                if (isFrozenCandidate(j)) continue;
                 const dAfter = haversine(lats[j], lons[j], refLatM, refLonM);
                 if (dAfter / dtAfter <= maxSpeedMps) {
                   resumeIdx = j;
                   break;
                 }
+              }
+              if (resumeIdx === null) {
+                // Короткое окно скана (MICRO_SCAN_SECONDS/MICRO_SCAN_POINTS)
+                // рассчитано на КОРОТКИЕ эрратичные всплески. Но иногда
+                // "микро"-выброс (dJump < minClusterDist на данном конкретном
+                // скачке) на самом деле является частью куда более длинного
+                // многошагового глушения, где устройство подолгу "зависает"
+                // на нескольких фейковых позициях по очереди — тогда скорость
+                // относительно ИСХОДНОЙ точки выхода не падает ниже
+                // maxSpeedMps ещё долго. Как и для "дальних" джамов без
+                // соседнего кластерного возврата, в этом случае используем
+                // резервную проверку физической достижимости без ограничения
+                // по времени — иначе такой эпизод молча пропадает целиком
+                // (k++ без единой вставленной записи), а трек остаётся
+                // сломанным без каких-либо предупреждений.
+                resumeIdx = findPlausibleReturn(
+                  refLatM,
+                  refLonM,
+                  refTimeM,
+                  firstBad,
+                );
               }
               if (resumeIdx !== null) {
                 // Расширяем эпизод НАЗАД: точки перед tOut могли уже уйти в
