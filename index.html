@@ -480,16 +480,20 @@
           rgb(239, 68, 68) 100%
         );
       }
-      .relief-toggle {
+      .basemap-select-wrap {
         display: flex;
         align-items: center;
-        gap: 6px;
+        gap: 8px;
         font-size: 0.83rem;
         color: #a3adc2;
-        cursor: pointer;
-        user-select: none;
       }
-      .relief-toggle input {
+      .basemap-select-wrap select {
+        background: #0d1b35;
+        color: #fff;
+        border: 1px solid #0f3460;
+        border-radius: 6px;
+        padding: 3px 6px;
+        font-size: 0.82rem;
         cursor: pointer;
       }
       .track-popup {
@@ -1173,9 +1177,22 @@
           <span class="color-legend-sep">—</span>
           <span id="color-legend-max"></span>
         </div>
-        <label class="relief-toggle">
-          <input type="checkbox" id="relief-toggle" />
-          <span data-i18n="relief_label">Изолинии</span>
+        <label class="basemap-select-wrap" for="basemap-select">
+          <span data-i18n="basemap_label">Карта</span>
+          <select id="basemap-select">
+            <option value="osm" data-i18n="basemap_osm">OSM</option>
+            <option value="opentopo" data-i18n="basemap_opentopo">
+              OpenTopoMap
+            </option>
+            <option value="cyclosm" data-i18n="basemap_cyclosm">CyclOSM</option>
+            <option value="osm-hot" data-i18n="basemap_osm_hot">OSM HOT</option>
+            <option value="esri-topo" data-i18n="basemap_esri_topo">
+              Esri Topographic
+            </option>
+            <option value="carto-voyager" data-i18n="basemap_carto_voyager">
+              CARTO Voyager
+            </option>
+          </select>
         </label>
       </div>
       <div class="track-map-wrap">
@@ -1411,9 +1428,22 @@
           <span class="color-legend-sep">—</span>
           <span id="color-legend-max-after"></span>
         </div>
-        <label class="relief-toggle">
-          <input type="checkbox" id="relief-toggle-after" />
-          <span data-i18n="relief_label">Изолинии</span>
+        <label class="basemap-select-wrap" for="basemap-select-after">
+          <span data-i18n="basemap_label">Карта</span>
+          <select id="basemap-select-after">
+            <option value="osm" data-i18n="basemap_osm">OSM</option>
+            <option value="opentopo" data-i18n="basemap_opentopo">
+              OpenTopoMap
+            </option>
+            <option value="cyclosm" data-i18n="basemap_cyclosm">CyclOSM</option>
+            <option value="osm-hot" data-i18n="basemap_osm_hot">OSM HOT</option>
+            <option value="esri-topo" data-i18n="basemap_esri_topo">
+              Esri Topographic
+            </option>
+            <option value="carto-voyager" data-i18n="basemap_carto_voyager">
+              CARTO Voyager
+            </option>
+          </select>
         </label>
       </div>
       <div class="track-map-wrap">
@@ -1591,7 +1621,13 @@
           color_mode_grade: "Уклон",
           color_mode_elevation: "Высота",
           color_mode_hr: "Пульс",
-          relief_label: "Изолинии",
+          basemap_label: "Карта",
+          basemap_osm: "OSM (по умолчанию)",
+          basemap_opentopo: "OpenTopoMap (изолинии)",
+          basemap_cyclosm: "CyclOSM (изолинии)",
+          basemap_osm_hot: "OSM HOT",
+          basemap_esri_topo: "Esri Topographic (изолинии)",
+          basemap_carto_voyager: "CARTO Voyager",
           map_maximize_title: "Развернуть карту",
           map_minimize_title: "Свернуть карту",
           map_fit_title: "Показать весь трек",
@@ -1794,7 +1830,13 @@
           color_mode_grade: "Grade",
           color_mode_elevation: "Elevation",
           color_mode_hr: "Heart rate",
-          relief_label: "Relief (contour lines)",
+          basemap_label: "Map layer",
+          basemap_osm: "OSM (default)",
+          basemap_opentopo: "OpenTopoMap (contours)",
+          basemap_cyclosm: "CyclOSM (routes/trails, contours)",
+          basemap_osm_hot: "OSM HOT",
+          basemap_esri_topo: "Esri Topographic (contours)",
+          basemap_carto_voyager: "CARTO Voyager",
           map_maximize_title: "Maximize map",
           map_minimize_title: "Restore map",
           map_fit_title: "Fit whole track",
@@ -1884,13 +1926,17 @@
         if (saved === "en" || saved === "ru") currentLang = saved;
       } catch (e) {}
 
-      // Подложка карты OpenTopoMap (горизонтали высот, рельефная штриховка) —
-      // опциональна и выключена по умолчанию, включается чекбоксом рядом с
-      // раскраской трека; выбор запоминается между визитами.
-      const RELIEF_STORAGE_KEY = "gpxRepairRelief";
-      let reliefMode = false;
+      // Базовая подложка карты (OSM/Topo/и т.д.) — выбирается в выпадающем
+      // списке рядом с раскраской трека и запоминается между визитами.
+      const BASEMAP_STORAGE_KEY = "gpxRepairBasemap";
+      const RELIEF_STORAGE_KEY = "gpxRepairRelief"; // legacy (старый чекбокс)
+      let basemapMode = "osm";
       try {
-        reliefMode = localStorage.getItem(RELIEF_STORAGE_KEY) === "1";
+        const saved = localStorage.getItem(BASEMAP_STORAGE_KEY);
+        if (saved) basemapMode = saved;
+        // Миграция со старого формата (чекбокс "рельеф"): 1 -> opentopo.
+        else if (localStorage.getItem(RELIEF_STORAGE_KEY) === "1")
+          basemapMode = "opentopo";
       } catch (e) {}
 
       function t(key, vars) {
@@ -2386,9 +2432,8 @@
       // "elevation" | "hr" — общий для карт "до" и "после".
       let colorMode = "plain";
 
-      // Подложки карты: обычная OSM и OpenTopoMap (горизонтали высот, рельефная
-      // штриховка) — переключаются чекбоксом "Рельеф", не требуют повторной
-      // отрисовки трека, меняется только тайловый слой.
+      // Подложки карты: переключаются выпадающим списком "Карта", не требуют
+      // повторной отрисовки трека, меняется только тайловый слой.
       const TILE_LAYER_CONFIGS = {
         osm: {
           url: "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
@@ -2398,7 +2443,7 @@
               '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank">OpenStreetMap</a>',
           },
         },
-        relief: {
+        opentopo: {
           // Тайлы у OpenTopoMap есть только до 17 зума — дальше Leaflet сам
           // растягивает (upscale) 17-й уровень, чтобы не было пустых плиток
           // при более сильном приближении к треку.
@@ -2412,28 +2457,68 @@
               'contributors, SRTM &mdash; map style: &copy; <a href="https://opentopomap.org" target="_blank">OpenTopoMap</a> (<a href="https://creativecommons.org/licenses/by-sa/3.0/" target="_blank">CC-BY-SA</a>)',
           },
         },
+        cyclosm: {
+          url: "https://{s}.tile-cyclosm.openstreetmap.fr/cyclosm/{z}/{x}/{y}.png",
+          options: {
+            maxZoom: 20,
+            subdomains: "abc",
+            attribution:
+              '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank">OpenStreetMap</a> contributors, style: <a href="https://www.cyclosm.org/" target="_blank">CyclOSM</a>',
+          },
+        },
+        "osm-hot": {
+          url: "https://{s}.tile.openstreetmap.fr/hot/{z}/{x}/{y}.png",
+          options: {
+            maxZoom: 19,
+            subdomains: "abc",
+            attribution:
+              '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank">OpenStreetMap</a> contributors, style: <a href="https://www.hotosm.org/" target="_blank">Humanitarian OpenStreetMap Team</a>',
+          },
+        },
+        "esri-topo": {
+          url: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}",
+          options: {
+            maxZoom: 19,
+            attribution:
+              "Tiles &copy; Esri &mdash; Esri, DeLorme, NAVTEQ, TomTom, Intermap, iPC, USGS, FAO, NPS, NRCAN, GeoBase, Kadaster NL, Ordnance Survey, Esri Japan, METI, Esri China (Hong Kong), and the GIS User Community",
+          },
+        },
+        "carto-voyager": {
+          url: "https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png",
+          options: {
+            maxZoom: 19,
+            subdomains: "abcd",
+            attribution:
+              '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions" target="_blank">CARTO</a>',
+          },
+        },
       };
 
-      function makeTileLayer(relief) {
-        const cfg = relief ? TILE_LAYER_CONFIGS.relief : TILE_LAYER_CONFIGS.osm;
+      function makeTileLayer(mode) {
+        const cfg = TILE_LAYER_CONFIGS[mode] || TILE_LAYER_CONFIGS.osm;
+        if (cfg.layers && cfg.layers.length) {
+          return L.layerGroup(
+            cfg.layers.map((layer) => L.tileLayer(layer.url, layer.options)),
+          );
+        }
         return L.tileLayer(cfg.url, cfg.options);
       }
 
       // Переключает подложку сразу у всех уже созданных карт и синхронизирует
-      // оба чекбокса (у карты "до" и "после") — без перерисовки самого трека.
-      function setReliefMode(value) {
-        reliefMode = !!value;
+      // оба селекта (у карты "до" и "после") — без перерисовки самого трека.
+      function setBasemapMode(value) {
+        basemapMode = TILE_LAYER_CONFIGS[value] ? value : "osm";
         try {
-          localStorage.setItem(RELIEF_STORAGE_KEY, reliefMode ? "1" : "0");
+          localStorage.setItem(BASEMAP_STORAGE_KEY, basemapMode);
         } catch (e) {}
-        for (const id of ["relief-toggle", "relief-toggle-after"]) {
+        for (const id of ["basemap-select", "basemap-select-after"]) {
           const el = document.getElementById(id);
-          if (el) el.checked = reliefMode;
+          if (el) el.value = basemapMode;
         }
         for (const key in mapInstances) {
           const inst = mapInstances[key];
           if (inst.tileLayer) inst.map.removeLayer(inst.tileLayer);
-          inst.tileLayer = makeTileLayer(reliefMode).addTo(inst.map);
+          inst.tileLayer = makeTileLayer(basemapMode).addTo(inst.map);
         }
       }
 
@@ -3378,10 +3463,9 @@
           map.attributionControl.setPrefix(
             '<a href="https://leafletjs.com" target="_blank">Leaflet</a>',
           );
-          // OpenTopoMap вместо обычной OSM-подложки — рельефная штриховка и
-          // горизонтали высот прямо на карте, без отдельного слоя/API;
-          // необязателен, включается чекбоксом "Рельеф" (reliefMode).
-          const tileLayer = makeTileLayer(reliefMode).addTo(map);
+          // Подложка (OSM/OpenTopo/и т.д.) выбирается пользователем в селекте
+          // "Карта" и применяется без перерисовки самого трека.
+          const tileLayer = makeTileLayer(basemapMode).addTo(map);
           inst = {
             map,
             tileLayer,
@@ -8485,12 +8569,12 @@
           });
       }
 
-      // Чекбокс подложки-рельефа продублирован у обеих карт (до/после) —
-      // синхронизированы через общий reliefMode, как и раскраска трека.
-      for (const id of ["relief-toggle", "relief-toggle-after"]) {
+      // Селект подложки карты продублирован у обеих карт (до/после) —
+      // синхронизированы через общий basemapMode, как и раскраска трека.
+      for (const id of ["basemap-select", "basemap-select-after"]) {
         const el = document.getElementById(id);
-        el.checked = reliefMode;
-        el.addEventListener("change", (e) => setReliefMode(e.target.checked));
+        el.value = basemapMode;
+        el.addEventListener("change", (e) => setBasemapMode(e.target.value));
       }
 
       document.querySelectorAll(".map-maximize-btn").forEach((btn) => {
