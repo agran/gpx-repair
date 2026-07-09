@@ -272,8 +272,15 @@
         border-left-color: #22d3ee;
         background: rgba(34, 211, 238, 0.07);
       }
+      .episode-row--reststop {
+        border-left-color: #a3e635;
+        background: rgba(163, 230, 53, 0.07);
+      }
       .episode-row--pause .episode-info strong::before {
         content: "⏸ ";
+      }
+      .episode-row--reststop .episode-info strong::before {
+        content: "⛺ ";
       }
       .episode-row--jam .episode-info strong::before {
         content: "⚠ ";
@@ -547,6 +554,22 @@
         color: #4ade80;
         margin-bottom: 12px;
       }
+      /* Кнопка массового переключения всех привалов на "Простое соединение" —
+         видна только когда среди обнаруженных эпизодов есть хотя бы один
+         привал (см. renderEpisodeList). */
+      #btn-reststops-linear {
+        padding: 8px 12px;
+        border: 1px solid #0f3460;
+        border-radius: 8px;
+        background: #0d1b35;
+        color: #e0e0e0;
+        font-size: 0.85rem;
+        cursor: pointer;
+        transition: background 0.15s ease;
+      }
+      #btn-reststops-linear:hover {
+        background: #14264a;
+      }
 
       /* Log */
       #log {
@@ -780,6 +803,11 @@
         background: rgba(56, 189, 248, 0.22);
         color: #7dd3fc;
         border-color: rgba(56, 189, 248, 0.45);
+      }
+      .elevation-profile-episode-tag--reststop {
+        background: rgba(163, 230, 53, 0.22);
+        color: #d9f99d;
+        border-color: rgba(163, 230, 53, 0.45);
       }
       .elevation-profile-info-empty {
         color: #6b7385;
@@ -1260,7 +1288,7 @@
             Авто (по скорости трека)
           </option>
           <option value="linear" data-i18n="gapfill_linear">
-            Простое соединение (офлайн)
+            Простое соединение
           </option>
           <option value="foot" data-i18n="gapfill_foot">Маршрут: пешком</option>
           <option value="bike" data-i18n="gapfill_bike">
@@ -1366,6 +1394,15 @@
         Для каждого найденного участка можно выбрать свой способ заполнения —
         включая полное удаление без замены или отказ от изменений.
       </p>
+      <button
+        type="button"
+        id="btn-reststops-linear"
+        style="display: none; margin-bottom: 12px"
+        data-i18n="btn_reststops_linear"
+        data-i18n-title="hint_reststops_linear"
+      >
+        Спрямить все привалы
+      </button>
       <div id="episode-list"></div>
     </div>
 
@@ -1515,7 +1552,7 @@
           hint_interp_mode:
             'Режимы "Маршрут" прокладывают пропущенный участок по реальной тропе или дороге (а не прямой линией) — для этого координаты границ пробела отправляются на routing.openstreetmap.de (построение маршрута) и api.open-meteo.com (высоты)',
           gapfill_auto: "Авто (по скорости трека)",
-          gapfill_linear: "Простое соединение (офлайн)",
+          gapfill_linear: "Простое соединение",
           gapfill_foot: "Маршрут: пешком",
           gapfill_bike: "Маршрут: велосипед",
           gapfill_car: "Маршрут: авто",
@@ -1537,6 +1574,10 @@
             "Для каждого найденного участка можно выбрать свой способ заполнения — включая полное удаление без замены или отказ от изменений.",
           episode_label: "Эпизод {n}",
           episode_pause_label: "Пауза {n}",
+          episode_reststop_label: "Привал {n}",
+          btn_reststops_linear: "Спрямить все привалы",
+          hint_reststops_linear:
+            "Вместо клубка GPS-шума на месте стоянки — простая прямая через привал",
           episode_tail: "обрыв в конце трека",
           episode_points: "{n} точек",
           episode_pause_gap: "пауза записи",
@@ -1647,12 +1688,16 @@
             "\nЭпизод глушения: точки [{first}..{last}] — оставлен без изменений (выбрано «оставить как было»)",
           log_pause_kept:
             "\nПауза записи: точки {before}→{after} — оставлена без изменений (выбрано «оставить как было»)",
+          log_reststop_kept:
+            "\nПривал: точки [{first}..{last}] — оставлен без изменений (выбрано «оставить как было»)",
           log_episode_merged:
             "  ⚠ Эпизод (с точки {first}) примыкает вплотную к предыдущему (с точки {prevFirst}) — мосты объединены в один",
           log_episode_header:
             "\nЭпизод глушения: точки [{first}..{last}]  ({cnt} точек, {dur}с пробел){tail}",
           log_pause_header:
             "\nПауза записи: точки {before}→{after}  ({dur}с пробел, точки не удалялись — только достраивается путь между ними){tail}",
+          log_reststop_header:
+            "\nПривал: точки [{first}..{last}]  ({cnt} точек, {dur}с на месте) — GPS честный, устройство просто долго стояло{tail}",
           log_waypoint_set:
             "  📍 Эпизод {n}: задана обязательная точка {lat}, {lon} — нажмите «Исправить трек» ещё раз, чтобы применить",
           log_episode_tail_cut: "  [обрыв в конце трека, без возврата]",
@@ -1746,6 +1791,10 @@
             "For each detected section you can choose its own fill method — including full removal with no replacement, or leaving it unchanged.",
           episode_label: "Episode {n}",
           episode_pause_label: "Pause {n}",
+          episode_reststop_label: "Rest stop {n}",
+          btn_reststops_linear: "Straighten all rest stops",
+          hint_reststops_linear:
+            "Replace the GPS-noise tangle at each stop with a simple straight line through it",
           episode_tail: "track cut off at the end",
           episode_points: "{n} points",
           episode_pause_gap: "recording pause",
@@ -1856,14 +1905,18 @@
             "\nJammer episode: points [{first}..{last}] — left unchanged (kept as-is)",
           log_pause_kept:
             "\nRecording pause: points {before}→{after} — left unchanged (kept as-is)",
+          log_reststop_kept:
+            "\nRest stop: points [{first}..{last}] — left unchanged (kept as-is)",
           log_episode_merged:
             "  ⚠ Episode (from point {first}) is adjacent to the previous one (from point {prevFirst}) — bridges merged into one",
           log_episode_header:
             "\nJammer episode: points [{first}..{last}]  ({cnt} points, {dur}s gap){tail}",
           log_pause_header:
             "\nRecording pause: points {before}→{after}  ({dur}s gap, no points removed — only building a path between them){tail}",
+          log_reststop_header:
+            "\nRest stop: points [{first}..{last}]  ({cnt} points, {dur}s in place) — honest GPS, the device just stayed put{tail}",
           log_waypoint_set:
-            "  📍 Episode {n}: required waypoint set at {lat}, {lon} — click \"Fix track\" again to apply",
+            '  📍 Episode {n}: required waypoint set at {lat}, {lon} — click "Fix track" again to apply',
           log_episode_tail_cut: "  [track cut off at the end, no return]",
           log_before_point: "  Before: {time}  ({lat}, {lon})  ele={ele}m",
           log_before_none:
@@ -4114,12 +4167,20 @@
           return;
         }
         tagEl.textContent = t(
-          found.ep.isPause ? "episode_pause_label" : "episode_label",
+          found.ep.isPause
+            ? "episode_pause_label"
+            : found.ep.isRestStop
+              ? "episode_reststop_label"
+              : "episode_label",
           { n: found.idx + 1 },
         );
         tagEl.classList.toggle(
           "elevation-profile-episode-tag--pause",
           !!found.ep.isPause,
+        );
+        tagEl.classList.toggle(
+          "elevation-profile-episode-tag--reststop",
+          !!found.ep.isRestStop,
         );
         tagEl.classList.add("elevation-profile-episode-tag--visible");
       }
@@ -4730,6 +4791,37 @@
           return false;
         }
 
+        // Некоторые логгеры иногда пишут два фикса почти подряд (доли
+        // секунды между ними), с нулевым смещением — это просто округление
+        // временной метки/повтор фикса, а не настоящая "заморозка" на месте.
+        // Такие пары регулярно встречаются и на честных участках трека.
+        // Настоящая заморозка (устройство долго стоит на месте либо
+        // глушилка держит фейковую позицию) держится ЗАМЕТНОЕ время, а не
+        // доли секунды — поэтому требуем минимальную длительность интервала.
+        const medianDtGlobal = medianPositiveInterval(times) || 1;
+        const FREEZE_MIN_DURATION_S = Math.max(1.5, medianDtGlobal * 1.5);
+        function isSustainedFreeze(j) {
+          if (j > 0) {
+            const dtBack = times[j] - times[j - 1];
+            if (
+              dtBack >= FREEZE_MIN_DURATION_S &&
+              haversine(lats[j], lons[j], lats[j - 1], lons[j - 1]) / dtBack <
+                FREEZE_MAX_SPEED_MPS
+            )
+              return true;
+          }
+          if (j + 1 < n) {
+            const dtFwd = times[j + 1] - times[j];
+            if (
+              dtFwd >= FREEZE_MIN_DURATION_S &&
+              haversine(lats[j], lons[j], lats[j + 1], lons[j + 1]) / dtFwd <
+                FREEZE_MAX_SPEED_MPS
+            )
+              return true;
+          }
+          return false;
+        }
+
         // Кандидат на возврат может сам оказаться ещё одной фейковой позицией
         // многоканального джаминга — координаты "прыгают" по нескольким
         // заранее заданным точкам, ненадолго замирая на каждой (см.
@@ -5023,6 +5115,28 @@
                 // тот же самый выброс, а потому что там в принципе другая
                 // часть трека. Без временного окна такой честный участок
                 // целиком ошибочно попадал в "эпизод" глушения.
+                //
+                // Но и одного лишь "далеко от места возврата" НЕДОСТАТОЧНО —
+                // на длинной честной извилистой дороге (серпантин/каньон)
+                // ЛЮБАЯ точка за несколько минут до затора физически далека
+                // от точки, где трек окажется через несколько минут, просто
+                // в силу формы маршрута, а не из-за глушения. Проверено на
+                // реальном треке (Чегемское ущелье): ~2 минуты честной езды
+                // по каньону (плавно растущий HDOP, но честная скорость и
+                // высота) целиком утягивались в эпизод только потому, что
+                // они были в 2+ км от места возврата, лежащего дальше по
+                // серпантину. Поэтому дополнительно требуем, чтобы САМА точка
+                // j была уже распознанным телепортом (скорость до неё
+                // превышала maxSpeedMps) либо настоящей "заморозкой" на месте
+                // — иначе это просто честный отдалённый участок пути с
+                // постепенно деградирующим HDOP, и откат назад останавливаем.
+                // ВАЖНО: сам по себе высокий/растущий HDOP НЕ считается —
+                // на том же треке (каньон) HDOP плавно рос от ~10 до ~330 на
+                // протяжении полутора минут совершенно честного и
+                // правдоподобного по скорости движения, прежде чем приёмник
+                // реально "замер" и телепортировался — то есть постепенная
+                // деградация сигнала сама по себе НЕ является признаком
+                // джаминга, только настоящий скачок скорости или заморозка.
                 while (
                   j >= 0 &&
                   stepsBack < MICRO_SCAN_POINTS &&
@@ -5030,6 +5144,7 @@
                 ) {
                   const dLocal = haversine(lats[j], lons[j], refLatR, refLonR);
                   if (dLocal < MICRO_BACKWARD_DIST_M) break;
+                  if (!teleportSet.has(j) && !isSustainedFreeze(j)) break;
                   firstBad = j;
                   j--;
                   stepsBack++;
@@ -5165,18 +5280,34 @@
       // на PAUSE_FILL_MULT.
       //
       // "Другие странности похожие на глушилку" рядом с паузой отсеиваются
-      // простой проверкой физической правдоподобности: скорость по прямой
-      // между точками до и после паузы не должна превышать maxSpeedMps —
-      // иначе это уже настоящий скачок глушилки (или во всяком случае не
-      // просто пауза), и его должен ловить findJammerEpisodes, а не эта
-      // функция.
+      // проверкой физической правдоподобности по ДВУМ независимым осям:
+      // 1) горизонтальная скорость по прямой между точками до/после паузы не
+      //    должна превышать maxSpeedMps — иначе это скачок глушилки, а не
+      //    пауза (это должен ловить findJammerEpisodes).
+      // 2) уклон (перепад высоты / пройденное по прямой расстояние) не
+      //    должен быть неправдоподобно крутым. Средняя ГОРИЗОНТАЛЬНАЯ
+      //    скорость при большом dt может оставаться низкой (и проходить
+      //    проверку №1) даже когда за это же время высота "прыгнула" на
+      //    сотни метров при всего паре сотен метров смещения по прямой —
+      //    например 343м перепада при 526м по прямой (уклон 65%) за 20 минут:
+      //    средняя скорость всего 0.43 м/с, но такой уклон нереален для
+      //    честного продолжения записи. Такой разрыв — это скорее
+      //    замаскированный эпизод глушения (см. реальный трек Zepp, где
+      //    прямо перед разрывом координаты несколько секунд "замирали" на
+      //    месте — классический признак потери сигнала), чем настоящая
+      //    пауза записи. Такие разрывы возвращаем как обычный эпизод
+      //    глушения (без isPause) — попадает под маршрутизацию/интерполяцию
+      //    по умолчанию, а не "оставить как было".
       const PAUSE_FILL_MIN_GAP_S = 180;
       const PAUSE_FILL_MULT = 8;
+      const PAUSE_MAX_GRADE = 0.6; // 60% — выше нереально для честной паузы
+      const PAUSE_MIN_ELE_CHANGE_M = 30; // не придираться к шуму барометра
 
-      function findRecordingPauseGaps(lats, lons, times, maxSpeedMps) {
+      function findRecordingPauseGaps(lats, lons, times, maxSpeedMps, eles) {
         const n = lats.length;
         const gaps = [];
         if (n < 2) return gaps;
+        const hasEles = Array.isArray(eles);
         const medianDt = medianPositiveInterval(times);
         const threshold = Math.max(
           PAUSE_FILL_MIN_GAP_S,
@@ -5189,12 +5320,33 @@
           if (dt <= 0 || dt < threshold) continue;
           const d = haversine(lats[i], lons[i], lats[i + 1], lons[i + 1]);
           if (d / dt > maxSpeedMps) continue; // похоже на скачок глушилки — не наша забота
-          gaps.push({
-            firstBad: i + 1,
-            lastBad: i,
-            afterIdx: i + 1,
-            isPause: true,
-          });
+
+          let suspiciousGrade = false;
+          if (
+            hasEles &&
+            Number.isFinite(eles[i]) &&
+            Number.isFinite(eles[i + 1])
+          ) {
+            const dz = Math.abs(eles[i + 1] - eles[i]);
+            if (
+              dz >= PAUSE_MIN_ELE_CHANGE_M &&
+              d > 0 &&
+              dz / d > PAUSE_MAX_GRADE
+            ) {
+              suspiciousGrade = true;
+            }
+          }
+
+          if (suspiciousGrade) {
+            gaps.push({ firstBad: i + 1, lastBad: i, afterIdx: i + 1 });
+          } else {
+            gaps.push({
+              firstBad: i + 1,
+              lastBad: i,
+              afterIdx: i + 1,
+              isPause: true,
+            });
+          }
         }
         return gaps;
       }
@@ -5218,6 +5370,221 @@
           .sort((a, b) => a.firstBad - b.firstBad);
       }
 
+      // ─── Слияние "эпизодов-бутербродов" ────────────────────────────────────────
+      // Иногда между двумя соседними обнаруженными эпизодами (например: сначала
+      // переклассифицированный по уклону разрыв "паузы" — см.
+      // findRecordingPauseGaps, — а следом уже настоящий "дальний" джам-эпизод)
+      // остаётся короткий участок, который выглядит как честное медленное
+      // движение (плавная скорость, плавная высота), но на самом деле — тоже
+      // часть того же самого глушения: устройство "оседает" на очередной фейковой
+      // позиции и правдоподобно её симулирует, прежде чем прыгнуть ещё раз.
+      // Один лишь локальный анализ скорости/уклона такой участок не поймает —
+      // сигнатура вскрывается только сравнением с ГРАНИЦАМИ по обе стороны:
+      // если точка ДО первого эпизода и точка ПОСЛЕ второго на самом деле почти
+      // совпадают (человек стоял на месте/недалеко отошёл), а весь пройденный по
+      // записанным точкам между ними путь в разы длиннее прямого расстояния —
+      // это явный признак бессмысленного "путешествия туда и обратно", которое
+      // реальный трек совершить не мог. Проверено на реальном треке (Zepp,
+      // Кавказ): координаты ДО первого разрыва и ПОСЛЕ второго (уже известного)
+      // эпизода отличались всего на ~90м/14м по высоте при 84 минутах между
+      // ними, тогда как между ними трек якобы "нырял" в долину (-355м) и
+      // телепортировался на сотни километров и обратно — суммарный путь по
+      // точкам оказался в тысячи раз больше прямого расстояния.
+      //
+      // Важно: одного лишь отношения netDisp/pathSum НЕДОСТАТОЧНО — на
+      // длинном честном серпантине (горная дорога с множеством поворотов,
+      // едущая много часов) суммарный путь тоже растёт намного быстрее
+      // прямого расстояния между далеко отстоящими друг от друга по времени
+      // точками, хотя никакого глушения там нет (реальный кейс — трек
+      // "Чегемское ущелье — Архонский", где такое накопление за несколько
+      // часов ошибочно склеило половину трека в один "эпизод"). Отличие
+      // настоящего бутерброда глушения в том, что точки ДО и ПОСЛЕ него
+      // физически находятся практически В ОДНОМ МЕСТЕ (были считанные
+      // десятки-сотни метров, а не многие километры) — человек/устройство
+      // никуда всерьёз не уезжали, пока накапливался фейковый "путь".
+      // Поэтому дополнительно требуем, чтобы само расстояние netDisp не
+      // превышало разумный физический предел "остался почти на месте".
+      const SANDWICH_PATH_EFFICIENCY_MAX = 0.3;
+      const SANDWICH_NET_DISP_MAX_M = 5000;
+
+      function mergeFakeSandwiches(lats, lons, times, episodes, maxSpeedMps) {
+        if (episodes.length < 2) return episodes;
+        const result = [];
+        let i = 0;
+        while (i < episodes.length) {
+          let cur = { ...episodes[i] };
+          if (cur.isPause || cur.isRestStop) {
+            result.push(cur);
+            i++;
+            continue;
+          }
+          let j = i + 1;
+          while (j < episodes.length) {
+            const next = episodes[j];
+            if (next.isPause || next.isRestStop) break;
+            const beforeIdx = cur.firstBad - 1;
+            const afterIdx = next.afterIdx;
+            if (beforeIdx < 0 || afterIdx >= lats.length) break;
+            const dt = times[afterIdx] - times[beforeIdx];
+            if (!(dt > 0)) break;
+            const netDisp = haversine(
+              lats[beforeIdx],
+              lons[beforeIdx],
+              lats[afterIdx],
+              lons[afterIdx],
+            );
+            let pathSum = 0;
+            for (let k = beforeIdx; k < afterIdx; k++) {
+              pathSum += haversine(lats[k], lons[k], lats[k + 1], lons[k + 1]);
+            }
+            const speed = netDisp / dt;
+            if (
+              pathSum > 0 &&
+              netDisp / pathSum < SANDWICH_PATH_EFFICIENCY_MAX &&
+              netDisp <= SANDWICH_NET_DISP_MAX_M &&
+              speed <= maxSpeedMps
+            ) {
+              cur = {
+                firstBad: cur.firstBad,
+                lastBad: next.lastBad,
+                afterIdx: next.afterIdx,
+              };
+              j++;
+            } else {
+              break;
+            }
+          }
+          result.push(cur);
+          i = j;
+        }
+        return result;
+      }
+
+      // ─── Обнаружение "привалов" (стоянка на месте внутри честной записи) ───
+      // В отличие от паузы (разрыв ПО ВРЕМЕНИ) и эпизода глушения (скачок
+      // координат/высоты), привал — это участок из подряд записанных,
+      // абсолютно честных точек, которые просто долго "толкутся" в одном
+      // месте небольшого радиуса (стоянка, перекус, ночёвка с включённым
+      // треком и т.п.). GPS-приёмник и без глушилки естественно "дрожит"
+      // на месте в пределах нескольких метров — это НЕ признак поломки
+      // трека, поэтому по умолчанию режим для привала — "оставить как
+      // было" (см. episodeChoices в updateEpisodeList), как и для паузы.
+      //
+      // Кластер растим от точки s вперёд, пока каждая следующая точка не
+      // выходит за radiusM от текущего центроида уже накопленного
+      // кластера — так делаем допуск на медленный дрейф координат по мере
+      // роста, не позволяя при этом кластеру "уехать" далеко от исходного
+      // места. Рост останавливается также на любом подозрительно большом
+      // разрыве по времени между соседними точками (это уже территория
+      // findRecordingPauseGaps, а не привала).
+      const REST_STOP_RADIUS_M = 15;
+      const REST_STOP_MIN_DURATION_S = 180;
+
+      // Строит список уже "занятых" эпизодами глушения и паузами диапазонов
+      // индексов — привалы должны искаться СНАЧАЛА после того, как найдены
+      // и глушилки, и паузы, и только среди ОСТАВШИХСЯ (ещё не отнесённых
+      // ни к чему) точек, чтобы не путать честный привал с территорией уже
+      // обнаруженной аномалии/паузы и не находить один и тот же кусок трека
+      // дважды под разными ярлыками.
+      function buildExcludedRangesForRestStops(episodes) {
+        return episodes
+          .map((ep) => {
+            const a = Math.min(ep.firstBad, ep.lastBad, ep.afterIdx);
+            const b = Math.max(ep.firstBad, ep.lastBad, ep.afterIdx);
+            return [a, b];
+          })
+          .sort((x, y) => x[0] - y[0]);
+      }
+
+      function findRestStopClusters(
+        lats,
+        lons,
+        times,
+        radiusM,
+        minDurationS,
+        excludedRanges = [],
+      ) {
+        const n = lats.length;
+        const clusters = [];
+        if (n < 3) return clusters;
+        const medianDt = medianPositiveInterval(times);
+        const maxGapS = Math.max(60, medianDt * 4);
+        // excludedRanges отсортирован по началу — двигаем по нему указателем,
+        // не пересчитывая .some() на каждой точке отдельно.
+        let exIdx = 0;
+        const isExcluded = (idx) => {
+          while (
+            exIdx < excludedRanges.length &&
+            excludedRanges[exIdx][1] < idx
+          )
+            exIdx++;
+          return (
+            exIdx < excludedRanges.length &&
+            idx >= excludedRanges[exIdx][0] &&
+            idx <= excludedRanges[exIdx][1]
+          );
+        };
+        let s = 0;
+        while (s < n - 1) {
+          if (isExcluded(s)) {
+            s++;
+            continue;
+          }
+          let e = s;
+          let sumLat = lats[s],
+            sumLon = lons[s],
+            cnt = 1;
+          while (e + 1 < n && !isExcluded(e + 1)) {
+            const dt = times[e + 1] - times[e];
+            if (!Number.isFinite(dt) || dt <= 0 || dt > maxGapS) break;
+            const cLat = sumLat / cnt,
+              cLon = sumLon / cnt;
+            const d = haversine(cLat, cLon, lats[e + 1], lons[e + 1]);
+            if (d > radiusM) break;
+            e++;
+            cnt++;
+            sumLat += lats[e];
+            sumLon += lons[e];
+          }
+          const durS =
+            Number.isFinite(times[e]) && Number.isFinite(times[s])
+              ? times[e] - times[s]
+              : 0;
+          if (e > s && durS >= minDurationS) {
+            clusters.push({
+              firstBad: s,
+              lastBad: e,
+              afterIdx: e + 1,
+              isRestStop: true,
+            });
+            s = e + 1;
+          } else {
+            s++;
+          }
+        }
+        return clusters;
+      }
+
+      // Объединяет найденные привалы с уже найденными эпизодами глушения и
+      // паузами. Сам поиск привалов уже исключает их территорию (см.
+      // excludedRanges/buildExcludedRangesForRestStops выше), так что здесь
+      // остаётся только слить и отсортировать списки — доп. фильтр оставлен
+      // как защитная сетка на случай непредвиденного пересечения границ.
+      function mergeWithRestStops(episodes, restStops) {
+        if (!restStops.length) return episodes;
+        const filtered = restStops.filter((rs) => {
+          for (const ep of episodes) {
+            if (rs.lastBad >= ep.firstBad - 1 && rs.firstBad <= ep.afterIdx) {
+              return false;
+            }
+          }
+          return true;
+        });
+        return episodes
+          .concat(filtered)
+          .sort((a, b) => a.firstBad - b.firstBad);
+      }
+
       // ─── Расширение назад: координаты + высота + "плато после крэша" ─────────────
 
       function extendEpisodeBackward(
@@ -5229,6 +5596,7 @@
         afterIdx,
         displacedM,
         maxVertSpeed,
+        maxSpeedMps,
         maxLookbackS = 300,
       ) {
         const refLat = lats[afterIdx],
@@ -5236,6 +5604,64 @@
         const refTime = times[firstBad];
         let newFirst = firstBad;
         let i = firstBad - 1;
+
+        // Как и в findJammerEpisodes: одного лишь высокого/растущего HDOP
+        // недостаточно, чтобы отличить джаминг от честного, но постепенно
+        // теряющего точность сигнала (например, в узком каньоне) — на
+        // реальном треке (Чегемское ущелье) HDOP плавно рос от ~10 до ~330
+        // на протяжении полутора минут совершенно честной, правдоподобной
+        // по скорости езды. Поэтому вместо HDOP требуем прямое доказательство
+        // аномалии: либо точка сама участвует в скачке скорости выше
+        // maxSpeedMps (значит, она уже сама "плохая", а не просто далека от
+        // места возврата по форме маршрута), либо это настоящая, длительная
+        // заморозка координат (а не 0.5-секундная пара точек с нулевым
+        // смещением — обычный артефакт округления таймстампа логгера,
+        // регулярно встречающийся и на честных участках).
+        const FREEZE_MAX_SPEED_MPS = 0.3;
+        const medianDt = medianPositiveInterval(times) || 1;
+        const FREEZE_MIN_DURATION_S = Math.max(1.5, medianDt * 1.5);
+        function isSpeedAnomaly(j) {
+          if (j > 0) {
+            const dtBack = times[j] - times[j - 1];
+            if (
+              dtBack > 0 &&
+              haversine(lats[j], lons[j], lats[j - 1], lons[j - 1]) / dtBack >
+                maxSpeedMps
+            )
+              return true;
+          }
+          if (j + 1 < lats.length) {
+            const dtFwd = times[j + 1] - times[j];
+            if (
+              dtFwd > 0 &&
+              haversine(lats[j], lons[j], lats[j + 1], lons[j + 1]) / dtFwd >
+                maxSpeedMps
+            )
+              return true;
+          }
+          return false;
+        }
+        function isSustainedFreeze(j) {
+          if (j > 0) {
+            const dtBack = times[j] - times[j - 1];
+            if (
+              dtBack >= FREEZE_MIN_DURATION_S &&
+              haversine(lats[j], lons[j], lats[j - 1], lons[j - 1]) / dtBack <
+                FREEZE_MAX_SPEED_MPS
+            )
+              return true;
+          }
+          if (j + 1 < lats.length) {
+            const dtFwd = times[j + 1] - times[j];
+            if (
+              dtFwd >= FREEZE_MIN_DURATION_S &&
+              haversine(lats[j], lons[j], lats[j + 1], lons[j + 1]) / dtFwd <
+                FREEZE_MAX_SPEED_MPS
+            )
+              return true;
+          }
+          return false;
+        }
 
         while (i >= 0) {
           const dtFwd = Math.abs(times[i + 1] - times[i]);
@@ -5255,8 +5681,19 @@
             (lats[i] === lats[i - 1] && lons[i] === lons[i - 1]) ||
             (lats[i] === lats[i + 1] && lons[i] === lons[i + 1]);
 
+          // Само по себе расстояние от точки до места возврата (refLat/
+          // refLon) НЕ доказывает джаминг: на длинной честной извилистой
+          // дороге (серпантин/каньон) любая точка за несколько минут до
+          // разрыва физически далека от места, куда трек попадёт позже,
+          // просто в силу формы маршрута — независимо от HDOP. Поэтому
+          // вдобавок к "далеко от возврата" требуем, чтобы САМА точка i
+          // показывала прямой признак аномалии (участие в скачке скорости
+          // выше maxSpeedMps или настоящая длительная заморозка) — иначе
+          // это просто честный отдалённый участок пути, и откат назад не
+          // продолжаем.
           const coordBad =
-            haversine(lats[i], lons[i], refLat, refLon) >= displacedM;
+            haversine(lats[i], lons[i], refLat, refLon) >= displacedM &&
+            (isSpeedAnomaly(i) || isSustainedFreeze(i));
 
           let altFwd = false;
           if (dtFwd > 0 && dtFwd <= 30)
@@ -5459,7 +5896,7 @@
 
       // ─── Интерполяция ───────────────────────────────────────────────────────────
 
-      function buildInterpolated(
+      async function buildInterpolated(
         lat0,
         lon0,
         ele0,
@@ -5503,6 +5940,7 @@
         const atempOk = canInterp(sensors0.atemp, sensors1.atemp);
 
         const pts = [];
+        const alphas = [];
         for (let t = intervalS; t < totalS - 1e-6; t += intervalS) {
           const a = t / totalS;
           const { lat, lon } = curveAt(a);
@@ -5522,7 +5960,34 @@
           if (atempOk)
             pt.atemp = sensors0.atemp + a * (sensors1.atemp - sensors0.atemp);
           pts.push(pt);
+          alphas.push(a);
         }
+
+        // Без маршрута (нет троги/дорог в OSM для этого перегона, дикая
+        // местность) высота раньше всегда шла прямой линией ele0→ele1, даже
+        // если реально трек пересекал долину или перевал — профиль высоты
+        // получался неправдоподобным (например, "срезал" реальный провал в
+        // долине). Пытаемся подтянуть реальный рельеф вдоль этой же кривой.
+        if (legDist >= 30) {
+          try {
+            const demEles = await demCalibrateAlongPath(
+              pts,
+              alphas,
+              lat0,
+              lon0,
+              ele0,
+              lat1,
+              lon1,
+              ele1,
+            );
+            if (demEles) {
+              for (let k = 0; k < pts.length; k++) pts[k].ele = demEles[k];
+            }
+          } catch (e) {
+            // сервис высот недоступен — оставляем уже посчитанную линейную
+          }
+        }
+
         return pts;
       }
 
@@ -6114,6 +6579,101 @@
         return dem + (1 - alpha) * (ele0 - dem0) + alpha * (ele1 - dem1);
       }
 
+      // Подтягивает реальный рельеф (DEM) вдоль уже посчитанной кривой/точек
+      // (не только вдоль маршрута) и калибрует по нему высоту — вместо чисто
+      // линейной ele0→ele1. Нужна и там, где маршрутизация не нашла путь
+      // (дикая местность без троп в OSM): даже без маршрута сама форма рельефа
+      // (например, провал в долину) известна из DEM и должна быть видна на
+      // профиле высоты, а не срезана прямой линией.
+      //
+      // Устойчива к ЧАСТИЧНЫМ сбоям сервиса высот: если для части опорных
+      // точек высота не пришла, эти точки просто пропускаются и достраиваются
+      // линейно между соседними удавшимися — а не отбрасывают калибровку
+      // целиком (раньше так было в маршрутном варианте: одна неудавшаяся
+      // точка из ~100 обнуляла всю калибровку для всего эпизода).
+      //
+      // Возвращает массив высот той же длины, что points (используя a[k] —
+      // долю по времени каждой точки для сглаживания смещения dem↔барометр),
+      // либо null, если калибровка невозможна (нет dem0/dem1 или сервис не
+      // ответил вовсе).
+      async function demCalibrateAlongPath(
+        points,
+        alphas,
+        lat0,
+        lon0,
+        ele0,
+        lat1,
+        lon1,
+        ele1,
+      ) {
+        if (!points.length) return null;
+
+        const maxAnchors = 98;
+        const anchorStep = Math.max(1, Math.ceil(points.length / maxAnchors));
+        const anchorIdxs = [];
+        for (let i = 0; i < points.length; i += anchorStep) anchorIdxs.push(i);
+        if (anchorIdxs[anchorIdxs.length - 1] !== points.length - 1) {
+          anchorIdxs.push(points.length - 1);
+        }
+
+        let demMap;
+        try {
+          const anchorCoords = anchorIdxs.map((i) => ({
+            lat: points[i].lat,
+            lon: points[i].lon,
+          }));
+          demMap = await fetchElevations([
+            { lat: lat0, lon: lon0 },
+            { lat: lat1, lon: lon1 },
+            ...anchorCoords,
+          ]);
+        } catch (e) {
+          return null;
+        }
+        if (!demMap) return null;
+
+        const dem0 = demMap.get(eleCacheKey(lat0, lon0));
+        const dem1 = demMap.get(eleCacheKey(lat1, lon1));
+        if (dem0 == null || dem1 == null) return null;
+
+        const known = [];
+        for (const i of anchorIdxs) {
+          const v = demMap.get(eleCacheKey(points[i].lat, points[i].lon));
+          if (v != null) known.push({ i, v });
+        }
+        if (!known.length) return null;
+
+        const smoothed = smoothAnchorValues(known.map((k) => k.v));
+        const demAtIndex = new Array(points.length).fill(null);
+        known.forEach((k, idx) => {
+          demAtIndex[k.i] = smoothed[idx];
+        });
+        if (demAtIndex[0] == null) demAtIndex[0] = dem0;
+        if (demAtIndex[points.length - 1] == null) {
+          demAtIndex[points.length - 1] = dem1;
+        }
+
+        let prevIdx = 0,
+          prevVal = demAtIndex[0];
+        for (let idx = 1; idx < points.length; idx++) {
+          if (demAtIndex[idx] == null) continue;
+          const val = demAtIndex[idx];
+          for (let j = prevIdx + 1; j < idx; j++) {
+            const a = (j - prevIdx) / (idx - prevIdx);
+            demAtIndex[j] = prevVal + a * (val - prevVal);
+          }
+          prevIdx = idx;
+          prevVal = val;
+        }
+        for (let j = prevIdx + 1; j < points.length; j++) {
+          demAtIndex[j] = prevVal;
+        }
+
+        return points.map((p, k) =>
+          calibrateElevation(demAtIndex[k], alphas[k], ele0, dem0, ele1, dem1),
+        );
+      }
+
       // Опорные точки высоты рельефа берутся редко (до 98 на весь маршрут),
       // а простое DEM (SRTM/Copernicus) на таком шаге содержит мелкий шум
       // отдельных точек (скалы, растительность, ошибки растра). Если тянуть
@@ -6155,8 +6715,8 @@
         headingRefBefore,
         headingRefAfter,
       ) {
-        const fallback = (reason) => ({
-          points: buildInterpolated(
+        const fallback = async (reason) => ({
+          points: await buildInterpolated(
             lat0,
             lon0,
             ele0,
@@ -6178,10 +6738,12 @@
         const totalS = t1 - t0;
         const D = haversine(lat0, lon0, lat1, lon1);
 
-        if (totalS <= intervalS || D < 30) return fallback();
+        if (totalS <= intervalS || D < 30) return await fallback();
 
         if (routedBudget.used >= routedBudget.max) {
-          return fallback(t("reason_routing_limit", { max: routedBudget.max }));
+          return await fallback(
+            t("reason_routing_limit", { max: routedBudget.max }),
+          );
         }
 
         // Пытаемся построить маршрут запрошенным профилем; если он "далеко от
@@ -6199,7 +6761,7 @@
         let lastReason = "reason_no_route";
         for (const p of profilesToTry) {
           if (routedBudget.used >= routedBudget.max) {
-            return fallback(
+            return await fallback(
               t("reason_routing_limit", { max: routedBudget.max }),
             );
           }
@@ -6236,7 +6798,19 @@
             lastReason = "reason_big_detour";
             continue;
           }
-          if (routeDist / totalS > maxSpeedParam) {
+          // Допуск на маршрут, чуть более быстрый, чем авто-порог maxSpeedParam:
+          // сам порог — грубая эвристика (обычно берётся из наблюдаемых пиковых
+          // скоростей на этом же треке), а не точный физический лимит, и разница
+          // в единицы процентов — это шум согласования времени/расстояния GPS, а
+          // не признак нереальности. Без допуска реальная трасса (маршрут точно
+          // ложится на дорогу, wp.distance ~0) отбраковывалась всего из-за
+          // долей процента превышения и заменялась прямой линией через
+          // пересечённую местность мимо всех дорог — физически куда менее
+          // правдоподобным вариантом, чем чуть более быстрая, но настоящая
+          // трасса. Проверено на реальном треке (Чегемское — Архонский):
+          // маршрут по трассе «Транскам» превышал порог всего на 0.4%.
+          const ROUTE_SPEED_TOLERANCE = 1.15;
+          if (routeDist / totalS > maxSpeedParam * ROUTE_SPEED_TOLERANCE) {
             lastReason = "reason_too_slow";
             continue;
           }
@@ -6311,74 +6885,19 @@
             }
           }
 
-          // ─── Высота: ≤98 опорных точек маршрута + 2 граничные ───
-          const maxAnchors = 98;
-          const anchorStep = Math.max(
-            1,
-            Math.ceil(sampled.length / maxAnchors),
+          // ─── Высота: DEM вдоль маршрута (≤98 опорных точек), устойчиво к
+          // частичным сбоям сервиса высот — см. demCalibrateAlongPath.
+          const demEles = await demCalibrateAlongPath(
+            sampled,
+            sampled.map((s) => s.alpha),
+            lat0,
+            lon0,
+            ele0,
+            lat1,
+            lon1,
+            ele1,
           );
-          const anchorIdxs = [];
-          for (let i = 0; i < sampled.length; i += anchorStep)
-            anchorIdxs.push(i);
-          if (
-            sampled.length &&
-            anchorIdxs[anchorIdxs.length - 1] !== sampled.length - 1
-          ) {
-            anchorIdxs.push(sampled.length - 1);
-          }
-
-          let demMap = null;
-          try {
-            const anchorCoords = anchorIdxs.map((i) => ({
-              lat: sampled[i].lat,
-              lon: sampled[i].lon,
-            }));
-            demMap = await fetchElevations([
-              { lat: lat0, lon: lon0 },
-              { lat: lat1, lon: lon1 },
-              ...anchorCoords,
-            ]);
-          } catch (e) {
-            demMap = null;
-          }
-
-          const dem0 = demMap ? demMap.get(eleCacheKey(lat0, lon0)) : null;
-          const dem1 = demMap ? demMap.get(eleCacheKey(lat1, lon1)) : null;
-          const demOk =
-            demMap != null &&
-            dem0 != null &&
-            dem1 != null &&
-            anchorIdxs.every(
-              (i) =>
-                demMap.get(eleCacheKey(sampled[i].lat, sampled[i].lon)) != null,
-            );
-
-          let demAtIndex = null;
-          if (demOk && sampled.length) {
-            const anchorVals = smoothAnchorValues(
-              anchorIdxs.map((i) =>
-                demMap.get(eleCacheKey(sampled[i].lat, sampled[i].lon)),
-              ),
-            );
-            demAtIndex = new Array(sampled.length);
-            for (let k = 0; k < anchorIdxs.length; k++) {
-              demAtIndex[anchorIdxs[k]] = anchorVals[k];
-            }
-            let prevIdx = 0,
-              prevVal = demAtIndex[0];
-            for (let k = 1; k < anchorIdxs.length; k++) {
-              const idx = anchorIdxs[k];
-              const val = demAtIndex[idx];
-              for (let j = prevIdx + 1; j < idx; j++) {
-                const a = (j - prevIdx) / (idx - prevIdx);
-                demAtIndex[j] = prevVal + a * (val - prevVal);
-              }
-              prevIdx = idx;
-              prevVal = val;
-            }
-            for (let j = prevIdx + 1; j < sampled.length; j++)
-              demAtIndex[j] = prevVal;
-          }
+          const demOk = demEles != null;
 
           const canInterp = (s0, s1) =>
             Number.isFinite(s0) && Number.isFinite(s1);
@@ -6392,16 +6911,7 @@
             prevT = 0;
           for (let k = 0; k < sampled.length; k++) {
             const s = sampled[k];
-            const ele = demOk
-              ? calibrateElevation(
-                  demAtIndex[k],
-                  s.alpha,
-                  ele0,
-                  dem0,
-                  ele1,
-                  dem1,
-                )
-              : ele0 + s.alpha * (ele1 - ele0);
+            const ele = demOk ? demEles[k] : ele0 + s.alpha * (ele1 - ele0);
             const dt = s.t - prevT;
             const legDist = haversine(prevLat, prevLon, s.lat, s.lon);
             const speed = dt > 0 ? legDist / dt : 0;
@@ -6430,7 +6940,7 @@
             distanceKm: routeDist / 1000,
           };
         }
-        return fallback(t(lastReason));
+        return await fallback(t(lastReason));
       }
 
       // Строит один "перегон" заполнения эпизода (маршрутизацией или прямой
@@ -6478,7 +6988,7 @@
           );
         }
         return {
-          points: buildInterpolated(
+          points: await buildInterpolated(
             lat0,
             lon0,
             ele0,
@@ -6713,9 +7223,30 @@
           minDist,
           hdops,
         );
-        const episodes = mergeWithPauseGaps(
+        const episodesWithPausesRaw = mergeWithPauseGaps(
           jamEpisodes,
-          findRecordingPauseGaps(lats, lons, times, maxSpeed),
+          findRecordingPauseGaps(lats, lons, times, maxSpeed, eles),
+        );
+        // См. mergeFakeSandwiches: соседние эпизоды могут оказаться частями
+        // одного и того же непрерывного глушения, даже если между ними лежит
+        // короткий правдоподобно выглядящий участок.
+        const episodesWithPauses = mergeFakeSandwiches(
+          lats,
+          lons,
+          times,
+          episodesWithPausesRaw,
+          maxSpeed,
+        );
+        const episodes = mergeWithRestStops(
+          episodesWithPauses,
+          findRestStopClusters(
+            lats,
+            lons,
+            times,
+            REST_STOP_RADIUS_M,
+            REST_STOP_MIN_DURATION_S,
+            buildExcludedRangesForRestStops(episodesWithPauses),
+          ),
         );
 
         if (!episodes.length) {
@@ -6803,6 +7334,14 @@
                 }),
                 "log-warn",
               );
+            } else if (ep.isRestStop) {
+              log(
+                t("log_reststop_kept", {
+                  first: ep.firstBad,
+                  last: ep.lastBad,
+                }),
+                "log-warn",
+              );
             } else {
               log(
                 t("log_episode_kept", { first: ep.firstBad, last: ep.lastBad }),
@@ -6876,8 +7415,11 @@
           // указывает сразу на afterIdx). Расширения ниже рассчитаны на
           // поиск реального смещения/крэша ПЕРЕД глитчем и на настоящей
           // паузе могли бы ошибочно затянуть в "битую" зону совершенно
-          // honest точки перед разрывом.
-          if (!ep.isPause) {
+          // honest точки перед разрывом. То же самое верно и для привала
+          // (см. findRestStopClusters) — это тоже полностью честный,
+          // непрерывно записанный участок без каких-либо признаков
+          // глушения, расширять его границы по джиттеру/высоте незачем.
+          if (!ep.isPause && !ep.isRestStop) {
             // 1) Расширение назад по высотному крэшу («плато») — запускается
             // ПЕРВЫМ, т.к. у него нет ограничения на суммарное время отката
             // (аномалия сама себя ограничивает). Координатное расширение ниже
@@ -6908,6 +7450,7 @@
                 afterIdx,
                 preJitter,
                 maxVert,
+                maxSpeed,
               );
             }
 
@@ -7003,6 +7546,17 @@
               t("log_pause_header", {
                 before: beforeIdx,
                 after: afterIdx,
+                dur: durS,
+                tail: afterIdx >= n ? t("log_episode_tail_cut") : "",
+              }),
+              "log-warn",
+            );
+          } else if (ep.isRestStop) {
+            log(
+              t("log_reststop_header", {
+                first: firstBad,
+                last: lastBad,
+                cnt,
                 dur: durS,
                 tail: afterIdx >= n ? t("log_episode_tail_cut") : "",
               }),
@@ -7743,6 +8297,23 @@
       const episodeCard = document.getElementById("episode-card");
       const episodeListEl = document.getElementById("episode-list");
       const noEpisodesMsg = document.getElementById("no-episodes-msg");
+      const btnRestStopsLinear = document.getElementById(
+        "btn-reststops-linear",
+      );
+      btnRestStopsLinear.addEventListener("click", () => {
+        // Переключает режим всех обнаруженных привалов на "Простое
+        // соединение" одним нажатием — без запроса к сервисам
+        // маршрутизации/высот, чисто локальная прямая линия между соседними
+        // честными точками. Остальные эпизоды (глушение, паузы) не трогает.
+        let changed = false;
+        episodePreview.forEach((ep, idx) => {
+          if (ep.isRestStop && episodeChoices[idx] !== "linear") {
+            episodeChoices[idx] = "linear";
+            changed = true;
+          }
+        });
+        if (changed) renderEpisodeList(episodePreview, episodePreviewTimes);
+      });
       let episodeChoices = []; // режим на каждый обнаруженный эпизод, по индексу
       let episodePreview = []; // последний обнаруженный список эпизодов
       let episodePreviewTimes = []; // times[] трека, для которого построен episodePreview
@@ -8092,9 +8663,35 @@
         // Паузы записи ищем всегда — но их режим по умолчанию "оставить как
         // было" (см. ниже), а не выбранный способ заполнения, так что без
         // явного действия пользователя они не трогаются.
-        const finalEpisodes = mergeWithPauseGaps(
+        const episodesWithPausesRaw = mergeWithPauseGaps(
           episodes,
-          findRecordingPauseGaps(lats, lons, times, maxSpeed),
+          findRecordingPauseGaps(lats, lons, times, maxSpeed, eles),
+        );
+        // См. mergeFakeSandwiches: соседние эпизоды могут оказаться частями
+        // одного и того же непрерывного глушения, даже если между ними лежит
+        // короткий правдоподобно выглядящий участок.
+        const episodesWithPauses = mergeFakeSandwiches(
+          lats,
+          lons,
+          times,
+          episodesWithPausesRaw,
+          maxSpeed,
+        );
+        // Привалы (см. findRestStopClusters) — по умолчанию тоже "оставить
+        // как было". Ищем их только среди точек, которые ещё не заняты
+        // найденными выше глушилками/паузами (см.
+        // buildExcludedRangesForRestStops) — привал ищем последним, уже
+        // после глушилок и пауз.
+        const finalEpisodes = mergeWithRestStops(
+          episodesWithPauses,
+          findRestStopClusters(
+            lats,
+            lons,
+            times,
+            REST_STOP_RADIUS_M,
+            REST_STOP_MIN_DURATION_S,
+            buildExcludedRangesForRestStops(episodesWithPauses),
+          ),
         );
         episodePreview = finalEpisodes;
         episodePreviewTimes = times;
@@ -8107,7 +8704,7 @@
         clearEpisodeHighlightState();
         const defaultMode = resolveInterpMode({ lats, lons, times });
         episodeChoices = finalEpisodes.map((ep) =>
-          ep.isPause ? "keep" : defaultMode,
+          ep.isPause || ep.isRestStop ? "keep" : defaultMode,
         );
         renderEpisodeList(finalEpisodes, times);
         const hasEpisodes = finalEpisodes.length > 0;
@@ -8119,9 +8716,13 @@
       function renderEpisodeList(episodes, times) {
         episodeListEl.innerHTML = "";
         const n = times.length;
+        // Кнопка массового переключения видна только если среди эпизодов
+        // есть хотя бы один привал.
+        const hasRestStops = episodes.some((ep) => ep.isRestStop);
+        btnRestStopsLinear.style.display = hasRestStops ? "" : "none";
         episodes.forEach((ep, idx) => {
           const row = document.createElement("div");
-          row.className = `episode-row ${ep.isPause ? "episode-row--pause" : "episode-row--jam"}`;
+          row.className = `episode-row ${ep.isPause ? "episode-row--pause" : ep.isRestStop ? "episode-row--reststop" : "episode-row--jam"}`;
 
           const info = document.createElement("div");
           info.className = "episode-info";
@@ -8134,8 +8735,13 @@
           const durS = hasAfter
             ? Math.round(times[ep.afterIdx] - times[ep.firstBad - 1])
             : null;
+          const epLabelKey = ep.isPause
+            ? "episode_pause_label"
+            : ep.isRestStop
+              ? "episode_reststop_label"
+              : "episode_label";
           info.innerHTML =
-            `<strong>${t(ep.isPause ? "episode_pause_label" : "episode_label", { n: idx + 1 })}</strong>: ${tFrom} → ${hasAfter ? formatEpisodeTime(times[ep.afterIdx]) : t("episode_tail")}` +
+            `<strong>${t(epLabelKey, { n: idx + 1 })}</strong>: ${tFrom} → ${hasAfter ? formatEpisodeTime(times[ep.afterIdx]) : t("episode_tail")}` +
             (durS !== null
               ? ` &nbsp;(${formatDuration(durS)}, ${ep.isPause ? t("episode_pause_gap") : t("episode_points", { n: cnt })})`
               : ` &nbsp;(${ep.isPause ? t("episode_pause_gap") : t("episode_points", { n: cnt })})`);
@@ -8379,10 +8985,11 @@
           .addEventListener("change", () => {
             const mode = resolveInterpMode();
             if (episodePreview.length) {
-              // Паузы записи по-прежнему по умолчанию "оставить как было" —
-              // смена общего режима заполнения не должна их сдвигать.
+              // Паузы записи и привалы по-прежнему по умолчанию "оставить
+              // как было" — смена общего режима заполнения не должна их
+              // сдвигать.
               episodeChoices = episodePreview.map((ep) =>
-                ep.isPause ? "keep" : mode,
+                ep.isPause || ep.isRestStop ? "keep" : mode,
               );
               renderEpisodeList(episodePreview, episodePreviewTimes);
             }
