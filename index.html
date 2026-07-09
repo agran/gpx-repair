@@ -8469,20 +8469,26 @@
           const smoothLats = smoothSeries(data.lats, smoothRadius);
           const smoothLons = smoothSeries(data.lons, smoothRadius);
           const picked = idxs.filter((i) => i >= lo && i <= hi);
-          if (!picked.length) {
-            const mid = (lo + hi) / 2;
-            let best = idxs[0];
-            let bestDist = Math.abs(best - mid);
-            for (let k = 1; k < idxs.length; k++) {
-              const d = Math.abs(idxs[k] - mid);
-              if (d < bestDist) {
-                best = idxs[k];
-                bestDist = d;
-              }
-            }
-            latlngs = [[smoothLats[best], smoothLons[best]]];
-          } else {
+          const shortRange = hi - lo <= 2;
+          if (picked.length >= 2 && !shortRange) {
             latlngs = picked.map((i) => [smoothLats[i], smoothLons[i]]);
+          } else {
+            // Короткий участок (например, мгновенная пауза между двумя
+            // соседними точками) может не содержать НИ ОДНОЙ прореженной
+            // точки трека — тогда "ближайшая" прореженная точка может
+            // реально находиться в десятках-сотнях метров от настоящего
+            // места паузы/эпизода (см. баг: подсветка "не совпадала с
+            // реальностью"). Для таких коротких диапазонов используем
+            // точные координаты самих граничных точек lo/hi вместо
+            // прореженной сетки — точность важнее совпадения с прореженной
+            // линией, когда речь идёт всего о паре точек.
+            latlngs =
+              lo === hi
+                ? [[data.lats[lo], data.lons[lo]]]
+                : [
+                    [data.lats[lo], data.lons[lo]],
+                    [data.lats[hi], data.lons[hi]],
+                  ];
           }
         }
         const group = L.layerGroup();
