@@ -5407,8 +5407,103 @@
       const SANDWICH_PATH_EFFICIENCY_MAX = 0.3;
       const SANDWICH_NET_DISP_MAX_M = 5000;
 
+      // ─── "Умная" глушилка: гладкий фейковый участок между эпизодами ───
+      // Некоторые глушилки не просто телепортируют/замирают координаты, а
+      // подсовывают гладкую, физически правдоподобную (без скачков) фейковую
+      // траекторию с равномерной неправдоподобной скоростью — например,
+      // "автомобильные" 40+ м/с там, где реальный подтверждённый темп трека
+      // (до самого первого и после самого последнего эпизода) — пешеходный,
+      // ~1 м/с. Такой участок не ловится ни детектором скачков, ни
+      // "бутербродом" выше (там нет заметного netDisp/pathSum разрыва —
+      // движение честно "укладывается" в путь). Реальный кейс: трек
+      // "Славянский район Альпинизм" — вся секция от старта трека до конца
+      // второго эпизода на самом деле искажена глушилкой, но по скорости и
+      // прямолинейности сама секция выглядит как честная быстрая поездка,
+      // пока не сравнить её темп с подтверждённым пешим темпом остального
+      // похода (подтверждено данными пульса из трека — на "быстрой" секции
+      // пульс варьировался как при реальной физической нагрузке).
+      //
+      // Отличие от честного длинного переезда между эпизодами (см. выше про
+      // Чегемское ущелье — Архонский, где вся поездка была на машине и темп
+      // "нейтрального" участка совпадал с подтверждённым темпом остального
+      // трека): там подтверждённый темп САМ быстрый, поэтому отношение не
+      // набирает порог. Дополнительно требуем абсолютный пол скорости —
+      // без него на треках с изначально очень медленным подтверждённым
+      // темпом (пешком по горам, ~1 м/с) обычный разброс темпа на
+      // спуске/подъёме (несколько м/с) уже превышал бы порог в разы и
+      // ошибочно склеивал честные эпизоды в один (проверено на реальном
+      // треке "Около Тырныауза" — без абсолютного пола два разных по
+      // времени эпизода глушения ошибочно склеивались в один через ~2 часа
+      // честного, просто быстрого по местным меркам, пешего участка).
+      const IMPLAUSIBLE_PACE_RATIO = 8;
+      const IMPLAUSIBLE_PACE_MIN_GAP_S = 60;
+      const IMPLAUSIBLE_PACE_MIN_BASELINE_S = 60;
+      const IMPLAUSIBLE_PACE_MIN_ABS_MPS = 15;
+
+      // Оценивает подтверждённый честный темп движения по треку — по самому
+      // длинному из двух участков, точно не задетых уже найденными
+      // эпизодами: либо ведущему (до самого первого эпизода), либо
+      // хвостовому (после самого последнего). Возвращает null, если ни один
+      // из них не набрал минимальной длительности (слишком мало данных для
+      // надёжной оценки).
+      function computeConfirmedBaselinePaceMps(lats, lons, times, episodes) {
+        if (!episodes.length) return null;
+        const n = lats.length;
+        const sorted = episodes.slice().sort((a, b) => a.firstBad - b.firstBad);
+        const first = sorted[0];
+        const last = sorted[sorted.length - 1];
+
+        function medianSpeed(startIdx, endIdxExclusive) {
+          const speeds = [];
+          for (let i = startIdx; i < endIdxExclusive - 1; i++) {
+            const dt = times[i + 1] - times[i];
+            if (!(dt > 0)) continue;
+            speeds.push(
+              haversine(lats[i], lons[i], lats[i + 1], lons[i + 1]) / dt,
+            );
+          }
+          if (!speeds.length) return null;
+          speeds.sort((a, b) => a - b);
+          return speeds[Math.floor(speeds.length / 2)];
+        }
+
+        const leadEnd = Math.max(0, first.firstBad - 1);
+        const leadDur =
+          leadEnd > 1 &&
+          Number.isFinite(times[leadEnd - 1]) &&
+          Number.isFinite(times[0])
+            ? times[leadEnd - 1] - times[0]
+            : 0;
+        const trailStart = Math.min(n, last.afterIdx);
+        const trailDur =
+          n - trailStart > 1 &&
+          Number.isFinite(times[n - 1]) &&
+          Number.isFinite(times[trailStart])
+            ? times[n - 1] - times[trailStart]
+            : 0;
+
+        let start, end, dur;
+        if (trailDur >= leadDur) {
+          start = trailStart;
+          end = n;
+          dur = trailDur;
+        } else {
+          start = 0;
+          end = leadEnd;
+          dur = leadDur;
+        }
+        if (dur < IMPLAUSIBLE_PACE_MIN_BASELINE_S) return null;
+        return medianSpeed(start, end);
+      }
+
       function mergeFakeSandwiches(lats, lons, times, episodes, maxSpeedMps) {
         if (episodes.length < 2) return episodes;
+        const baselinePaceMps = computeConfirmedBaselinePaceMps(
+          lats,
+          lons,
+          times,
+          episodes,
+        );
         const result = [];
         let i = 0;
         while (i < episodes.length) {
@@ -5438,12 +5533,38 @@
               pathSum += haversine(lats[k], lons[k], lats[k + 1], lons[k + 1]);
             }
             const speed = netDisp / dt;
-            if (
+            const isSandwich =
               pathSum > 0 &&
               netDisp / pathSum < SANDWICH_PATH_EFFICIENCY_MAX &&
               netDisp <= SANDWICH_NET_DISP_MAX_M &&
-              speed <= maxSpeedMps
-            ) {
+              speed <= maxSpeedMps;
+
+            let isImplausiblePace = false;
+            const gapStart = cur.afterIdx;
+            const gapEnd = next.firstBad - 1;
+            if (baselinePaceMps != null && gapEnd > gapStart) {
+              const gapDt = times[gapEnd] - times[gapStart];
+              if (gapDt >= IMPLAUSIBLE_PACE_MIN_GAP_S) {
+                let gapPathSum = 0;
+                for (let k = gapStart; k < gapEnd; k++) {
+                  gapPathSum += haversine(
+                    lats[k],
+                    lons[k],
+                    lats[k + 1],
+                    lons[k + 1],
+                  );
+                }
+                const gapSpeed = gapPathSum / gapDt;
+                if (
+                  gapSpeed > baselinePaceMps * IMPLAUSIBLE_PACE_RATIO &&
+                  gapSpeed > IMPLAUSIBLE_PACE_MIN_ABS_MPS
+                ) {
+                  isImplausiblePace = true;
+                }
+              }
+            }
+
+            if (isSandwich || isImplausiblePace) {
               cur = {
                 firstBad: cur.firstBad,
                 lastBad: next.lastBad,
@@ -5458,6 +5579,94 @@
           i = j;
         }
         return result;
+      }
+
+      // ─── Расширение крайних (первого/последнего) эпизодов до края трека ──
+      // "Умная" глушилка может работать прямо с самого начала или до самого
+      // конца записи — тогда у неё нет "второй половины бутерброда" с этой
+      // стороны, и mergeFakeSandwiches выше её не поймает (там нужны ДВА
+      // соседних эпизода). Если ведущий участок ДО первого найденного
+      // эпизода (или завершающий участок ПОСЛЕ последнего) движется в разы
+      // быстрее подтверждённого честного темпа с ДРУГОГО, противоположного
+      // края трека — считаем весь этот ведущий/завершающий участок частью
+      // того же глушения и продвигаем границу эпизода до самого начала/
+      // конца трека. Реальный кейс: трек "Славянский район Альпинизм" —
+      // глушилка активна с первой же секунды записи (координаты прыгают в
+      // районе 45.3–45.4°, хотя реальный поход был в районе 44.68–44.74°),
+      // а честный пеший темп (~1 м/с) подтверждается только после конца
+      // уже найденного эпизода глушения.
+      function extendOuterImplausiblePace(lats, lons, times, episodes) {
+        const real = episodes.filter((e) => !e.isPause && !e.isRestStop);
+        if (!real.length) return episodes;
+        const sorted = real.slice().sort((a, b) => a.firstBad - b.firstBad);
+        const first = sorted[0];
+        const last = sorted[sorted.length - 1];
+        const n = lats.length;
+        const origFirstBad = first.firstBad;
+        const origAfterIdx = last.afterIdx;
+
+        function medianSpeedRange(startIdx, endIdxExclusive) {
+          const speeds = [];
+          for (let i = startIdx; i < endIdxExclusive - 1; i++) {
+            const dt = times[i + 1] - times[i];
+            if (!(dt > 0)) continue;
+            speeds.push(
+              haversine(lats[i], lons[i], lats[i + 1], lons[i + 1]) / dt,
+            );
+          }
+          if (!speeds.length) return null;
+          speeds.sort((a, b) => a - b);
+          return speeds[Math.floor(speeds.length / 2)];
+        }
+
+        // Ведущий участок [0, firstBad) сверяем с ХВОСТОВЫМ честным темпом.
+        if (origFirstBad > 1) {
+          const trailStart = Math.min(n, origAfterIdx);
+          const trailDur =
+            n - trailStart > 1 ? times[n - 1] - times[trailStart] : 0;
+          if (trailDur >= IMPLAUSIBLE_PACE_MIN_BASELINE_S) {
+            const trailPace = medianSpeedRange(trailStart, n);
+            const leadDt = times[origFirstBad - 1] - times[0];
+            if (trailPace != null && leadDt >= IMPLAUSIBLE_PACE_MIN_GAP_S) {
+              let pathSum = 0;
+              for (let k = 0; k < origFirstBad - 1; k++) {
+                pathSum += haversine(lats[k], lons[k], lats[k + 1], lons[k + 1]);
+              }
+              const leadSpeed = pathSum / leadDt;
+              if (
+                leadSpeed > trailPace * IMPLAUSIBLE_PACE_RATIO &&
+                leadSpeed > IMPLAUSIBLE_PACE_MIN_ABS_MPS
+              ) {
+                first.firstBad = 0;
+              }
+            }
+          }
+        }
+
+        // Завершающий участок [afterIdx, n) сверяем с ВЕДУЩИМ честным темпом.
+        if (origAfterIdx < n - 1) {
+          const leadDur =
+            origFirstBad > 1 ? times[origFirstBad - 1] - times[0] : 0;
+          if (leadDur >= IMPLAUSIBLE_PACE_MIN_BASELINE_S) {
+            const leadPace = medianSpeedRange(0, origFirstBad - 1);
+            const trailDt = times[n - 1] - times[origAfterIdx];
+            if (leadPace != null && trailDt >= IMPLAUSIBLE_PACE_MIN_GAP_S) {
+              let pathSum = 0;
+              for (let k = origAfterIdx; k < n - 1; k++) {
+                pathSum += haversine(lats[k], lons[k], lats[k + 1], lons[k + 1]);
+              }
+              const trailSpeed = pathSum / trailDt;
+              if (
+                trailSpeed > leadPace * IMPLAUSIBLE_PACE_RATIO &&
+                trailSpeed > IMPLAUSIBLE_PACE_MIN_ABS_MPS
+              ) {
+                last.lastBad = n - 1;
+                last.afterIdx = n - 1;
+              }
+            }
+          }
+        }
+        return episodes;
       }
 
       // ─── Обнаружение "привалов" (стоянка на месте внутри честной записи) ───
@@ -7237,6 +7446,11 @@
           episodesWithPausesRaw,
           maxSpeed,
         );
+        // См. extendOuterImplausiblePace: если глушение работает с самого
+        // начала/конца записи, у него нет "второй половины бутерброда" —
+        // расширяем крайний эпизод до края трека, если это подтверждается
+        // честным темпом с противоположного края.
+        extendOuterImplausiblePace(lats, lons, times, episodesWithPauses);
         const episodes = mergeWithRestStops(
           episodesWithPauses,
           findRestStopClusters(
@@ -8683,6 +8897,11 @@
           episodesWithPausesRaw,
           maxSpeed,
         );
+        // См. extendOuterImplausiblePace: если глушение работает с самого
+        // начала/конца записи, у него нет "второй половины бутерброда" —
+        // расширяем крайний эпизод до края трека, если это подтверждается
+        // честным темпом с противоположного края.
+        extendOuterImplausiblePace(lats, lons, times, episodesWithPauses);
         // Привалы (см. findRestStopClusters) — по умолчанию тоже "оставить
         // как было". Ищем их только среди точек, которые ещё не заняты
         // найденными выше глушилками/паузами (см.
