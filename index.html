@@ -5943,10 +5943,13 @@
         return lat.toFixed(4) + "," + lon.toFixed(4);
       }
 
-      // Запросы к сервисам высот у части пользователей не проходят напрямую
-      // из-за сетевых блокировок, поэтому идём сразу через ELEVATION_PROXY
-      // (маршрутизация OSRM не проксируется — там таких проблем нет).
+      // Сначала пробуем прямой запрос к сервису высот. Если не получилось
+      // (таймаут/сетевая ошибка/HTTP-ошибка), только тогда повторяем тот же
+      // URL через ELEVATION_PROXY. Маршрутизация OSRM не проксируется.
       async function fetchJsonDirectOrProxied(url) {
+        try {
+          return await fetchJsonTimeout(url);
+        } catch (e) {}
         try {
           const proxied = `${ELEVATION_PROXY}?url=${encodeURIComponent(url)}`;
           return await fetchJsonTimeout(proxied);
