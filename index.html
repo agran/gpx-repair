@@ -296,6 +296,21 @@
       .episode-info--clickable:hover {
         background: rgba(126, 184, 247, 0.12);
       }
+      /* Активная подсветка на карте — видимый маркер, что повторный клик
+         снимет её (см. clearEpisodeHighlightState). */
+      .episode-info--active {
+        background: rgba(255, 31, 122, 0.16);
+        box-shadow: inset 0 0 0 1px rgba(255, 31, 122, 0.45);
+      }
+      .episode-info--active:hover {
+        background: rgba(255, 31, 122, 0.24);
+      }
+      .episode-info--active::after {
+        content: "✕";
+        margin-left: 6px;
+        opacity: 0.7;
+        font-size: 0.9em;
+      }
       .episode-mode-select {
         background: #0d1b35;
         border: 1px solid #0f3460;
@@ -507,6 +522,22 @@
         background: #1e3a6e;
         color: #8b94a8;
         cursor: not-allowed;
+      }
+      /* Напоминает, что после выбора обязательной точки маршрута (см.
+         setEpisodeWaypoint) нужно снова нажать "Исправить трек", чтобы
+         результат учёл новую точку — без этого не очевидно, что клик по
+         карте сам по себе ничего не пересчитывает. */
+      @keyframes btn-fix-pulse {
+        0%,
+        100% {
+          box-shadow: 0 0 0 0 rgba(37, 99, 235, 0.6);
+        }
+        50% {
+          box-shadow: 0 0 0 8px rgba(37, 99, 235, 0);
+        }
+      }
+      #btn-fix.needs-refix {
+        animation: btn-fix-pulse 1.4s ease-in-out infinite;
       }
       .no-episodes-msg {
         color: #4ade80;
@@ -1489,6 +1520,7 @@
             "Недоступно для «Удалить»/«Оставить как было» — маршрут не строится",
           hint_episode_locate:
             "Показать этот участок на карте (и на карте результата, если она уже построена)",
+          hint_episode_hide: "Нажмите ещё раз, чтобы убрать подсветку с карты",
           no_episodes_msg:
             "✓ Аномальных участков не найдено — трек уже в порядке, исправление не требуется.",
           card3_title: "3. Обработка",
@@ -1586,7 +1618,7 @@
           log_pause_header:
             "\nПауза записи: точки {before}→{after}  ({dur}с пробел, точки не удалялись — только достраивается путь между ними){tail}",
           log_waypoint_set:
-            "  📍 Эпизод {n}: задана обязательная точка {lat}, {lon} — маршрут перестроен через неё",
+            "  📍 Эпизод {n}: задана обязательная точка {lat}, {lon} — нажмите «Исправить трек» ещё раз, чтобы применить",
           log_episode_tail_cut: "  [обрыв в конце трека, без возврата]",
           log_before_point: "  До  : {time}  ({lat}, {lon})  ele={ele}м",
           log_before_none: "  До  : — (глушение с самой первой точки трека)",
@@ -1691,6 +1723,7 @@
             'Not available for "Remove"/"Keep as-is" — no route is built',
           hint_episode_locate:
             "Show this section on the map (and on the result map, if already built)",
+          hint_episode_hide: "Click again to remove the highlight from the map",
           no_episodes_msg:
             "✓ No anomalous sections found — the track is already clean, no fix needed.",
           card3_title: "3. Processing",
@@ -1788,7 +1821,7 @@
           log_pause_header:
             "\nRecording pause: points {before}→{after}  ({dur}s gap, no points removed — only building a path between them){tail}",
           log_waypoint_set:
-            "  📍 Episode {n}: required waypoint set at {lat}, {lon} — route rebuilt through it",
+            "  📍 Episode {n}: required waypoint set at {lat}, {lon} — click \"Fix track\" again to apply",
           log_episode_tail_cut: "  [track cut off at the end, no return]",
           log_before_point: "  Before: {time}  ({lat}, {lon})  ele={ele}m",
           log_before_none:
@@ -3404,6 +3437,23 @@
                   colorMode,
                   inst.lastLegend,
                 );
+              }
+              // Пересозданные слои вставок ложатся ПОВЕРХ уже существующей
+              // подсветки эпизода (episodeHighlightLayer) — а клик по
+              // эпизоду в списке как раз вызывает fitBounds/zoomend сразу
+              // после её отрисовки (см. highlightRangeOnMap), так что
+              // розовая подсветка пропадала под пунктиром вставки. Поднимаем
+              // подсветку обратно наверх.
+              if (
+                inst.episodeHighlightLayer &&
+                inst.map.hasLayer(inst.episodeHighlightLayer)
+              ) {
+                // episodeHighlightLayer — это L.layerGroup(), а
+                // bringToFront() есть только у отдельных векторных слоёв
+                // (Path/Polyline/CircleMarker), не у самой группы.
+                inst.episodeHighlightLayer.eachLayer((l) => {
+                  if (typeof l.bringToFront === "function") l.bringToFront();
+                });
               }
             });
           });
@@ -7612,6 +7662,21 @@
       // Обязательные точки (клик по карте "после"), через которые должен
       // пройти маршрут/кривая заполнения конкретного эпизода. Ключ — индекс
       // эпизода в episodePreview, значение — {lat, lon}.
+      // Индекс эпизода/паузы, чья подсветка сейчас активна на картах (null —
+      // подсветки нет). Нужен, чтобы повторный клик по тому же эпизоду в
+      // списке снимал подсветку, а не просто перерисовывал её заново, и
+      // чтобы можно было пометить активную строку в списке визуально.
+      let highlightedEpisodeIdx = null;
+
+      // Снимает подсветку эпизода с обеих карт и сбрасывает активный индекс —
+      // используется и явным "убрать подсветку" действием (повторный клик,
+      // отмена выбора точки), и при полной перестройке списка эпизодов.
+      function clearEpisodeHighlightState() {
+        highlightedEpisodeIdx = null;
+        clearEpisodeHighlight("map-before");
+        clearEpisodeHighlight("map-after");
+      }
+
       let episodeWaypoints = new Map();
       // Индекс эпизода, для которого сейчас активен режим выбора точки
       // кликом по нижней карте (map-after), либо null, если режим выключен.
@@ -7661,6 +7726,11 @@
         const mapEl = document.getElementById("map-after");
         if (mapEl) mapEl.classList.remove("map-picking-waypoint");
         renderEpisodeList(episodePreview, episodePreviewTimes);
+        // Точка выбрана, но маршрут через неё ещё не пересчитан — само по
+        // себе изменение ничего не перестраивает, нужно снова нажать
+        // "Исправить трек". Пульсация кнопки делает это заметным (см.
+        // btn-fix-pulse), убирается по клику на неё же.
+        if (!btnFix.disabled) btnFix.classList.add("needs-refix");
         log(
           t("log_waypoint_set", {
             n: idx + 1,
@@ -7672,15 +7742,20 @@
       }
 
       // Включает/выключает режим выбора точки для эпизода idx (повторный
-      // клик по той же кнопке — выключает режим без выбора точки).
+      // клик по той же кнопке — выключает режим без выбора точки, при этом
+      // убирая подсветку участка на картах). Включение также подсвечивает
+      // участок на картах — как и клик по названию эпизода — чтобы было
+      // видно, для какого именно места выбирается точка.
       function toggleWaypointPickMode(idx) {
         const mapEl = document.getElementById("map-after");
         if (waypointPickModeIdx === idx) {
           waypointPickModeIdx = null;
           if (mapEl) mapEl.classList.remove("map-picking-waypoint");
+          clearEpisodeHighlightState();
         } else {
           waypointPickModeIdx = idx;
           if (mapEl) mapEl.classList.add("map-picking-waypoint");
+          highlightEpisodeOnMaps(idx);
         }
         renderEpisodeList(episodePreview, episodePreviewTimes);
       }
@@ -7693,6 +7768,9 @@
         const mapEl = document.getElementById("map-after");
         if (mapEl) mapEl.classList.remove("map-picking-waypoint");
         renderEpisodeList(episodePreview, episodePreviewTimes);
+        // Как и при установке точки — снятие тоже требует повторного
+        // "Исправить трек", чтобы результат обновился.
+        if (!btnFix.disabled) btnFix.classList.add("needs-refix");
       }
 
       // Убирает подсветку эпизода/паузы с указанной карты (не трогает
@@ -7754,12 +7832,17 @@
           const p = latlngs[0] || [data.lats[lo], data.lons[lo]];
           // Одиночная точка (например, "мгновенная" пауза) — двойной кружок
           // (белый ореол снизу + яркая заливка сверху) вместо линии.
+          // interactive: false — подсветка чисто визуальная и не должна
+          // перехватывать клики мыши: иначе она блокирует клик по треку под
+          // ней (закрепление точки на профиле высот / выбор обязательной
+          // точки маршрута на карте "после").
           L.circleMarker(p, {
             radius: 20,
             color: "#ffffff",
             weight: 4,
             fillColor: "#ffffff",
             fillOpacity: 0.25,
+            interactive: false,
           }).addTo(group);
           L.circleMarker(p, {
             radius: 13,
@@ -7768,6 +7851,7 @@
             fillColor: "#ff1f7a",
             fillOpacity: 0.55,
             className: "episode-highlight-flash",
+            interactive: false,
           }).addTo(group);
         } else {
           // Белый ореол под линией — чтобы яркая линия не сливалась ни со
@@ -7777,6 +7861,7 @@
             weight: 15,
             opacity: 0.9,
             lineCap: "round",
+            interactive: false,
           }).addTo(group);
           L.polyline(latlngs, {
             color: "#ff1f7a",
@@ -7784,6 +7869,7 @@
             opacity: 0.95,
             lineCap: "round",
             className: "episode-highlight-flash",
+            interactive: false,
           }).addTo(group);
           // Кружки на границах участка — чётко видно начало и конец.
           const endpointStyle = {
@@ -7792,6 +7878,7 @@
             weight: 3,
             fillColor: "#ff1f7a",
             fillOpacity: 0.95,
+            interactive: false,
           };
           L.circleMarker(latlngs[0], endpointStyle).addTo(group);
           L.circleMarker(latlngs[latlngs.length - 1], endpointStyle).addTo(
@@ -7815,6 +7902,7 @@
         const ep = episodePreview[idx];
         const times = episodePreviewTimes;
         if (!ep || !times || !times.length) return;
+        highlightedEpisodeIdx = idx;
         const n = times.length;
         // Для эпизода глушилки подсвечиваем строго "битые" точки
         // [firstBad..lastBad], чтобы не захватывать соседние честные точки
@@ -7871,8 +7959,7 @@
           episodePreview = [];
           episodeWaypoints.clear();
           waypointPickModeIdx = null;
-          clearEpisodeHighlight("map-before");
-          clearEpisodeHighlight("map-after");
+          clearEpisodeHighlightState();
           return;
         }
         let lats, lons, eles, times, hdops;
@@ -7930,8 +8017,7 @@
         episodeWaypoints.clear();
         waypointPickModeIdx = null;
         clearWaypointMarkers("map-after");
-        clearEpisodeHighlight("map-before");
-        clearEpisodeHighlight("map-after");
+        clearEpisodeHighlightState();
         const defaultMode = resolveInterpMode({ lats, lons, times });
         episodeChoices = finalEpisodes.map((ep) =>
           ep.isPause ? "keep" : defaultMode,
@@ -7969,9 +8055,22 @@
           // Клик по названию/времени эпизода — подсвечивает и приближает
           // соответствующий участок на карте(ах): "до" всегда, "после" —
           // если она уже построена (после первого "Исправить трек").
+          // Повторный клик по уже подсвеченному эпизоду — понятный способ
+          // снять подсветку обратно.
           info.classList.add("episode-info--clickable");
-          info.title = t("hint_episode_locate");
-          info.addEventListener("click", () => highlightEpisodeOnMaps(idx));
+          const isHighlighted = highlightedEpisodeIdx === idx;
+          if (isHighlighted) info.classList.add("episode-info--active");
+          info.title = t(
+            isHighlighted ? "hint_episode_hide" : "hint_episode_locate",
+          );
+          info.addEventListener("click", () => {
+            if (highlightedEpisodeIdx === idx) {
+              clearEpisodeHighlightState();
+            } else {
+              highlightEpisodeOnMaps(idx);
+            }
+            renderEpisodeList(episodePreview, episodePreviewTimes);
+          });
 
           // Ведущий эпизод глушения (firstBad === 0) не имеет опорной точки
           // "до" — так же, как хвостовой не имеет точки "после" (hasAfter
@@ -8422,6 +8521,7 @@
 
       btnFix.addEventListener("click", () => {
         if (!gpxText) return;
+        btnFix.classList.remove("needs-refix");
         // Фиксируем поколение и имя файла ДО начала асинхронной операции:
         // если пока идёт исправление пользователь загрузит другой файл,
         // loadFile() увеличит opGeneration, и по завершении мы поймём,
