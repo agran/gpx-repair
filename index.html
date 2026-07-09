@@ -1409,7 +1409,10 @@
       </div>
       <div class="elevation-profile-wrap" id="elevation-profile-wrap-after">
         <div class="elevation-profile-canvas-wrap">
-          <canvas class="elevation-profile" id="elevation-profile-after"></canvas>
+          <canvas
+            class="elevation-profile"
+            id="elevation-profile-after"
+          ></canvas>
           <div
             class="elevation-profile-episode-tag"
             id="elevation-profile-episode-tag-after"
@@ -1526,7 +1529,8 @@
           update_btn: "Обновить",
           alt_done: "Готово",
           profile_auto: "🤖 Авто (по данным трека)",
-          profile_hiking: "🥾 Пеший поход",          profile_running: "🏃 Бег / трейлраннинг",
+          profile_hiking: "🥾 Пеший поход",
+          profile_running: "🏃 Бег / трейлраннинг",
           profile_kayak: "🛶 Сплав / каяк / SUP",
           profile_horse: "🐎 Верховая езда",
           profile_mtb: "🚴 Велосипед (МТБ)",
@@ -1585,8 +1589,7 @@
             "  📍 Эпизод {n}: задана обязательная точка {lat}, {lon} — маршрут перестроен через неё",
           log_episode_tail_cut: "  [обрыв в конце трека, без возврата]",
           log_before_point: "  До  : {time}  ({lat}, {lon})  ele={ele}м",
-          log_before_none:
-            "  До  : — (глушение с самой первой точки трека)",
+          log_before_none: "  До  : — (глушение с самой первой точки трека)",
           log_after_point: "  После: {time}  ({lat}, {lon})  ele={ele}м",
           log_after_none:
             "  После: — (запись обрывается во время глушения, точки удаляются до конца трека)",
@@ -1683,9 +1686,9 @@
           btn_waypoint_picking: "Click on the map…",
           btn_waypoint_clear: "Remove waypoint",
           hint_waypoint_need_fix:
-            "Click \"Fix track\" first — the waypoint can be picked on the result map",
+            'Click "Fix track" first — the waypoint can be picked on the result map',
           hint_waypoint_routeless:
-            "Not available for \"Remove\"/\"Keep as-is\" — no route is built",
+            'Not available for "Remove"/"Keep as-is" — no route is built',
           hint_episode_locate:
             "Show this section on the map (and on the result map, if already built)",
           no_episodes_msg:
@@ -1835,7 +1838,7 @@
           reason_no_route: "route not found (service unavailable)",
           reason_far_from_road: "gap boundary is far from a road/trail",
           log_fallback_profile:
-            "no nearby road found — trying a \"{mode}\" route instead",
+            'no nearby road found — trying a "{mode}" route instead',
           reason_big_detour: "route is too much of a detour",
           reason_too_slow: "route isn't traversable within the gap time",
         },
@@ -1973,7 +1976,14 @@
         const parser = new DOMParser();
         const doc = parser.parseFromString(xmlText, "application/xml");
         if (doc.querySelector("parsererror"))
-          return { lats: [], lons: [], eles: [], times: [], hrs: [], hdops: [] };
+          return {
+            lats: [],
+            lons: [],
+            eles: [],
+            times: [],
+            hrs: [],
+            hdops: [],
+          };
         const pts = doc.querySelectorAll("trkpt");
         const lats = new Array(pts.length);
         const lons = new Array(pts.length);
@@ -3015,10 +3025,7 @@
       // ровно на ту же вершину трека, что была закреплена).
       function onMainTrackClick(containerId) {
         return function (e) {
-          if (
-            containerId === "map-after" &&
-            waypointPickModeIdx !== null
-          ) {
+          if (containerId === "map-after" && waypointPickModeIdx !== null) {
             setEpisodeWaypoint(waypointPickModeIdx, e.latlng);
             return;
           }
@@ -4737,7 +4744,12 @@
                 const clusterEnd = Math.min(n - 1, lastNearbyIdx + 1);
                 let pathSum = 0;
                 for (let j = tOut; j < clusterEnd; j++) {
-                  pathSum += haversine(lats[j], lons[j], lats[j + 1], lons[j + 1]);
+                  pathSum += haversine(
+                    lats[j],
+                    lons[j],
+                    lats[j + 1],
+                    lons[j + 1],
+                  );
                 }
                 const netDisp = haversine(
                   lats[tOut],
@@ -4826,7 +4838,12 @@
                   const quickScanEnd = Math.min(n, firstBad + 11);
                   for (let j = firstBad + 1; j < quickScanEnd; j++) {
                     const dtAfter = Math.max(1, times[j] - refTimeM);
-                    const dAfter = haversine(lats[j], lons[j], refLatM, refLonM);
+                    const dAfter = haversine(
+                      lats[j],
+                      lons[j],
+                      refLatM,
+                      refLonM,
+                    );
                     if (
                       !isLowMotionCandidate(j) &&
                       dAfter / dtAfter <= maxSpeedMps
@@ -4877,12 +4894,7 @@
                   stepsBack < MICRO_SCAN_POINTS &&
                   times[tOut] - times[j] <= MICRO_SCAN_SECONDS
                 ) {
-                  const dLocal = haversine(
-                    lats[j],
-                    lons[j],
-                    refLatR,
-                    refLonR,
-                  );
+                  const dLocal = haversine(lats[j], lons[j], refLatR, refLonR);
                   if (dLocal < MICRO_BACKWARD_DIST_M) break;
                   firstBad = j;
                   j--;
@@ -5043,7 +5055,12 @@
           if (dt <= 0 || dt < threshold) continue;
           const d = haversine(lats[i], lons[i], lats[i + 1], lons[i + 1]);
           if (d / dt > maxSpeedMps) continue; // похоже на скачок глушилки — не наша забота
-          gaps.push({ firstBad: i + 1, lastBad: i, afterIdx: i + 1, isPause: true });
+          gaps.push({
+            firstBad: i + 1,
+            lastBad: i,
+            afterIdx: i + 1,
+            isPause: true,
+          });
         }
         return gaps;
       }
@@ -6040,8 +6057,7 @@
         // Проверено на реальном треке (Тырныауз): граница эпизода лежала в
         // ~40 м от тропы, но в >1 км от ближайшей автодороги — с одним лишь
         // автопрофилем это давало бессмысленную прямую линию через долину.
-        const profilesToTry =
-          profile === "car" ? ["car", "foot"] : [profile];
+        const profilesToTry = profile === "car" ? ["car", "foot"] : [profile];
 
         let lastReason = "reason_no_route";
         for (const p of profilesToTry) {
@@ -6089,7 +6105,10 @@
           }
 
           if (p !== profile) {
-            log(t("log_fallback_profile", { mode: t("modeword_" + p) }), "log-warn");
+            log(
+              t("log_fallback_profile", { mode: t("modeword_" + p) }),
+              "log-warn",
+            );
           }
 
           const { points: sampled, totalLength: routeLen } = resampleRoute(
@@ -6098,170 +6117,181 @@
             intervalS,
           );
 
-        // ─── Плавное примыкание маршрута к реальному треку ──────────────────
-        // OSRM привязывает граничные точки к БЛИЖАЙШЕЙ дороге/тропе (до 300 м
-        // в сторону), из-за чего трек мог влетать в маршрут и вылетать из него
-        // под острым/прямым углом. Вместо стягивания к прямой хорде (которая
-        // не учитывает, куда реально двигался трек) — стягиваем к линии,
-        // продолженной по КУРСУ реального трека до/после эпизода: рядом с
-        // границей путь сначала идёт в том же направлении, в котором трек уже
-        // двигался, и лишь затем поворачивает на маршрут. Дистанция примыкания
-        // намеренно небольшая — быстрее вернуться на тропу важнее, чем долго
-        // и плавно к ней подходить.
-        const SEAM_BLEND_DIST_M = Math.min(40, routeLen * 0.15);
-        if (SEAM_BLEND_DIST_M > 0) {
-          const chordDir = unitHeading(lat0, lon0, lat1, lon1);
-          const dirIn =
-            (headingRefBefore &&
-              unitHeading(
-                headingRefBefore.lat,
-                headingRefBefore.lon,
-                lat0,
-                lon0,
-              )) ||
-            chordDir;
-          const dirOut =
-            (headingRefAfter &&
-              unitHeading(
-                lat1,
-                lon1,
-                headingRefAfter.lat,
-                headingRefAfter.lon,
-              )) ||
-            chordDir;
+          // ─── Плавное примыкание маршрута к реальному треку ──────────────────
+          // OSRM привязывает граничные точки к БЛИЖАЙШЕЙ дороге/тропе (до 300 м
+          // в сторону), из-за чего трек мог влетать в маршрут и вылетать из него
+          // под острым/прямым углом. Вместо стягивания к прямой хорде (которая
+          // не учитывает, куда реально двигался трек) — стягиваем к линии,
+          // продолженной по КУРСУ реального трека до/после эпизода: рядом с
+          // границей путь сначала идёт в том же направлении, в котором трек уже
+          // двигался, и лишь затем поворачивает на маршрут. Дистанция примыкания
+          // намеренно небольшая — быстрее вернуться на тропу важнее, чем долго
+          // и плавно к ней подходить.
+          const SEAM_BLEND_DIST_M = Math.min(40, routeLen * 0.15);
+          if (SEAM_BLEND_DIST_M > 0) {
+            const chordDir = unitHeading(lat0, lon0, lat1, lon1);
+            const dirIn =
+              (headingRefBefore &&
+                unitHeading(
+                  headingRefBefore.lat,
+                  headingRefBefore.lon,
+                  lat0,
+                  lon0,
+                )) ||
+              chordDir;
+            const dirOut =
+              (headingRefAfter &&
+                unitHeading(
+                  lat1,
+                  lon1,
+                  headingRefAfter.lat,
+                  headingRefAfter.lon,
+                )) ||
+              chordDir;
 
-          for (const s of sampled) {
-            const distFromStart = s.alpha * routeLen;
-            const distFromEnd = routeLen - distFromStart;
-            const wStart =
-              distFromStart >= SEAM_BLEND_DIST_M
-                ? 1
-                : seamBlendWeight(distFromStart / SEAM_BLEND_DIST_M);
-            const wEnd =
-              distFromEnd >= SEAM_BLEND_DIST_M
-                ? 1
-                : seamBlendWeight(distFromEnd / SEAM_BLEND_DIST_M);
+            for (const s of sampled) {
+              const distFromStart = s.alpha * routeLen;
+              const distFromEnd = routeLen - distFromStart;
+              const wStart =
+                distFromStart >= SEAM_BLEND_DIST_M
+                  ? 1
+                  : seamBlendWeight(distFromStart / SEAM_BLEND_DIST_M);
+              const wEnd =
+                distFromEnd >= SEAM_BLEND_DIST_M
+                  ? 1
+                  : seamBlendWeight(distFromEnd / SEAM_BLEND_DIST_M);
 
-            if (wStart < 1 && dirIn) {
-              const p = projectPoint(lat0, lon0, dirIn, distFromStart);
-              s.lat = p.lat * (1 - wStart) + s.lat * wStart;
-              s.lon = p.lon * (1 - wStart) + s.lon * wStart;
-            }
-            if (wEnd < 1 && dirOut) {
-              const p = projectPoint(lat1, lon1, dirOut, -distFromEnd);
-              s.lat = p.lat * (1 - wEnd) + s.lat * wEnd;
-              s.lon = p.lon * (1 - wEnd) + s.lon * wEnd;
+              if (wStart < 1 && dirIn) {
+                const p = projectPoint(lat0, lon0, dirIn, distFromStart);
+                s.lat = p.lat * (1 - wStart) + s.lat * wStart;
+                s.lon = p.lon * (1 - wStart) + s.lon * wStart;
+              }
+              if (wEnd < 1 && dirOut) {
+                const p = projectPoint(lat1, lon1, dirOut, -distFromEnd);
+                s.lat = p.lat * (1 - wEnd) + s.lat * wEnd;
+                s.lon = p.lon * (1 - wEnd) + s.lon * wEnd;
+              }
             }
           }
-        }
 
-        // ─── Высота: ≤98 опорных точек маршрута + 2 граничные ───
-        const maxAnchors = 98;
-        const anchorStep = Math.max(1, Math.ceil(sampled.length / maxAnchors));
-        const anchorIdxs = [];
-        for (let i = 0; i < sampled.length; i += anchorStep) anchorIdxs.push(i);
-        if (
-          sampled.length &&
-          anchorIdxs[anchorIdxs.length - 1] !== sampled.length - 1
-        ) {
-          anchorIdxs.push(sampled.length - 1);
-        }
-
-        let demMap = null;
-        try {
-          const anchorCoords = anchorIdxs.map((i) => ({
-            lat: sampled[i].lat,
-            lon: sampled[i].lon,
-          }));
-          demMap = await fetchElevations([
-            { lat: lat0, lon: lon0 },
-            { lat: lat1, lon: lon1 },
-            ...anchorCoords,
-          ]);
-        } catch (e) {
-          demMap = null;
-        }
-
-        const dem0 = demMap ? demMap.get(eleCacheKey(lat0, lon0)) : null;
-        const dem1 = demMap ? demMap.get(eleCacheKey(lat1, lon1)) : null;
-        const demOk =
-          demMap != null &&
-          dem0 != null &&
-          dem1 != null &&
-          anchorIdxs.every(
-            (i) =>
-              demMap.get(eleCacheKey(sampled[i].lat, sampled[i].lon)) != null,
+          // ─── Высота: ≤98 опорных точек маршрута + 2 граничные ───
+          const maxAnchors = 98;
+          const anchorStep = Math.max(
+            1,
+            Math.ceil(sampled.length / maxAnchors),
           );
-
-        let demAtIndex = null;
-        if (demOk && sampled.length) {
-          const anchorVals = smoothAnchorValues(
-            anchorIdxs.map((i) =>
-              demMap.get(eleCacheKey(sampled[i].lat, sampled[i].lon)),
-            ),
-          );
-          demAtIndex = new Array(sampled.length);
-          for (let k = 0; k < anchorIdxs.length; k++) {
-            demAtIndex[anchorIdxs[k]] = anchorVals[k];
+          const anchorIdxs = [];
+          for (let i = 0; i < sampled.length; i += anchorStep)
+            anchorIdxs.push(i);
+          if (
+            sampled.length &&
+            anchorIdxs[anchorIdxs.length - 1] !== sampled.length - 1
+          ) {
+            anchorIdxs.push(sampled.length - 1);
           }
-          let prevIdx = 0,
-            prevVal = demAtIndex[0];
-          for (let k = 1; k < anchorIdxs.length; k++) {
-            const idx = anchorIdxs[k];
-            const val = demAtIndex[idx];
-            for (let j = prevIdx + 1; j < idx; j++) {
-              const a = (j - prevIdx) / (idx - prevIdx);
-              demAtIndex[j] = prevVal + a * (val - prevVal);
+
+          let demMap = null;
+          try {
+            const anchorCoords = anchorIdxs.map((i) => ({
+              lat: sampled[i].lat,
+              lon: sampled[i].lon,
+            }));
+            demMap = await fetchElevations([
+              { lat: lat0, lon: lon0 },
+              { lat: lat1, lon: lon1 },
+              ...anchorCoords,
+            ]);
+          } catch (e) {
+            demMap = null;
+          }
+
+          const dem0 = demMap ? demMap.get(eleCacheKey(lat0, lon0)) : null;
+          const dem1 = demMap ? demMap.get(eleCacheKey(lat1, lon1)) : null;
+          const demOk =
+            demMap != null &&
+            dem0 != null &&
+            dem1 != null &&
+            anchorIdxs.every(
+              (i) =>
+                demMap.get(eleCacheKey(sampled[i].lat, sampled[i].lon)) != null,
+            );
+
+          let demAtIndex = null;
+          if (demOk && sampled.length) {
+            const anchorVals = smoothAnchorValues(
+              anchorIdxs.map((i) =>
+                demMap.get(eleCacheKey(sampled[i].lat, sampled[i].lon)),
+              ),
+            );
+            demAtIndex = new Array(sampled.length);
+            for (let k = 0; k < anchorIdxs.length; k++) {
+              demAtIndex[anchorIdxs[k]] = anchorVals[k];
             }
-            prevIdx = idx;
-            prevVal = val;
+            let prevIdx = 0,
+              prevVal = demAtIndex[0];
+            for (let k = 1; k < anchorIdxs.length; k++) {
+              const idx = anchorIdxs[k];
+              const val = demAtIndex[idx];
+              for (let j = prevIdx + 1; j < idx; j++) {
+                const a = (j - prevIdx) / (idx - prevIdx);
+                demAtIndex[j] = prevVal + a * (val - prevVal);
+              }
+              prevIdx = idx;
+              prevVal = val;
+            }
+            for (let j = prevIdx + 1; j < sampled.length; j++)
+              demAtIndex[j] = prevVal;
           }
-          for (let j = prevIdx + 1; j < sampled.length; j++)
-            demAtIndex[j] = prevVal;
-        }
 
-        const canInterp = (s0, s1) =>
-          Number.isFinite(s0) && Number.isFinite(s1);
-        const hrOk = canInterp(sensors0.hr, sensors1.hr);
-        const cadOk = canInterp(sensors0.cad, sensors1.cad);
-        const atempOk = canInterp(sensors0.atemp, sensors1.atemp);
+          const canInterp = (s0, s1) =>
+            Number.isFinite(s0) && Number.isFinite(s1);
+          const hrOk = canInterp(sensors0.hr, sensors1.hr);
+          const cadOk = canInterp(sensors0.cad, sensors1.cad);
+          const atempOk = canInterp(sensors0.atemp, sensors1.atemp);
 
-        const pts = [];
-        let prevLat = lat0,
-          prevLon = lon0,
-          prevT = 0;
-        for (let k = 0; k < sampled.length; k++) {
-          const s = sampled[k];
-          const ele = demOk
-            ? calibrateElevation(demAtIndex[k], s.alpha, ele0, dem0, ele1, dem1)
-            : ele0 + s.alpha * (ele1 - ele0);
-          const dt = s.t - prevT;
-          const legDist = haversine(prevLat, prevLon, s.lat, s.lon);
-          const speed = dt > 0 ? legDist / dt : 0;
-          const pt = { lat: s.lat, lon: s.lon, ele, time: t0 + s.t, speed };
-          if (hrOk)
-            pt.hr = Math.round(
-              sensors0.hr + s.alpha * (sensors1.hr - sensors0.hr),
-            );
-          if (cadOk)
-            pt.cad = Math.round(
-              sensors0.cad + s.alpha * (sensors1.cad - sensors0.cad),
-            );
-          if (atempOk)
-            pt.atemp =
-              sensors0.atemp + s.alpha * (sensors1.atemp - sensors0.atemp);
-          pts.push(pt);
-          prevLat = s.lat;
-          prevLon = s.lon;
-          prevT = s.t;
-        }
+          const pts = [];
+          let prevLat = lat0,
+            prevLon = lon0,
+            prevT = 0;
+          for (let k = 0; k < sampled.length; k++) {
+            const s = sampled[k];
+            const ele = demOk
+              ? calibrateElevation(
+                  demAtIndex[k],
+                  s.alpha,
+                  ele0,
+                  dem0,
+                  ele1,
+                  dem1,
+                )
+              : ele0 + s.alpha * (ele1 - ele0);
+            const dt = s.t - prevT;
+            const legDist = haversine(prevLat, prevLon, s.lat, s.lon);
+            const speed = dt > 0 ? legDist / dt : 0;
+            const pt = { lat: s.lat, lon: s.lon, ele, time: t0 + s.t, speed };
+            if (hrOk)
+              pt.hr = Math.round(
+                sensors0.hr + s.alpha * (sensors1.hr - sensors0.hr),
+              );
+            if (cadOk)
+              pt.cad = Math.round(
+                sensors0.cad + s.alpha * (sensors1.cad - sensors0.cad),
+              );
+            if (atempOk)
+              pt.atemp =
+                sensors0.atemp + s.alpha * (sensors1.atemp - sensors0.atemp);
+            pts.push(pt);
+            prevLat = s.lat;
+            prevLon = s.lon;
+            prevT = s.t;
+          }
 
-        return {
-          points: pts,
-          method: "routed",
-          demOk,
-          distanceKm: routeDist / 1000,
-        };
+          return {
+            points: pts,
+            method: "routed",
+            demOk,
+            distanceKm: routeDist / 1000,
+          };
         }
         return fallback(t(lastReason));
       }
@@ -6426,12 +6456,16 @@
           ele: viaEle,
           time: viaT,
           speed:
-            dtVia > 0 ? haversine(prevPt.lat, prevPt.lon, viaLat, viaLon) / dtVia : 0,
+            dtVia > 0
+              ? haversine(prevPt.lat, prevPt.lon, viaLat, viaLon) / dtVia
+              : 0,
         };
-        if (Number.isFinite(viaSensors.hr)) viaPoint.hr = Math.round(viaSensors.hr);
+        if (Number.isFinite(viaSensors.hr))
+          viaPoint.hr = Math.round(viaSensors.hr);
         if (Number.isFinite(viaSensors.cad))
           viaPoint.cad = Math.round(viaSensors.cad);
-        if (Number.isFinite(viaSensors.atemp)) viaPoint.atemp = viaSensors.atemp;
+        if (Number.isFinite(viaSensors.atemp))
+          viaPoint.atemp = viaSensors.atemp;
 
         const points = [...leg1.points, viaPoint, ...leg2.points];
         if (leg1.method === "routed" && leg2.method === "routed") {
@@ -6589,17 +6623,35 @@
         // ложной локации — в исправленном треке остался бы скачок глушилки.
         let prevEp = null;
 
-        // Определяем ns3-префикс для расширений Garmin
-        const nsExtPrefix = (() => {
-          for (const attr of root.attributes) {
-            if (
-              attr.value ===
-              "http://www.garmin.com/xmlschemas/TrackPointExtension/v1"
-            )
-              return attr.name.replace("xmlns:", "");
+        // Определяем ns3-префикс для расширений Garmin. Если в исходном
+        // GPX такого namespace ещё нет (например, файл экспортирован из
+        // Guru Maps/другого приложения без Garmin-расширений), используем
+        // запасной префикс "ns3" — но тогда ОБЯЗАТЕЛЬНО объявляем его на
+        // корневом <gpx>, иначе итоговый XML содержит непривязанный
+        // namespace-префикс (unbound prefix) в <ns3:TrackPointExtension>
+        // у вставленных точек, и такой файл невозможно будет открыть
+        // повторно (парсер бракует документ целиком).
+        const GARMIN_TPE_NS =
+          "http://www.garmin.com/xmlschemas/TrackPointExtension/v1";
+        let nsExtPrefix = null;
+        for (const attr of root.attributes) {
+          if (attr.value === GARMIN_TPE_NS) {
+            nsExtPrefix = attr.name.replace("xmlns:", "");
+            break;
           }
-          return "ns3";
-        })();
+        }
+        if (!nsExtPrefix) {
+          // Запасной префикс "ns3", но если он уже занят под другой
+          // namespace в исходном файле — подбираем свободный (ns3, ns4, ...).
+          let candidate = "ns3",
+            suffix = 3;
+          while (root.getAttribute(`xmlns:${candidate}`)) {
+            suffix++;
+            candidate = `ns${suffix}`;
+          }
+          nsExtPrefix = candidate;
+          root.setAttribute(`xmlns:${nsExtPrefix}`, GARMIN_TPE_NS);
+        }
 
         for (let epIdx = 0; epIdx < episodes.length; epIdx++) {
           const ep = episodes[epIdx];
@@ -6689,64 +6741,69 @@
           // паузе могли бы ошибочно затянуть в "битую" зону совершенно
           // honest точки перед разрывом.
           if (!ep.isPause) {
-          // 1) Расширение назад по высотному крэшу («плато») — запускается
-          // ПЕРВЫМ, т.к. у него нет ограничения на суммарное время отката
-          // (аномалия сама себя ограничивает). Координатное расширение ниже
-          // использует УЖЕ расширенную границу как точку отсчёта для своего
-          // ограниченного по времени отката, чтобы поймать раннее смещение
-          // координат сразу ПЕРЕД началом высотного крэша, а не отсчитывать
-          // время от далёкого сырого начала эпизода.
-          if (maxVert > 0) {
-            const altStart = extendAltitudeBackward(
-              eles,
-              times,
-              firstBad,
-              maxVert,
-            );
-            if (altStart < firstBad) firstBad = altStart;
-          }
-
-          // 2) Расширение назад по координатам
-          // (для хвостового эпизода без "после" — сравнивать смещение
-          // не с чем, координатное расширение назад пропускаем)
-          if (preJitter > 0 && afterIdx < n) {
-            firstBad = extendEpisodeBackward(
-              lats,
-              lons,
-              eles,
-              times,
-              firstBad,
-              afterIdx,
-              preJitter,
-              maxVert,
-            );
-          }
-
-          // Не даём расширению назад залезть на территорию уже
-          // обработанного предыдущего эпизода.
-          if (firstBad <= prevFinalLastBad) firstBad = prevFinalLastBad + 1;
-
-          // 3) Расширение ВПЕРЁД по высотному крэшу — симметрично шагу 1,
-          // но после точки возврата: барометр "доезжает" до реальной высоты
-          // не мгновенно, а за несколько точек по затухающей кривой. Без
-          // этого afterIdx может указывать на точку, высота которой ещё не
-          // осела, и интерполяция эпизода целится в это завышенное/заниженное
-          // значение — на графике высоты это выглядит как резкий шип прямо
-          // перед возвратом к нормальному профилю.
-          if (maxVert > 0 && afterIdx < n) {
-            let altEnd = extendAltitudeForward(eles, times, afterIdx, maxVert);
-            // Не даём расширению вперёд залезть в начало следующего эпизода
-            // (соседние глитчи могут идти почти подряд) — иначе одна и та же
-            // точка окажется "afterIdx"/точкой вставки сразу у двух эпизодов.
-            const nextEp = episodes[epIdx + 1];
-            if (nextEp && altEnd >= nextEp.firstBad) {
-              altEnd = Math.max(afterIdx, nextEp.firstBad - 1);
+            // 1) Расширение назад по высотному крэшу («плато») — запускается
+            // ПЕРВЫМ, т.к. у него нет ограничения на суммарное время отката
+            // (аномалия сама себя ограничивает). Координатное расширение ниже
+            // использует УЖЕ расширенную границу как точку отсчёта для своего
+            // ограниченного по времени отката, чтобы поймать раннее смещение
+            // координат сразу ПЕРЕД началом высотного крэша, а не отсчитывать
+            // время от далёкого сырого начала эпизода.
+            if (maxVert > 0) {
+              const altStart = extendAltitudeBackward(
+                eles,
+                times,
+                firstBad,
+                maxVert,
+              );
+              if (altStart < firstBad) firstBad = altStart;
             }
-            if (altEnd > afterIdx) {
-              afterIdx = altEnd;
-              lastBad = afterIdx - 1;
+
+            // 2) Расширение назад по координатам
+            // (для хвостового эпизода без "после" — сравнивать смещение
+            // не с чем, координатное расширение назад пропускаем)
+            if (preJitter > 0 && afterIdx < n) {
+              firstBad = extendEpisodeBackward(
+                lats,
+                lons,
+                eles,
+                times,
+                firstBad,
+                afterIdx,
+                preJitter,
+                maxVert,
+              );
             }
-          }
+
+            // Не даём расширению назад залезть на территорию уже
+            // обработанного предыдущего эпизода.
+            if (firstBad <= prevFinalLastBad) firstBad = prevFinalLastBad + 1;
+
+            // 3) Расширение ВПЕРЁД по высотному крэшу — симметрично шагу 1,
+            // но после точки возврата: барометр "доезжает" до реальной высоты
+            // не мгновенно, а за несколько точек по затухающей кривой. Без
+            // этого afterIdx может указывать на точку, высота которой ещё не
+            // осела, и интерполяция эпизода целится в это завышенное/заниженное
+            // значение — на графике высоты это выглядит как резкий шип прямо
+            // перед возвратом к нормальному профилю.
+            if (maxVert > 0 && afterIdx < n) {
+              let altEnd = extendAltitudeForward(
+                eles,
+                times,
+                afterIdx,
+                maxVert,
+              );
+              // Не даём расширению вперёд залезть в начало следующего эпизода
+              // (соседние глитчи могут идти почти подряд) — иначе одна и та же
+              // точка окажется "afterIdx"/точкой вставки сразу у двух эпизодов.
+              const nextEp = episodes[epIdx + 1];
+              if (nextEp && altEnd >= nextEp.firstBad) {
+                altEnd = Math.max(afterIdx, nextEp.firstBad - 1);
+              }
+              if (altEnd > afterIdx) {
+                afterIdx = altEnd;
+                lastBad = afterIdx - 1;
+              }
+            }
           } // !ep.isPause
 
           // Не даём расширению назад залезть на территорию уже
@@ -7406,8 +7463,7 @@
         // Пол 3 м/с — ниже уровня шума GPS порог опускать нет смысла;
         // потолок 120 м/с — быстрее по земле честно не ездят.
         const maxSpeed =
-          Math.round(Math.min(120, Math.max(3, 2 * q(speeds, 0.95))) * 10) /
-          10;
+          Math.round(Math.min(120, Math.max(3, 2 * q(speeds, 0.95))) * 10) / 10;
         const minDist = Math.round(
           Math.min(10000, Math.max(500, 100 * maxSpeed)),
         );
@@ -7420,13 +7476,15 @@
         if (verts.length) {
           verts.sort((a, b) => a - b);
           maxVert =
-            Math.round(Math.min(25, Math.max(3, 3 * q(verts, 0.95))) * 10) /
-            10;
+            Math.round(Math.min(25, Math.max(3, 3 * q(verts, 0.95))) * 10) / 10;
         }
         let interval = 1;
         if (dts.length) {
           dts.sort((a, b) => a - b);
-          interval = Math.min(60, Math.max(0.5, dts[Math.floor(dts.length / 2)]));
+          interval = Math.min(
+            60,
+            Math.max(0.5, dts[Math.floor(dts.length / 2)]),
+          );
         }
         return { maxSpeed, minDist, preJitter, maxVert, interval };
       }
@@ -7459,7 +7517,8 @@
         }
         if (!speeds.length) return { mode: "linear", p90: null };
         speeds.sort((a, b) => a - b);
-        const p90 = speeds[Math.min(speeds.length - 1, Math.floor(0.9 * speeds.length))];
+        const p90 =
+          speeds[Math.min(speeds.length - 1, Math.floor(0.9 * speeds.length))];
         if (p90 < 3) return { mode: "foot", p90 };
         if (p90 < 12) return { mode: "bike", p90 };
         return { mode: "car", p90 };
@@ -7482,9 +7541,7 @@
       function logAutoModes() {
         const a = cachedTrackArrays;
         if (!a || !a.lats || !a.lats.length) return;
-        if (
-          document.getElementById("p-profile").value === AUTO_PROFILE_KEY
-        ) {
+        if (document.getElementById("p-profile").value === AUTO_PROFILE_KEY) {
           const p = computeAutoParams(a);
           if (p) log(t("log_auto_params", p));
         }
@@ -7665,7 +7722,8 @@
         let latlngs = [];
         const idxs = inst.idxs && inst.idxs.length ? inst.idxs : null;
         if (!idxs) {
-          for (let i = lo; i <= hi; i++) latlngs.push([data.lats[i], data.lons[i]]);
+          for (let i = lo; i <= hi; i++)
+            latlngs.push([data.lats[i], data.lons[i]]);
         } else {
           // Основной трек на карте рисуется по сглаженным и прореженным точкам
           // (см. showTrackMap: smoothLats/smoothLons + idxs). Чтобы мигающая
@@ -7742,7 +7800,9 @@
         }
         group.addTo(inst.map);
         inst.episodeHighlightLayer = group;
-        const bounds = L.latLngBounds(latlngs.length ? latlngs : [[data.lats[lo], data.lons[lo]]]);
+        const bounds = L.latLngBounds(
+          latlngs.length ? latlngs : [[data.lats[lo], data.lons[lo]]],
+        );
         inst.map.fitBounds(bounds, { padding: [60, 60], maxZoom: 16 });
       }
 
@@ -7840,9 +7900,7 @@
           btnFix.disabled = true;
           return;
         }
-        if (
-          document.getElementById("p-profile").value === AUTO_PROFILE_KEY
-        ) {
+        if (document.getElementById("p-profile").value === AUTO_PROFILE_KEY) {
           applyAutoParams({ lats, lons, eles, times });
         }
         const maxSpeed =
@@ -7967,8 +8025,7 @@
           // отрисована и кликать было бы негде.
           if (hasAfter) {
             const mapAfterEl = document.getElementById("map-after");
-            const mapReady =
-              mapAfterEl && mapAfterEl.style.display === "block";
+            const mapReady = mapAfterEl && mapAfterEl.style.display === "block";
             const modeVal = episodeChoices[idx];
             const routeless = modeVal === "keep" || modeVal === "remove";
             const picking = waypointPickModeIdx === idx;
