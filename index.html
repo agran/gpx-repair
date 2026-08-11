@@ -276,6 +276,10 @@
         border-left-color: #a3e635;
         background: rgba(163, 230, 53, 0.07);
       }
+      .episode-row--manual {
+        border-left-color: #f59e0b;
+        background: rgba(245, 158, 11, 0.08);
+      }
       .episode-row--pause .episode-info strong::before {
         content: "⏸ ";
       }
@@ -284,6 +288,9 @@
       }
       .episode-row--jam .episode-info strong::before {
         content: "⚠ ";
+      }
+      .episode-row--manual .episode-info strong::before {
+        content: "✋ ";
       }
       .episode-row:last-child {
         border-bottom: none;
@@ -569,6 +576,31 @@
       }
       #btn-reststops-linear:hover {
         background: #14264a;
+      }
+      /* Кнопка ручного добавления эпизода — та же база, что и у
+         btn-reststops-linear, но с явным "активным" состоянием на время
+         выбора границ на карте (аналог .episode-waypoint-btn.picking). */
+      #btn-add-manual-episode {
+        padding: 8px 12px;
+        border: 1px solid #0f3460;
+        border-radius: 8px;
+        background: #0d1b35;
+        color: #e0e0e0;
+        font-size: 0.85rem;
+        cursor: pointer;
+        transition: background 0.15s ease;
+      }
+      #btn-add-manual-episode:hover {
+        background: #14264a;
+      }
+      #btn-add-manual-episode.picking {
+        background: #f59e0b;
+        border-color: #f59e0b;
+        color: #1a1a1a;
+        font-weight: 600;
+      }
+      .map-picking-manual-episode {
+        cursor: crosshair !important;
       }
 
       /* Log */
@@ -1403,6 +1435,15 @@
       >
         Спрямить все привалы
       </button>
+      <button
+        type="button"
+        id="btn-add-manual-episode"
+        style="margin-bottom: 12px"
+        data-i18n="btn_add_manual_episode"
+        data-i18n-title="hint_add_manual_episode"
+      >
+        ✋ Добавить эпизод вручную
+      </button>
       <div id="episode-list"></div>
     </div>
 
@@ -1575,9 +1616,28 @@
           episode_label: "Эпизод {n}",
           episode_pause_label: "Пауза {n}",
           episode_reststop_label: "Привал {n}",
+          episode_manual_label: "Ручной эпизод {n}",
+          episode_list_empty:
+            "Аномалий не найдено. Если знаете участок, где глушилка не была замечена автоматически, добавьте его вручную.",
           btn_reststops_linear: "Спрямить все привалы",
           hint_reststops_linear:
             "Вместо клубка GPS-шума на месте стоянки — простая прямая через привал",
+          btn_add_manual_episode: "✋ Добавить эпизод вручную",
+          hint_add_manual_episode:
+            "Отметить на карте «до» участок, который автодетектор не нашёл сам",
+          btn_manual_episode_pick_start:
+            "Кликните на карте: точка ПЕРЕД проблемным участком",
+          btn_manual_episode_pick_end:
+            "Кликните на карте: точка ПОСЛЕ проблемного участка",
+          hint_manual_episode_cancel: "Кликните ещё раз, чтобы отменить выбор",
+          btn_manual_episode_remove: "Удалить эпизод",
+          hint_manual_episode_remove: "Убрать этот вручную добавленный эпизод",
+          log_manual_pick_start:
+            "Выбор ручного эпизода: кликните по карте «до» две точки — до и после проблемного участка",
+          log_manual_pick_too_short:
+            "Между выбранными точками нет ни одной точки трека — эпизод не создан",
+          log_manual_episode_added:
+            "Добавлен ручной эпизод: точки [{first}..{last}]",
           episode_tail: "обрыв в конце трека",
           episode_points: "{n} точек",
           episode_pause_gap: "пауза записи",
@@ -1792,9 +1852,28 @@
           episode_label: "Episode {n}",
           episode_pause_label: "Pause {n}",
           episode_reststop_label: "Rest stop {n}",
+          episode_manual_label: "Manual episode {n}",
+          episode_list_empty:
+            "No anomalies found. If you know a section the auto-detector missed, add it manually.",
           btn_reststops_linear: "Straighten all rest stops",
           hint_reststops_linear:
             "Replace the GPS-noise tangle at each stop with a simple straight line through it",
+          btn_add_manual_episode: "✋ Add episode manually",
+          hint_add_manual_episode:
+            'Mark a section on the "before" map that the auto-detector didn\'t find on its own',
+          btn_manual_episode_pick_start:
+            "Click on the map: the point BEFORE the bad section",
+          btn_manual_episode_pick_end:
+            "Click on the map: the point AFTER the bad section",
+          hint_manual_episode_cancel: "Click again to cancel the selection",
+          btn_manual_episode_remove: "Remove episode",
+          hint_manual_episode_remove: "Remove this manually added episode",
+          log_manual_pick_start:
+            'Manual episode: click two points on the "before" map — before and after the bad section',
+          log_manual_pick_too_short:
+            "There isn't a single track point between the chosen points — episode not created",
+          log_manual_episode_added:
+            "Manual episode added: points [{first}..{last}]",
           episode_tail: "track cut off at the end",
           episode_points: "{n} points",
           episode_pause_gap: "recording pause",
@@ -3203,6 +3282,16 @@
           const inst = mapInstances[containerId];
           const data = mapTrackData[containerId];
           if (!data || !data.lats.length) return;
+          if (containerId === "map-before" && manualPickState) {
+            const idx = nearestIndexBy(
+              data.lats.length,
+              (i) => [data.lats[i], data.lons[i]],
+              e.latlng.lat,
+              e.latlng.lng,
+            );
+            handleManualEpisodePickClick(idx);
+            return;
+          }
           if (inst && inst.pinnedIdx != null) {
             const pinnedPt = pinnedMapPoint(containerId);
             const clickPt = inst.map.latLngToLayerPoint(e.latlng);
@@ -3547,6 +3636,24 @@
             map.on("click", (e) => {
               if (waypointPickModeIdx !== null) {
                 setEpisodeWaypoint(waypointPickModeIdx, e.latlng);
+              }
+            });
+          } else if (containerId === "map-before") {
+            // Тот же приём, что и выше для map-after: клик по самой линии
+            // трека перехватывается onMainTrackClick, а этот голый клик по
+            // карте нужен, чтобы границу ручного эпизода можно было выбрать
+            // рядом с треком, не попадая точно в линию.
+            map.on("click", (e) => {
+              if (manualPickState) {
+                const data = mapTrackData[containerId];
+                if (!data || !data.lats.length) return;
+                const idx = nearestIndexBy(
+                  data.lats.length,
+                  (i) => [data.lats[i], data.lons[i]],
+                  e.latlng.lat,
+                  e.latlng.lng,
+                );
+                handleManualEpisodePickClick(idx);
               }
             });
           }
@@ -4171,7 +4278,9 @@
             ? "episode_pause_label"
             : found.ep.isRestStop
               ? "episode_reststop_label"
-              : "episode_label",
+              : found.ep.isManual
+                ? "episode_manual_label"
+                : "episode_label",
           { n: found.idx + 1 },
         );
         tagEl.classList.toggle(
@@ -5630,7 +5739,12 @@
             if (trailPace != null && leadDt >= IMPLAUSIBLE_PACE_MIN_GAP_S) {
               let pathSum = 0;
               for (let k = 0; k < origFirstBad - 1; k++) {
-                pathSum += haversine(lats[k], lons[k], lats[k + 1], lons[k + 1]);
+                pathSum += haversine(
+                  lats[k],
+                  lons[k],
+                  lats[k + 1],
+                  lons[k + 1],
+                );
               }
               const leadSpeed = pathSum / leadDt;
               if (
@@ -5653,7 +5767,12 @@
             if (leadPace != null && trailDt >= IMPLAUSIBLE_PACE_MIN_GAP_S) {
               let pathSum = 0;
               for (let k = origAfterIdx; k < n - 1; k++) {
-                pathSum += haversine(lats[k], lons[k], lats[k + 1], lons[k + 1]);
+                pathSum += haversine(
+                  lats[k],
+                  lons[k],
+                  lats[k + 1],
+                  lons[k + 1],
+                );
               }
               const trailSpeed = pathSum / trailDt;
               if (
@@ -7451,7 +7570,7 @@
         // расширяем крайний эпизод до края трека, если это подтверждается
         // честным темпом с противоположного края.
         extendOuterImplausiblePace(lats, lons, times, episodesWithPauses);
-        const episodes = mergeWithRestStops(
+        const episodesAuto = mergeWithRestStops(
           episodesWithPauses,
           findRestStopClusters(
             lats,
@@ -7462,6 +7581,12 @@
             buildExcludedRangesForRestStops(episodesWithPauses),
           ),
         );
+        // Домешиваем эпизоды, добавленные пользователем вручную — см.
+        // mergeManualEpisodes/updateEpisodeList. Список должен строиться
+        // абсолютно так же, как в updateEpisodeList, иначе индексы
+        // episodeChoices/waypoints (по позиции в списке) разойдутся с тем,
+        // что видел пользователь в предпросмотре.
+        const episodes = mergeManualEpisodes(episodesAuto, lats.length);
 
         if (!episodes.length) {
           log(t("log_no_episodes"), "log-warn");
@@ -8554,6 +8679,183 @@
       // кликом по нижней карте (map-after), либо null, если режим выключен.
       let waypointPickModeIdx = null;
 
+      // ─── Ручное добавление эпизода (когда авто-детектор что-то пропустил) ──
+      // Диапазоны {firstBad, lastBad, afterIdx}, добавленные пользователем
+      // явным указанием границ на карте "до" — независимо от результатов
+      // findJammerEpisodes/findRecordingPauseGaps/findRestStopClusters.
+      // Индексы — по исходным (нераспрореженным) точкам трека, поэтому
+      // остаются валидными при смене параметров детекции (пересчёт всё
+      // равно оперирует тем же самым файлом), но сбрасываются при загрузке
+      // НОВОГО файла (см. loadFile) — старые индексы к другому треку не
+      // относятся. См. mergeManualEpisodes — используется и в
+      // updateEpisodeList (превью), и в fixGpx (сама обработка), чтобы
+      // индексы эпизодов совпадали в обоих местах (episodeChoices/waypoints
+      // адресуются по позиции в этом общем списке).
+      let manualEpisodeRanges = [];
+      // null — режим выбора границ выключен; {firstIdx: null} — включён,
+      // ждём клика по первой границе; {firstIdx: N} — первая граница уже
+      // выбрана, ждём клика по второй.
+      let manualPickState = null;
+
+      const btnAddManualEpisode = document.getElementById(
+        "btn-add-manual-episode",
+      );
+
+      // Обновляет текст/подсветку кнопки в соответствии с текущим шагом
+      // выбора границ ручного эпизода.
+      function updateManualEpisodeButtonUi() {
+        if (!btnAddManualEpisode) return;
+        if (!manualPickState) {
+          btnAddManualEpisode.textContent = t("btn_add_manual_episode");
+          btnAddManualEpisode.classList.remove("picking");
+          btnAddManualEpisode.title = t("hint_add_manual_episode");
+        } else if (manualPickState.firstIdx == null) {
+          btnAddManualEpisode.textContent = t("btn_manual_episode_pick_start");
+          btnAddManualEpisode.classList.add("picking");
+          btnAddManualEpisode.title = t("hint_manual_episode_cancel");
+        } else {
+          btnAddManualEpisode.textContent = t("btn_manual_episode_pick_end");
+          btnAddManualEpisode.classList.add("picking");
+          btnAddManualEpisode.title = t("hint_manual_episode_cancel");
+        }
+      }
+
+      // Включает режим выбора границ на карте "до" — первым кликом
+      // отмечается последняя честная точка ПЕРЕД испорченным участком,
+      // вторым — первая честная точка ПОСЛЕ него (порядок клика неважен,
+      // см. handleManualEpisodePickClick). Повторное нажатие на кнопку в
+      // процессе выбора — отмена без создания эпизода.
+      function startManualEpisodePick() {
+        if (!cachedTrackArrays || !cachedTrackArrays.lats.length) return;
+        manualPickState = { firstIdx: null };
+        clearEpisodeHighlightState();
+        const mapEl = document.getElementById("map-before");
+        if (mapEl) mapEl.classList.add("map-picking-manual-episode");
+        updateManualEpisodeButtonUi();
+        log(t("log_manual_pick_start"), "log-info");
+      }
+
+      function cancelManualEpisodePick() {
+        manualPickState = null;
+        const mapEl = document.getElementById("map-before");
+        if (mapEl) mapEl.classList.remove("map-picking-manual-episode");
+        updateManualEpisodeButtonUi();
+      }
+
+      if (btnAddManualEpisode) {
+        btnAddManualEpisode.addEventListener("click", () => {
+          if (manualPickState) {
+            cancelManualEpisodePick();
+          } else {
+            startManualEpisodePick();
+          }
+        });
+      }
+
+      // Обрабатывает клик по карте "до" во время активного выбора границ
+      // ручного эпизода — idx — индекс ближайшей к клику РЕАЛЬНОЙ точки
+      // трека (см. вызовы в onMainTrackClick и голом map.on("click")).
+      function handleManualEpisodePickClick(idx) {
+        if (!manualPickState) return;
+        if (manualPickState.firstIdx == null) {
+          manualPickState.firstIdx = idx;
+          updateManualEpisodeButtonUi();
+          highlightRangeOnMap("map-before", idx, idx);
+          return;
+        }
+        let idx0 = manualPickState.firstIdx;
+        let idx1 = idx;
+        if (idx1 === idx0) return; // тот же клик повторно — просто ждём другую точку
+        if (idx1 < idx0) [idx0, idx1] = [idx1, idx0];
+        addManualEpisode(idx0, idx1);
+        cancelManualEpisodePick();
+      }
+
+      // Создаёт ручной эпизод: idx0 — последняя честная точка ДО, idx1 —
+      // первая честная точка ПОСЛЕ испорченного участка (сами эти точки
+      // остаются "хорошими" — испорченным считается всё МЕЖДУ ними).
+      function addManualEpisode(idx0, idx1) {
+        const firstBad = idx0 + 1;
+        const lastBad = idx1 - 1;
+        if (firstBad > lastBad) {
+          log(t("log_manual_pick_too_short"), "log-warn");
+          return;
+        }
+        manualEpisodeRanges.push({ firstBad, lastBad, afterIdx: idx1 });
+        log(
+          t("log_manual_episode_added", {
+            first: firstBad,
+            last: lastBad,
+          }),
+          "log-info",
+        );
+        updateEpisodeList(cachedTrackArrays || undefined);
+        if (!btnFix.disabled) btnFix.classList.add("needs-refix");
+      }
+
+      // Убирает ранее добавленный ручной эпизод (кнопка "✕" в списке) —
+      // находим по совпадению границ, так как отдельного id у них нет.
+      function removeManualEpisode(ep) {
+        const i = manualEpisodeRanges.findIndex(
+          (mr) =>
+            mr.firstBad === ep.firstBad &&
+            mr.lastBad === ep.lastBad &&
+            mr.afterIdx === ep.afterIdx,
+        );
+        if (i !== -1) manualEpisodeRanges.splice(i, 1);
+        updateEpisodeList(cachedTrackArrays || undefined);
+        if (!btnFix.disabled) btnFix.classList.add("needs-refix");
+      }
+
+      // Домешивает ручные эпизоды в уже построенный автоматический список —
+      // используется идентично в updateEpisodeList (превью) и fixGpx
+      // (сама обработка), чтобы индексы совпадали. Ручной эпизод, который
+      // пересекается с уже найденными автоматически, ЗАМЕНЯЕТ их целиком —
+      // пользователь явно указал границы вручную, значит его выбор главнее
+      // (например, он объединяет несколько соседних авто-эпизодов в один,
+      // если между ними по факту нет честного участка). Пересечение с
+      // ДРУГИМ ручным эпизодом всё ещё отбрасывается — иначе непонятно, что
+      // должно "победить" при обработке одних и тех же точек двумя ручными
+      // эпизодами одновременно.
+      function mergeManualEpisodes(episodes, n) {
+        if (!manualEpisodeRanges.length) return episodes;
+        const rangeOf = (ep) => [
+          Math.min(ep.firstBad, ep.lastBad, ep.afterIdx),
+          Math.max(ep.firstBad, ep.lastBad, ep.afterIdx),
+        ];
+        const accepted = [];
+        for (const mr of manualEpisodeRanges) {
+          if (
+            mr.firstBad < 0 ||
+            mr.lastBad >= n ||
+            mr.afterIdx < 0 ||
+            mr.afterIdx >= n
+          ) {
+            continue; // индексы больше не валидны для текущего трека
+          }
+          const [a, b] = rangeOf(mr);
+          const overlapsOtherManual = accepted.some((acc) => {
+            const [aa, bb] = rangeOf(acc);
+            return a <= bb && b >= aa;
+          });
+          if (overlapsOtherManual) continue;
+          accepted.push({ ...mr, isManual: true });
+        }
+        if (!accepted.length) return episodes;
+        // Авто-эпизоды, пересекающиеся хотя бы с одним принятым ручным,
+        // выбрасываются целиком — ручной эпизод покрывает их промежуток сам.
+        const survivingAuto = episodes.filter((ep) => {
+          const [ea, eb] = rangeOf(ep);
+          return !accepted.some((acc) => {
+            const [aa, bb] = rangeOf(acc);
+            return ea <= bb && eb >= aa;
+          });
+        });
+        return survivingAuto
+          .concat(accepted)
+          .sort((x, y) => x.firstBad - y.firstBad);
+      }
+
       // Убирает все маркеры обязательных точек с указанной карты (не трогая
       // сами данные episodeWaypoints) — используется перед перерисовкой и
       // при сбросе списка эпизодов (старые индексы больше не актуальны).
@@ -8907,7 +9209,7 @@
         // найденными выше глушилками/паузами (см.
         // buildExcludedRangesForRestStops) — привал ищем последним, уже
         // после глушилок и пауз.
-        const finalEpisodes = mergeWithRestStops(
+        const finalEpisodesAuto = mergeWithRestStops(
           episodesWithPauses,
           findRestStopClusters(
             lats,
@@ -8917,6 +9219,12 @@
             REST_STOP_MIN_DURATION_S,
             buildExcludedRangesForRestStops(episodesWithPauses),
           ),
+        );
+        // Домешиваем эпизоды, добавленные пользователем вручную (см.
+        // btn-add-manual-episode) — они не зависят от параметров детекции.
+        const finalEpisodes = mergeManualEpisodes(
+          finalEpisodesAuto,
+          lats.length,
         );
         episodePreview = finalEpisodes;
         episodePreviewTimes = times;
@@ -8933,7 +9241,10 @@
         );
         renderEpisodeList(finalEpisodes, times);
         const hasEpisodes = finalEpisodes.length > 0;
-        episodeCard.style.display = hasEpisodes ? "block" : "none";
+        // Карта аномалий видна всегда, пока трек загружен — иначе кнопка
+        // "Добавить эпизод вручную" была бы недостижима, когда автодетектор
+        // ничего не нашёл (а это ровно тот случай, когда она нужнее всего).
+        episodeCard.style.display = "block";
         noEpisodesMsg.style.display = hasEpisodes ? "none" : "block";
         btnFix.disabled = !hasEpisodes;
       }
@@ -8945,9 +9256,16 @@
         // есть хотя бы один привал.
         const hasRestStops = episodes.some((ep) => ep.isRestStop);
         btnRestStopsLinear.style.display = hasRestStops ? "" : "none";
+        if (!episodes.length) {
+          const emptyMsg = document.createElement("p");
+          emptyMsg.className = "hint";
+          emptyMsg.style.marginTop = "0";
+          emptyMsg.textContent = t("episode_list_empty");
+          episodeListEl.appendChild(emptyMsg);
+        }
         episodes.forEach((ep, idx) => {
           const row = document.createElement("div");
-          row.className = `episode-row ${ep.isPause ? "episode-row--pause" : ep.isRestStop ? "episode-row--reststop" : "episode-row--jam"}`;
+          row.className = `episode-row ${ep.isPause ? "episode-row--pause" : ep.isRestStop ? "episode-row--reststop" : ep.isManual ? "episode-row--manual" : "episode-row--jam"}`;
 
           const info = document.createElement("div");
           info.className = "episode-info";
@@ -8964,7 +9282,9 @@
             ? "episode_pause_label"
             : ep.isRestStop
               ? "episode_reststop_label"
-              : "episode_label";
+              : ep.isManual
+                ? "episode_manual_label"
+                : "episode_label";
           info.innerHTML =
             `<strong>${t(epLabelKey, { n: idx + 1 })}</strong>: ${tFrom} → ${hasAfter ? formatEpisodeTime(times[ep.afterIdx]) : t("episode_tail")}` +
             (durS !== null
@@ -9084,6 +9404,19 @@
               wpInfo.appendChild(clearBtn);
               actions.appendChild(wpInfo);
             }
+          }
+
+          // Ручной эпизод можно убрать целиком — кнопка "✕" рядом с
+          // остальными действиями (в отличие от clearEpisodeWaypoint,
+          // которая убирает только обязательную точку, не сам эпизод).
+          if (ep.isManual) {
+            const removeBtn = document.createElement("button");
+            removeBtn.type = "button";
+            removeBtn.className = "episode-waypoint-clear";
+            removeBtn.textContent = "✕ " + t("btn_manual_episode_remove");
+            removeBtn.title = t("hint_manual_episode_remove");
+            removeBtn.addEventListener("click", () => removeManualEpisode(ep));
+            actions.appendChild(removeBtn);
           }
 
           row.appendChild(info);
@@ -9265,6 +9598,8 @@
                   log(t("alert_parse_fail", { msg: err.message }), "log-err");
                   btnFix.disabled = true;
                   gpxText = null;
+                  manualEpisodeRanges = [];
+                  cancelManualEpisodePick();
                   trackLoadedForScrollBtn = false;
                   updateScrollToFixVisibility();
                   document.getElementById("color-mode-row").style.display =
@@ -9281,6 +9616,10 @@
                 // должна снова попытаться распарсить, а не тихо взять
                 // массивы ПРЕДЫДУЩЕГО файла).
                 cachedTrackArrays = null;
+                // Ручные эпизоды привязаны к индексам точек конкретного
+                // файла — при загрузке нового файла они теряют смысл.
+                manualEpisodeRanges = [];
+                cancelManualEpisodePick();
                 trackLoadedForScrollBtn = true;
                 updateScrollToFixVisibility();
                 log("");
