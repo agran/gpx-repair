@@ -228,6 +228,22 @@
         font-size: 0.73rem;
         color: #8b94a8;
       }
+      /* Специфичность выше, чем у ".param-row label", иначе базовые стили
+         подписей параметров перекрывают оформление чекбокса. */
+      .param-row label.force-trails-toggle {
+        display: flex;
+        flex-direction: row;
+        align-items: center;
+        gap: 6px;
+        font-size: 0.85rem;
+        color: #e0e0e0;
+        cursor: pointer;
+        user-select: none;
+        margin-top: 6px;
+      }
+      .force-trails-toggle input {
+        cursor: pointer;
+      }
       .profile-row {
         margin-bottom: 16px;
         padding-bottom: 16px;
@@ -1334,6 +1350,20 @@
           отправляются на routing.openstreetmap.de (построение маршрута) и
           api.open-meteo.com (высоты)</span
         >
+        <label class="force-trails-toggle">
+          <input type="checkbox" id="p-force-trails" />
+          <span data-i18n="label_force_trails"
+            >Усиленно стремиться к тропам</span
+          >
+        </label>
+        <span class="hint" data-i18n="hint_force_trails"
+          >Для режимов "Маршрут": не отказываться от маршрута, даже если
+          границы участка далеко от ближайшей тропы/дороги — к ней добавляются
+          прямые подходы. Полезно, когда глушилка увела трек в сторону, а вы на
+          самом деле шли по тропе. Сначала пробуется тропный движок brouter.de
+          (видит горные тропы, которых нет в OSRM) — координаты границ
+          отправляются и туда</span
+        >
       </div>
       <div class="params-grid" id="params-grid">
         <div class="param-row">
@@ -1599,6 +1629,9 @@
           gapfill_car: "Маршрут: авто",
           gapfill_remove: "Удалить без замены",
           gapfill_keep: "Оставить как было",
+          label_force_trails: "Усиленно стремиться к тропам",
+          hint_force_trails:
+            'Для режимов "Маршрут": не отказываться от маршрута, даже если границы участка далеко от ближайшей тропы/дороги — к ней добавляются прямые подходы. Полезно, когда глушилка увела трек в сторону, а вы на самом деле шли по тропе. Сначала пробуется тропный движок brouter.de (видит горные тропы, которых нет в OSRM) — координаты границ отправляются и туда',
           label_maxspeed: "Макс. горизонт. скорость (м/с)",
           hint_maxspeed:
             "Пеший поход: 10–15 &nbsp;|&nbsp; Велосипед: 25–40 &nbsp;|&nbsp; Авто: 80–120",
@@ -1808,6 +1841,10 @@
           reason_far_from_road: "граница пробела далеко от дороги/тропы",
           log_fallback_profile:
             "не нашлось автодороги рядом — пробуем маршрут «{mode}»",
+          log_trail_approach:
+            "  Привязка маршрута далеко от границ ({d0} м / {d1} м) — добавлены прямые подходы к тропе",
+          log_trail_engine:
+            "  Маршрут по тропам построен движком BRouter (brouter.de)",
           reason_big_detour: "маршрут — слишком большой крюк",
           reason_too_slow: "маршрут не проходим за время пробела",
         },
@@ -1834,6 +1871,9 @@
           gapfill_car: "Route: car",
           gapfill_remove: "Delete without replacement",
           gapfill_keep: "Leave unchanged",
+          label_force_trails: "Strongly prefer trails",
+          hint_force_trails:
+            'For "Route" modes: don\'t give up on routing even if the section boundaries are far from the nearest trail/road — straight approach legs are added to reach it. Useful when the jammer dragged the track aside while you actually stayed on the trail. The trail engine brouter.de is tried first (it sees mountain trails missing from OSRM) — boundary coordinates are sent there as well',
           label_maxspeed: "Max. horizontal speed (m/s)",
           hint_maxspeed:
             "Hiking: 10–15 &nbsp;|&nbsp; Bike: 25–40 &nbsp;|&nbsp; Car: 80–120",
@@ -2046,6 +2086,10 @@
           reason_far_from_road: "gap boundary is far from a road/trail",
           log_fallback_profile:
             'no nearby road found — trying a "{mode}" route instead',
+          log_trail_approach:
+            "  Route snapped far from the boundaries ({d0} m / {d1} m) — added straight approach legs to the trail",
+          log_trail_engine:
+            "  Trail route built with the BRouter engine (brouter.de)",
           reason_big_detour: "route is too much of a detour",
           reason_too_slow: "route isn't traversable within the gap time",
         },
@@ -6647,6 +6691,51 @@
         return null;
       }
 
+      // ─── Маршрутизация по тропам (BRouter) ─────────────────────────────────────
+      // Запасной движок для режима "Усиленно стремиться к тропам". Пеший
+      // профиль OSRM отбрасывает часть горных троп (с высоким sac_scale и
+      // т.п.), из-за чего привязка улетает на далёкую дорогу, хотя рядом есть
+      // тропа. BRouter с профилем trekking видит все OSM-тропы (те же, что
+      // рисуют OpenTopoMap/CyclOSM), отвечает GeoJSON-ом, ключа не требует.
+      // Ответ нормализуется под форму OSRM (routes/waypoints), чтобы дальше
+      // работал общий код проверок и ресемплинга; distance считаем по самой
+      // геометрии, а привязку — как расстояние от запрошенных границ до
+      // концов линии (BRouter привязывает концы к ближайшим путям сам).
+      async function fetchRouteTrail(p0, p1) {
+        const url =
+          "https://brouter.de/brouter?lonlats=" +
+          `${p0.lon},${p0.lat}|${p1.lon},${p1.lat}` +
+          "&profile=trekking&alternativeidx=0&format=geojson";
+        try {
+          const data = await fetchJsonTimeout(url);
+          const f = data && data.features && data.features[0];
+          // Координаты GeoJSON/BRouter — [lon, lat, ele] (ele лишняя, но не
+          // мешает: resampleRoute деструктурирует первые два элемента).
+          const coords = f && f.geometry && f.geometry.coordinates;
+          if (!coords || coords.length < 2) return null;
+          let dist = 0;
+          for (let i = 1; i < coords.length; i++) {
+            dist += haversine(
+              coords[i - 1][1],
+              coords[i - 1][0],
+              coords[i][1],
+              coords[i][0],
+            );
+          }
+          const first = coords[0];
+          const last = coords[coords.length - 1];
+          return {
+            routes: [{ distance: dist, geometry: { coordinates: coords } }],
+            waypoints: [
+              { distance: haversine(p0.lat, p0.lon, first[1], first[0]) },
+              { distance: haversine(p1.lat, p1.lon, last[1], last[0]) },
+            ],
+          };
+        } catch (e) {
+          return null; // молча откатываемся на OSRM/линию — как и везде здесь
+        }
+      }
+
       // Ресемплинг ломаной маршрута по времени: модель постоянной скорости
       // вдоль пути. coords — [[lon,lat], ...] (порядок OSRM/GeoJSON).
       function resampleRoute(coords, totalS, intervalS) {
@@ -7084,10 +7173,31 @@
         // Проверено на реальном треке (Тырныауз): граница эпизода лежала в
         // ~40 м от тропы, но в >1 км от ближайшей автодороги — с одним лишь
         // автопрофилем это давало бессмысленную прямую линию через долину.
-        const profilesToTry = profile === "car" ? ["car", "foot"] : [profile];
+        // При включённой галочке "Усиленно стремиться к тропам" пеший профиль
+        // добавляется фолбэком для ЛЮБОГО режима (не только авто): пеший граф
+        // в горах самый полный, и именно он нужен, когда пользователь знает,
+        // что шёл по тропе, а глушилка увела запись в сторону.
+        const forceTrails =
+          document.getElementById("p-force-trails")?.checked === true;
+        const profilesToTry =
+          profile === "foot"
+            ? ["foot"]
+            : forceTrails || profile === "car"
+              ? [profile, "foot"]
+              : [profile];
+        // Попытки построения маршрута. С галочкой первым идёт тропный движок
+        // (BRouter): он видит горные тропы, которых нет в пешем графе OSRM,
+        // и не даёт привязке улетать на далёкую дорогу мимо ближней тропы
+        // (см. fetchRouteTrail). Если он недоступен/не нашёл путь — дальше
+        // обычные OSRM-профили, там снова возможна далёкая привязка с
+        // прямыми подходами.
+        const attempts = [];
+        if (forceTrails) attempts.push({ engine: "brouter" });
+        for (const p of profilesToTry)
+          attempts.push({ engine: "osrm", profile: p });
 
         let lastReason = "reason_no_route";
-        for (const p of profilesToTry) {
+        for (const attempt of attempts) {
           if (routedBudget.used >= routedBudget.max) {
             return await fallback(
               t("reason_routing_limit", { max: routedBudget.max }),
@@ -7097,11 +7207,17 @@
 
           let route;
           try {
-            route = await fetchRoute(
-              p,
-              { lat: lat0, lon: lon0 },
-              { lat: lat1, lon: lon1 },
-            );
+            route =
+              attempt.engine === "brouter"
+                ? await fetchRouteTrail(
+                    { lat: lat0, lon: lon0 },
+                    { lat: lat1, lon: lon1 },
+                  )
+                : await fetchRoute(
+                    attempt.profile,
+                    { lat: lat0, lon: lon0 },
+                    { lat: lat1, lon: lon1 },
+                  );
           } catch (e) {
             route = null;
           }
@@ -7112,17 +7228,27 @@
 
           const r = route.routes[0];
           const wp = route.waypoints;
-          if (
-            !wp ||
-            wp.length < 2 ||
-            wp[0].distance > 300 ||
-            wp[1].distance > 300
-          ) {
+          // Дистанция привязки: как далеко OSRM отнёс запрошенные границы до
+          // ближайшей проходимой кромки графа.
+          const snap0 = wp && wp.length >= 2 ? wp[0].distance : Infinity;
+          const snap1 = wp && wp.length >= 2 ? wp[1].distance : Infinity;
+          // Обычно далёкая привязка — признак того, что маршрут не имеет
+          // отношения к реальному пути, и его лучше отвергнуть. С галочкой
+          // "стремиться к тропам" — наоборот принимаем любую: пользователь
+          // знает, что шёл по тропе, а прямые подходы к ней добавятся ниже.
+          const maxSnapM = forceTrails ? Infinity : 300;
+          if (!wp || wp.length < 2 || snap0 > maxSnapM || snap1 > maxSnapM) {
             lastReason = "reason_far_from_road";
             continue;
           }
           const routeDist = r.distance;
-          if (routeDist / Math.max(D, 1) > 4) {
+          // Полная длина пути: маршрут плюс прямые подходы от реальных границ
+          // до точек привязки (без галочки snap ≤ 300 м и тонет в погрешности,
+          // поэтому учитываем подходы только когда они реально добавляются).
+          const pathDist = forceTrails ? routeDist + snap0 + snap1 : routeDist;
+          // С галочкой порог крюка смягчён (4 → 8): далёкая тропа законно
+          // удлиняет путь — это и есть запрошенное "стремление к тропам".
+          if (pathDist / Math.max(D, 1) > (forceTrails ? 8 : 4)) {
             lastReason = "reason_big_detour";
             continue;
           }
@@ -7138,20 +7264,51 @@
           // трасса. Проверено на реальном треке (Чегемское — Архонский):
           // маршрут по трассе «Транскам» превышал порог всего на 0.4%.
           const ROUTE_SPEED_TOLERANCE = 1.15;
-          if (routeDist / totalS > maxSpeedParam * ROUTE_SPEED_TOLERANCE) {
+          // С галочкой допуск смягчён (1.15 → 1.5) и считается по полной
+          // длине пути с подходами: отвергать найденный маршрут по тропе
+          // из-за умеренного превышения скорости противоречило бы смыслу
+          // опции. Совсем без проверки нельзя: маршрут, физически
+          // непроходимый за время пробела, — признак ошибочной привязки.
+          const speedTolerance = forceTrails ? 1.5 : ROUTE_SPEED_TOLERANCE;
+          if (pathDist / totalS > maxSpeedParam * speedTolerance) {
             lastReason = "reason_too_slow";
             continue;
           }
 
-          if (p !== profile) {
+          if (attempt.engine === "brouter") {
+            log(t("log_trail_engine"), "log-info");
+          } else if (attempt.profile !== profile) {
             log(
-              t("log_fallback_profile", { mode: t("modeword_" + p) }),
+              t("log_fallback_profile", {
+                mode: t("modeword_" + attempt.profile),
+              }),
               "log-warn",
             );
           }
 
+          // С галочкой "стремиться к тропам" и далёкой привязкой добавляем в
+          // геометрию прямые подходы: реальная граница → точка привязки →
+          // маршрут → точка привязки → реальная граница. Без этого скачок от
+          // трека до далёкой тропы спрятался бы внутрь первых метров шва (см.
+          // SEAM_BLEND_DIST_M) с физически нереальной скоростью; с подходами
+          // ресемплинг честно распределяет время пробела на весь путь с
+          // постоянной скоростью. Порог 50 м: близкую привязку и так гладко
+          // обрабатывает примыкание.
+          let routeCoords = r.geometry.coordinates;
+          let approachLegsAdded = false;
+          if (forceTrails && (snap0 > 50 || snap1 > 50)) {
+            routeCoords = [[lon0, lat0], ...routeCoords, [lon1, lat1]];
+            approachLegsAdded = true;
+            log(
+              t("log_trail_approach", {
+                d0: Math.round(snap0),
+                d1: Math.round(snap1),
+              }),
+              "log-info",
+            );
+          }
           const { points: sampled, totalLength: routeLen } = resampleRoute(
-            r.geometry.coordinates,
+            routeCoords,
             totalS,
             intervalS,
           );
@@ -7265,7 +7422,9 @@
             points: pts,
             method: "routed",
             demOk,
-            distanceKm: routeDist / 1000,
+            // С добавленными подходами фактический путь длиннее маршрута OSRM —
+            // в лог честнее писать полную длину.
+            distanceKm: (approachLegsAdded ? routeLen : routeDist) / 1000,
           };
         }
         return await fallback(t(lastReason));
