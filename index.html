@@ -230,7 +230,7 @@
       }
       /* Специфичность выше, чем у ".param-row label", иначе базовые стили
          подписей параметров перекрывают оформление чекбокса. */
-      .param-row label.force-trails-toggle {
+      .param-row label.param-toggle {
         display: flex;
         flex-direction: row;
         align-items: center;
@@ -241,7 +241,7 @@
         user-select: none;
         margin-top: 6px;
       }
-      .force-trails-toggle input {
+      .param-toggle input {
         cursor: pointer;
       }
       .profile-row {
@@ -1350,7 +1350,7 @@
           отправляются на routing.openstreetmap.de (построение маршрута) и
           api.open-meteo.com (высоты)</span
         >
-        <label class="force-trails-toggle">
+        <label class="param-toggle">
           <input type="checkbox" id="p-force-trails" />
           <span data-i18n="label_force_trails"
             >Усиленно стремиться к тропам</span
@@ -1363,6 +1363,21 @@
           самом деле шли по тропе. Сначала пробуется тропный движок brouter.de
           (видит горные тропы, которых нет в OSRM) — координаты границ
           отправляются и туда</span
+        >
+      </div>
+      <div class="param-row profile-row">
+        <label class="param-toggle">
+          <input type="checkbox" id="p-fix-elevation" checked />
+          <span data-i18n="label_fix_elevation"
+            >Чинить высоту по рельефу при сильном расхождении</span
+          >
+        </label>
+        <span class="hint" data-i18n="hint_fix_elevation"
+          >Если записанная высота участка расходится с рельефом (DEM) больше
+          чем на 250 м (барометр/GPS-высота сломались при глушении), она
+          пересчитывается по рельефу с плавными швами. Координаты и время не
+          меняются. Для проверки опорные точки трека отправляются на
+          api.open-meteo.com</span
         >
       </div>
       <div class="params-grid" id="params-grid">
@@ -1632,6 +1647,9 @@
           label_force_trails: "Усиленно стремиться к тропам",
           hint_force_trails:
             'Для режимов "Маршрут": не отказываться от маршрута, даже если границы участка далеко от ближайшей тропы/дороги — к ней добавляются прямые подходы. Полезно, когда глушилка увела трек в сторону, а вы на самом деле шли по тропе. Сначала пробуется тропный движок brouter.de (видит горные тропы, которых нет в OSRM) — координаты границ отправляются и туда',
+          label_fix_elevation: "Чинить высоту по рельефу при сильном расхождении",
+          hint_fix_elevation:
+            "Если записанная высота участка расходится с рельефом (DEM) больше чем на 250 м (барометр/GPS-высота сломались при глушении), она пересчитывается по рельефу с плавными швами. Координаты и время не меняются. Для проверки опорные точки трека отправляются на api.open-meteo.com",
           label_maxspeed: "Макс. горизонт. скорость (м/с)",
           hint_maxspeed:
             "Пеший поход: 10–15 &nbsp;|&nbsp; Велосипед: 25–40 &nbsp;|&nbsp; Авто: 80–120",
@@ -1845,6 +1863,12 @@
             "  Привязка маршрута далеко от границ ({d0} м / {d1} м) — добавлены прямые подходы к тропе",
           log_trail_engine:
             "  Маршрут по тропам построен движком BRouter (brouter.de)",
+          log_ele_repaired:
+            "🔧 Высота: сбой на участке точек {from}–{to} ({cnt} шт., расхождение с рельефом до {diff} м) — заменена по DEM",
+          log_ele_dem_fail:
+            "⚠ Высота: сбой на участке точек {from}–{to}, но DEM недоступен — оставлено как есть",
+          log_ele_anchor_clamped:
+            "🔧 Высота: у {n} якорей заливок записанная высота сильно расходилась с рельефом — заменена на DEM + смещение трека",
           reason_big_detour: "маршрут — слишком большой крюк",
           reason_too_slow: "маршрут не проходим за время пробела",
         },
@@ -1874,6 +1898,9 @@
           label_force_trails: "Strongly prefer trails",
           hint_force_trails:
             'For "Route" modes: don\'t give up on routing even if the section boundaries are far from the nearest trail/road — straight approach legs are added to reach it. Useful when the jammer dragged the track aside while you actually stayed on the trail. The trail engine brouter.de is tried first (it sees mountain trails missing from OSRM) — boundary coordinates are sent there as well',
+          label_fix_elevation: "Fix elevation from terrain on large mismatch",
+          hint_fix_elevation:
+            "If a section's recorded elevation diverges from terrain (DEM) by more than 250 m (baro/GPS altitude broke during jamming), it is recomputed from terrain with smooth seams. Coordinates and timestamps are left unchanged. Sample track points are sent to api.open-meteo.com for the check",
           label_maxspeed: "Max. horizontal speed (m/s)",
           hint_maxspeed:
             "Hiking: 10–15 &nbsp;|&nbsp; Bike: 25–40 &nbsp;|&nbsp; Car: 80–120",
@@ -2090,6 +2117,12 @@
             "  Route snapped far from the boundaries ({d0} m / {d1} m) — added straight approach legs to the trail",
           log_trail_engine:
             "  Trail route built with the BRouter engine (brouter.de)",
+          log_ele_repaired:
+            "🔧 Elevation: glitch at points {from}–{to} ({cnt} pts, terrain mismatch up to {diff} m) — replaced from DEM",
+          log_ele_dem_fail:
+            "⚠ Elevation: glitch at points {from}–{to}, but DEM is unavailable — left as-is",
+          log_ele_anchor_clamped:
+            "🔧 Elevation: {n} fill anchors disagreed with terrain badly — replaced with DEM + track offset",
           reason_big_detour: "route is too much of a detour",
           reason_too_slow: "route isn't traversable within the gap time",
         },
@@ -6909,6 +6942,16 @@
         return lat.toFixed(4) + "," + lon.toFixed(4);
       }
 
+      // Базовое смещение "записанная высота − рельеф" по всему треку (медиана
+      // по опорным точкам) — вычисляет repairElevationGlitches при каждом
+      // запуске fixGpx. null — проверка высоты выключена или DEM недоступен,
+      // и тогда калибровка заливок работает по-старому (смещения якорей
+      // сохраняются как есть). eleAnchorClampCount — сколько якорей за прогон
+      // было перепривязано к DEM (для итогового лога).
+      const ELE_ANCHOR_CLAMP_M = 100;
+      let eleBaselineOffset = null;
+      let eleAnchorClampCount = 0;
+
       // Сначала пробуем прямой запрос к сервису высот. Если не получилось
       // (таймаут/сетевая ошибка/HTTP-ошибка), только тогда повторяем тот же
       // URL через ELEVATION_PROXY. Маршрутизация OSRM не проксируется.
@@ -7053,6 +7096,30 @@
         const dem1 = demMap.get(eleCacheKey(lat1, lon1));
         if (dem0 == null || dem1 == null) return null;
 
+        // Если записанная высота якоря расходится с рельефом намного сильнее
+        // базового смещения всего трека (eleBaselineOffset, см.
+        // repairElevationGlitches), она битая: глушилка убивает высоту и у
+        // честных по координатам точек, а каскад сцепленных эпизодов
+        // (каждая следующая заливка якорится на хвост предыдущей) разносит
+        // это смещение по всем ногам — реальный случай: вершина Казбека на
+        // достроенном участке уехала с ~4980 м на 4448 м (смещение −530 м
+        // накопилось за ~12 ног). Протаскивать такое смещение в заливку
+        // нельзя — заменяем высоту якоря на DEM + базовое смещение трека.
+        // Без базовой линии (проверка высоты выключена или DEM недоступен)
+        // поведение прежнее — смещение якоря сохраняется.
+        let ele0c = ele0,
+          ele1c = ele1;
+        if (eleBaselineOffset != null) {
+          if (Math.abs(ele0 - dem0 - eleBaselineOffset) > ELE_ANCHOR_CLAMP_M) {
+            ele0c = dem0 + eleBaselineOffset;
+            eleAnchorClampCount++;
+          }
+          if (Math.abs(ele1 - dem1 - eleBaselineOffset) > ELE_ANCHOR_CLAMP_M) {
+            ele1c = dem1 + eleBaselineOffset;
+            eleAnchorClampCount++;
+          }
+        }
+
         const known = [];
         for (const i of anchorIdxs) {
           const v = demMap.get(eleCacheKey(points[i].lat, points[i].lon));
@@ -7087,7 +7154,7 @@
         }
 
         return points.map((p, k) =>
-          calibrateElevation(demAtIndex[k], alphas[k], ele0, dem0, ele1, dem1),
+          calibrateElevation(demAtIndex[k], alphas[k], ele0c, dem0, ele1c, dem1),
         );
       }
 
@@ -7110,6 +7177,164 @@
           out = next;
         }
         return out;
+      }
+
+      // ─── Починка "высотных сбоев" на честных участках ──────────────────────────
+      // Глушилка портит не только координаты: приёмник/барометр может выдавать
+      // мусорную высоту на участке, чьи координаты выглядят правдоподобно и
+      // потому НЕ попадают ни в один эпизод. Такая высота переживает починку
+      // нетронутой — хуже того, если это граница эпизода, она тянет за собой
+      // калибровку всей заливки (реальный случай: вершина Казбека на
+      // достроенном по тропе участке срезана с ~5000 м до 4362 м, потому что
+      // записанная высота честной по координатам границы была занижена на
+      // ~600 м, и calibrateElevation добросовестно сохранил это смещение).
+      //
+      // Здесь — независимая проверка: записанная высота сравнивается с рельефом
+      // (DEM) в опорных точках трека. Постоянное смещение барометра (десятки
+      // метров, уходит в baseline-медиану) отфильтровывается — ловятся только
+      // ЛОКАЛЬНЫЕ экскурсии от рельефа. Сбойные прогоны пересчитываются по DEM
+      // тем же demCalibrateAlongPath (швы калибруются по ближайшим чистым
+      // опорам, ступенек нет); координаты/время/сенсоры не меняются.
+      //
+      // Ограничения:
+      // - сбой короче шага опорных точек (≈длина трека/384) может быть
+      //   пропущен — опрашивать DEM для каждой точки длинного трека слишком
+      //   дорого; одиночные сбойные опоры отбрасываются как шум DEM (скалы,
+      //   гребни) — ловим прогоны из 2+ подряд;
+      // - если сбой покрывает БОЛЬШУЮ часть трека, медиана уедет в сбойную
+      //   зону и флагнутся честные участки — но они всё равно получат
+      //   DEM-калиброванную высоту, т.е. результат останется правдоподобным;
+      // - точки внутри эпизодов пропускаются (координаты битые → DEM
+      //   бессмысленен) — их высоту чинит заполнение эпизода.
+      const ELE_GLITCH_THRESHOLD_M = 250;
+      const ELE_GLITCH_MAX_ANCHORS = 384;
+
+      // isBadIdx(i) — true для точек внутри эпизодов (их пропускаем и не
+      // чиним). Возвращает { repaired, baseline }: число исправленных точек и
+      // базовое смещение "записанная высота − рельеф" (медиана по опорам) —
+      // baseline уходит в eleBaselineOffset для клампа битых якорей заливок
+      // (см. demCalibrateAlongPath).
+      async function repairElevationGlitches(
+        lats,
+        lons,
+        eles,
+        times,
+        isBadIdx,
+        eleEls,
+      ) {
+        const n = lats.length;
+        const kept = [];
+        for (let i = 0; i < n; i++) if (!isBadIdx(i)) kept.push(i);
+        if (kept.length < 10) return { repaired: 0, baseline: null };
+
+        // Опорные точки — равномерно по честным точкам трека.
+        const anchors = [];
+        const anchorStep = Math.max(
+          1,
+          Math.ceil(kept.length / ELE_GLITCH_MAX_ANCHORS),
+        );
+        for (let k = 0; k < kept.length; k += anchorStep) anchors.push(kept[k]);
+        if (anchors[anchors.length - 1] !== kept[kept.length - 1]) {
+          anchors.push(kept[kept.length - 1]);
+        }
+
+        let demMap;
+        try {
+          demMap = await fetchElevations(
+            anchors.map((i) => ({ lat: lats[i], lon: lons[i] })),
+          );
+        } catch (e) {
+          // сеть/DEM недоступны — оставляем высоту как есть
+          return { repaired: 0, baseline: null };
+        }
+        // Расхождение записанной высоты с рельефом в каждой опоре.
+        const diffs = anchors.map((i) => {
+          const d = demMap.get(eleCacheKey(lats[i], lons[i]));
+          return d == null ? null : eles[i] - d;
+        });
+        const validDiffs = diffs.filter((d) => d != null).sort((x, y) => x - y);
+        if (validDiffs.length < 5) return { repaired: 0, baseline: null };
+        // Базовая линия = медиана расхождения: поглощает глобальное смещение
+        // барометра и устойчива к сбойному меньшинству опор.
+        const baseline = validDiffs[Math.floor(validDiffs.length / 2)];
+
+        const flagged = diffs.map(
+          (d) => d != null && Math.abs(d - baseline) > ELE_GLITCH_THRESHOLD_M,
+        );
+
+        let repaired = 0;
+        let a = 0;
+        while (a < anchors.length) {
+          if (!flagged[a]) {
+            a++;
+            continue;
+          }
+          let b = a;
+          while (b + 1 < anchors.length && flagged[b + 1]) b++;
+          const runLen = b - a + 1;
+          // Ближайшие ЧИСТЫЕ опоры снаружи прогона — калибровочные границы.
+          const cleanBefore = a > 0 ? anchors[a - 1] : null;
+          const cleanAfter = b + 1 < anchors.length ? anchors[b + 1] : null;
+          let maxDev = 0;
+          for (let k = a; k <= b; k++) {
+            maxDev = Math.max(maxDev, Math.abs(diffs[k] - baseline));
+          }
+          a = b + 1;
+          if (runLen < 2) continue; // одиночный выброс — шум DEM, не трогаем
+          if (cleanBefore == null && cleanAfter == null) continue;
+
+          // Ремонтный интервал — между чистыми опорами (если сбой у края
+          // трека — от края до единственной чистой опоры, калибровочное
+          // смещение тогда константное: обе опоры одна и та же точка).
+          const idx0 = cleanBefore != null ? cleanBefore : kept[0];
+          const idx1 =
+            cleanAfter != null ? cleanAfter : kept[kept.length - 1];
+          const c0 = cleanBefore != null ? cleanBefore : cleanAfter;
+          const c1 = cleanAfter != null ? cleanAfter : cleanBefore;
+          const inner = kept.filter((i) => i > idx0 && i < idx1);
+          if (!inner.length) continue;
+
+          const t0 = times[c0];
+          const t1 = times[c1];
+          const span = Math.max(1e-6, t1 - t0);
+          const points = inner.map((i) => ({ lat: lats[i], lon: lons[i] }));
+          const alphas = inner.map((i) => {
+            const v = (times[i] - t0) / span;
+            return v < 0 ? 0 : v > 1 ? 1 : v;
+          });
+          const demEles = await demCalibrateAlongPath(
+            points,
+            alphas,
+            lats[c0],
+            lons[c0],
+            eles[c0],
+            lats[c1],
+            lons[c1],
+            eles[c1],
+          );
+          if (!demEles) {
+            log(
+              t("log_ele_dem_fail", { from: idx0, to: idx1 }),
+              "log-warn",
+            );
+            continue;
+          }
+          inner.forEach((i, k) => {
+            eles[i] = demEles[k];
+            if (eleEls[i]) eleEls[i].textContent = demEles[k].toFixed(1);
+          });
+          repaired += inner.length;
+          log(
+            t("log_ele_repaired", {
+              from: idx0,
+              to: idx1,
+              cnt: inner.length,
+              diff: Math.round(maxDev),
+            }),
+            "log-ok",
+          );
+        }
+        return { repaired, baseline };
       }
 
       // ─── Интерполяция вдоль маршрута с fallback на линейную ────────────────────
@@ -7584,10 +7809,27 @@
           ? leg1.points[leg1.points.length - 1]
           : { lat: lat0, lon: lon0, time: t0 };
         const dtVia = viaT - prevPt.time;
+        // Высота обязательной точки: линейная viaEle между границами эпизода
+        // уезжает, если сам via лежит высоко/низко над линией границ (типично:
+        // точка поставлена на вершине, а границы — внизу на склоне). Концы
+        // обеих ног уже откалиброваны по DEM и лежат у via-координат — берём
+        // их. Для линейных ног (DEM недоступен) их концы и есть viaEle —
+        // поведение не меняется.
+        let viaEleFinal = viaEle;
+        const leg1Last = leg1.points[leg1.points.length - 1];
+        const leg2First = leg2.points[0];
+        if (
+          leg1Last &&
+          leg2First &&
+          Number.isFinite(leg1Last.ele) &&
+          Number.isFinite(leg2First.ele)
+        ) {
+          viaEleFinal = (leg1Last.ele + leg2First.ele) / 2;
+        }
         const viaPoint = {
           lat: viaLat,
           lon: viaLon,
-          ele: viaEle,
+          ele: viaEleFinal,
           time: viaT,
           speed:
             dtVia > 0
@@ -7669,6 +7911,11 @@
         // признак "фейковой" точки, надёжнее любой чисто геометрической
         // эвристики — используем его при поиске точки возврата из глушения.
         const hdops = new Array(n);
+        // DOM-узлы <ele> каждой точки — нужны repairElevationGlitches, чтобы
+        // исправленная высота попала и в выходной XML (сохраняемые точки
+        // сериализуются из DOM, см. сборку trkseg ниже), а не только в
+        // массив eles для карты/статистики.
+        const eleEls = new Array(n);
         // Один проход по каждой точке (extractTrkptFields делает один
         // querySelector на <extensions> вместо трёх отдельных для hr/cad/atemp,
         // и корректно находит их даже при namespace-префиксе,
@@ -7678,6 +7925,7 @@
             allPts[i],
           );
           eles[i] = eleEl ? parseFloat(eleEl.textContent) : 0;
+          eleEls[i] = eleEl;
           timeEls[i] = timeEl;
           times[i] = timeEl ? parseTime(timeEl.textContent) : 0;
           hrs[i] = hr;
@@ -7747,7 +7995,34 @@
         // что видел пользователь в предпросмотре.
         const episodes = mergeManualEpisodes(episodesAuto, lats.length);
 
-        if (!episodes.length) {
+        // Починка высотных сбоев на честных участках (см.
+        // repairElevationGlitches) — ДО цикла эпизодов: если у честной по
+        // координатам границы эпизода битая высота, она должна успеть
+        // починиться, иначе калибровка заливки заякорится на мусор и весь
+        // достроенный участок уедет по высоте (см. комментарий к функции).
+        // Точки внутри эпизодов из проверки исключены — там битые координаты,
+        // DEM по ним бессмысленен, их высоту чинит сама заливка.
+        // eleBaselineOffset (базовое смещение высоты трека) дополнительно
+        // страхует сами заливки от битых якорей — см. кламп в
+        // demCalibrateAlongPath.
+        eleBaselineOffset = null;
+        eleAnchorClampCount = 0;
+        let eleRepairedCount = 0;
+        if (document.getElementById("p-fix-elevation")?.checked) {
+          const badRanges = episodes.map((ep) => [ep.firstBad, ep.lastBad]);
+          const eleScan = await repairElevationGlitches(
+            lats,
+            lons,
+            eles,
+            times,
+            (i) => badRanges.some(([a, b]) => i >= a && i <= b),
+            eleEls,
+          );
+          eleRepairedCount = eleScan.repaired;
+          eleBaselineOffset = eleScan.baseline;
+        }
+
+        if (!episodes.length && !eleRepairedCount) {
           log(t("log_no_episodes"), "log-warn");
           return { xml: xmlText, interpSegments: [] };
         }
@@ -8266,6 +8541,13 @@
         }
 
         // ─── Перестройка сегмента ─────────────────────────────────────────────────
+
+        if (eleAnchorClampCount > 0) {
+          log(
+            t("log_ele_anchor_clamped", { n: eleAnchorClampCount }),
+            "log-info",
+          );
+        }
 
         // Собираем оставшиеся trkpt и вставляем интерполированные
         const segs = Array.from(doc.querySelectorAll("trkseg"));
