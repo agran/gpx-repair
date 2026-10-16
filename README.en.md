@@ -19,6 +19,13 @@ with a plausible replacement — one of two ways:
 
 Upload a GPX file right in your browser — no installation, no server.
 
+**Drawing a missing track start.** Forgot to start recording at the beginning of
+the route? In the "Anomalous sections" card press "🚩 Draw missing track start"
+and click the "before" map where you actually set off. The missing part up to the
+first recorded point is built along a trail/road (or in a straight line) at a
+constant speed — estimated from the first minutes of the recorded track by
+default, and editable.
+
 ## Python version
 
 ```bash

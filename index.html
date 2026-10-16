@@ -596,7 +596,8 @@
       /* Кнопка ручного добавления эпизода — та же база, что и у
          btn-reststops-linear, но с явным "активным" состоянием на время
          выбора границ на карте (аналог .episode-waypoint-btn.picking). */
-      #btn-add-manual-episode {
+      #btn-add-manual-episode,
+      #btn-start-fill {
         padding: 8px 12px;
         border: 1px solid #0f3460;
         border-radius: 8px;
@@ -606,17 +607,53 @@
         cursor: pointer;
         transition: background 0.15s ease;
       }
-      #btn-add-manual-episode:hover {
+      #btn-add-manual-episode:hover,
+      #btn-start-fill:hover {
         background: #14264a;
       }
-      #btn-add-manual-episode.picking {
+      #btn-add-manual-episode.picking,
+      #btn-start-fill.picking {
         background: #f59e0b;
         border-color: #f59e0b;
         color: #1a1a1a;
         font-weight: 600;
       }
-      .map-picking-manual-episode {
+      .map-picking-manual-episode,
+      .map-picking-start-fill {
         cursor: crosshair !important;
+      }
+      .start-fill-details {
+        margin-bottom: 12px;
+      }
+      .start-fill-row {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 10px 14px;
+        font-size: 0.85rem;
+      }
+      .start-fill-row label {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+      }
+      .start-fill-row input[type="number"] {
+        width: 80px;
+      }
+      #btn-start-fill-clear {
+        padding: 4px 10px;
+        border: 1px solid #0f3460;
+        border-radius: 8px;
+        background: #0d1b35;
+        color: #e0e0e0;
+        cursor: pointer;
+      }
+      .start-fill-pin {
+        width: 22px;
+        height: 22px;
+        font-size: 18px;
+        line-height: 22px;
+        text-align: center;
       }
 
       /* Log */
@@ -1489,6 +1526,53 @@
       >
         ✋ Добавить эпизод вручную
       </button>
+      <button
+        type="button"
+        id="btn-start-fill"
+        style="margin-bottom: 12px"
+        data-i18n="btn_start_fill"
+        data-i18n-title="hint_start_fill"
+      >
+        🚩 Дорисовать начало трека
+      </button>
+      <div id="start-fill-details" class="start-fill-details" style="display: none">
+        <div class="start-fill-row">
+          <span id="start-fill-coords"></span>
+          <label>
+            <span data-i18n="start_fill_mode_label">Путь</span>
+            <select id="start-fill-mode">
+              <option value="linear" data-i18n="gapfill_linear">
+                Простое соединение
+              </option>
+              <option value="foot" data-i18n="gapfill_foot">
+                Маршрут: пешком
+              </option>
+              <option value="bike" data-i18n="gapfill_bike">
+                Маршрут: велосипед
+              </option>
+              <option value="car" data-i18n="gapfill_car">Маршрут: авто</option>
+            </select>
+          </label>
+          <label>
+            <span data-i18n="start_fill_speed_label">Скорость, км/ч</span>
+            <input
+              type="number"
+              id="start-fill-speed"
+              min="0.5"
+              max="200"
+              step="0.1"
+            />
+          </label>
+          <button
+            type="button"
+            id="btn-start-fill-clear"
+            data-i18n-title="hint_start_fill_clear"
+          >
+            ✕
+          </button>
+        </div>
+        <span class="hint" id="start-fill-info"></span>
+      </div>
       <div id="episode-list"></div>
     </div>
 
@@ -1689,6 +1773,29 @@
             "Между выбранными точками нет ни одной точки трека — эпизод не создан",
           log_manual_episode_added:
             "Добавлен ручной эпизод: точки [{first}..{last}]",
+          btn_start_fill: "🚩 Дорисовать начало трека",
+          btn_start_fill_change: "🚩 Изменить начальную точку",
+          btn_start_fill_picking: "Кликните на карте «до»: где вы начали путь",
+          hint_start_fill:
+            "Забыли включить запись в начале маршрута? Отметьте на карте «до», откуда вы вышли — недостающий участок до первой записанной точки будет достроен по тропе или напрямую с примерной скоростью",
+          hint_start_fill_cancel: "Кликните ещё раз, чтобы отменить выбор",
+          hint_start_fill_clear: "Не дорисовывать начало",
+          start_fill_mode_label: "Путь",
+          start_fill_speed_label: "Скорость, км/ч",
+          start_fill_info: "До первой записанной точки по прямой {km} км.",
+          start_fill_info_time: "При этой скорости — около {dur}.",
+          log_start_fill_pick:
+            "Дорисовка начала: кликните по карте «до» в точке, где вы начали движение",
+          log_start_fill_set:
+            "Начальная точка дорисовки задана: {lat}, {lon} — нажмите «Исправить трек»",
+          log_start_fill_too_close:
+            "Дорисовка начала пропущена: начальная точка почти совпадает с первой записанной",
+          log_start_fill_routed:
+            "Начало трека: маршрут построен ({modeLabel}, высоты: {demStatus})",
+          log_start_fill_fallback:
+            "Начало трека: маршрут не построен, использована плавная кривая{reasonSuffix}",
+          log_start_fill_done:
+            "Дорисовано начало трека: {km} км за {dur} при {kmh} км/ч ({cnt} точек)",
           episode_tail: "обрыв в конце трека",
           episode_points: "{n} точек",
           episode_pause_gap: "пауза записи",
@@ -1941,6 +2048,30 @@
             "There isn't a single track point between the chosen points — episode not created",
           log_manual_episode_added:
             "Manual episode added: points [{first}..{last}]",
+          btn_start_fill: "🚩 Draw missing track start",
+          btn_start_fill_change: "🚩 Change start point",
+          btn_start_fill_picking:
+            'Click on the "before" map: where you started moving',
+          hint_start_fill:
+            'Forgot to start recording at the beginning of the route? Mark on the "before" map where you set off — the missing part up to the first recorded point is built along a trail or in a straight line at an approximate speed',
+          hint_start_fill_cancel: "Click again to cancel the selection",
+          hint_start_fill_clear: "Don't draw the start",
+          start_fill_mode_label: "Path",
+          start_fill_speed_label: "Speed, km/h",
+          start_fill_info: "Straight line to the first recorded point: {km} km.",
+          start_fill_info_time: "At this speed — about {dur}.",
+          log_start_fill_pick:
+            'Track start: click the "before" map where you started moving',
+          log_start_fill_set:
+            'Start point set: {lat}, {lon} — press "Fix track"',
+          log_start_fill_too_close:
+            "Track start skipped: the start point is almost the same as the first recorded point",
+          log_start_fill_routed:
+            "Track start: route built ({modeLabel}, elevation: {demStatus})",
+          log_start_fill_fallback:
+            "Track start: no route found, a smooth curve was used{reasonSuffix}",
+          log_start_fill_done:
+            "Track start drawn: {km} km in {dur} at {kmh} km/h ({cnt} points)",
           episode_tail: "track cut off at the end",
           episode_points: "{n} points",
           episode_pause_gap: "recording pause",
@@ -3358,6 +3489,10 @@
           }
           const inst = mapInstances[containerId];
           const data = mapTrackData[containerId];
+          if (containerId === "map-before" && startFillPicking) {
+            handleStartFillPickClick(e.latlng);
+            return;
+          }
           if (!data || !data.lats.length) return;
           if (containerId === "map-before" && manualPickState) {
             const idx = nearestIndexBy(
@@ -3721,6 +3856,10 @@
             // карте нужен, чтобы границу ручного эпизода можно было выбрать
             // рядом с треком, не попадая точно в линию.
             map.on("click", (e) => {
+              if (startFillPicking) {
+                handleStartFillPickClick(e.latlng);
+                return;
+              }
               if (manualPickState) {
                 const data = mapTrackData[containerId];
                 if (!data || !data.lats.length) return;
@@ -7860,6 +7999,136 @@
         };
       }
 
+      // ─── Дорисовка незаписанного начала трека ───────────────────────────────────
+
+      const START_FILL_DEFAULT_SPEED_MPS = 1.4;
+      const START_FILL_MIN_DIST_M = 5;
+
+      // Оценка темпа по началу записанного трека: расстояние/время движения
+      // за первые ~5 минут от idx (стоянки <0.3 м/с в знаменатель не идут).
+      // Неоценимо (трек короткий/стоит) — возвращает null.
+      function estimateStartSpeedMps(lats, lons, times, idx = 0) {
+        let dist = 0,
+          moving = 0;
+        for (let i = idx; i < lats.length - 1; i++) {
+          if (times[i + 1] - times[idx] > 300) break;
+          const dt = times[i + 1] - times[i];
+          if (!(dt > 0)) continue;
+          const d = haversine(lats[i], lons[i], lats[i + 1], lons[i + 1]);
+          if (d / dt < 0.3) continue;
+          dist += d;
+          moving += dt;
+        }
+        return moving >= 30 ? dist / moving : null;
+      }
+
+      // Строит участок от точки start до первой записанной точки (lat1/lon1/t1)
+      // с постоянной скоростью. Длительность зависит от длины пути, которая
+      // для маршрута известна только после его построения — поэтому сначала
+      // строим с оценочной длительностью, а затем равномерно пересчитываем
+      // времена под фактическую длину. Возвращает точки, включая саму начальную
+      // (первая записанная точка в результат не входит).
+      async function buildStartFill(
+        start,
+        lat1,
+        lon1,
+        ele1,
+        t1,
+        speedMps,
+        mode,
+        intervalS,
+        routedBudget,
+        headingRefAfter,
+      ) {
+        const D = haversine(start.lat, start.lon, lat1, lon1);
+        if (D < START_FILL_MIN_DIST_M) return null;
+
+        const routed = mode !== "linear";
+        let ele0 = ele1;
+        try {
+          const dem = await fetchElevations([
+            { lat: start.lat, lon: start.lon },
+            { lat: lat1, lon: lon1 },
+          ]);
+          const dem0 = dem.get(eleCacheKey(start.lat, start.lon));
+          const dem1 = dem.get(eleCacheKey(lat1, lon1));
+          if (dem0 != null && dem1 != null) ele0 = ele1 + dem0 - dem1;
+        } catch (e) {
+          // сервис высот недоступен — начало берём на высоте первой точки
+        }
+
+        const guessDur = Math.max((D * (routed ? 1.3 : 1)) / speedMps, 1);
+        const t0 = t1 - guessDur;
+        const leg = await buildEpisodeLeg(
+          routed,
+          start.lat,
+          start.lon,
+          ele0,
+          t0,
+          lat1,
+          lon1,
+          ele1,
+          t1,
+          intervalS,
+          {},
+          {},
+          mode,
+          1e9,
+          routedBudget,
+          null,
+          headingRefAfter,
+        );
+
+        const pathM =
+          leg.method === "routed" && leg.distanceKm ? leg.distanceKm * 1000 : D;
+        const dur = Math.max(pathM / speedMps, 1);
+        const k = guessDur / dur;
+        const retime = (time) => t1 - dur + ((time - t0) / guessDur) * dur;
+        const chain = [
+          {
+            lat: start.lat,
+            lon: start.lon,
+            ele: ele0,
+            time: t1 - dur,
+            speed: leg.points.length ? leg.points[0].speed * k : speedMps,
+          },
+          ...leg.points.map((p) => ({
+            ...p,
+            time: retime(p.time),
+            speed: p.speed * k,
+          })),
+          { lat: lat1, lon: lon1, ele: ele1, time: t1, speed: speedMps },
+        ];
+
+        // После пересчёта времён шаг точек перестал совпадать с заданным
+        // интервалом — снова раскладываем точки по времени ровно с шагом
+        // intervalS (первая точка — сама начальная, последняя записанная
+        // точка трека в результат не входит).
+        const points = [];
+        let seg = 0;
+        for (let time = t1 - dur; time < t1 - 1e-6; time += intervalS) {
+          while (seg < chain.length - 2 && chain[seg + 1].time <= time) seg++;
+          const a = chain[seg],
+            b = chain[seg + 1];
+          const f = b.time > a.time ? (time - a.time) / (b.time - a.time) : 0;
+          points.push({
+            lat: a.lat + f * (b.lat - a.lat),
+            lon: a.lon + f * (b.lon - a.lon),
+            ele: a.ele + f * (b.ele - a.ele),
+            time,
+            speed: a.speed + f * (b.speed - a.speed),
+          });
+        }
+        return {
+          points,
+          method: leg.method,
+          reason: leg.reason,
+          demOk: leg.demOk,
+          distanceM: pathM,
+          durationS: dur,
+        };
+      }
+
       // ─── Основная функция обработки ──────────────────────────────────────────────
 
       async function fixGpx(xmlText, params) {
@@ -7871,6 +8140,7 @@
           interval,
           episodeModes,
           waypoints,
+          startFill,
         } = params;
         const modeFor = (idx) =>
           (episodeModes && episodeModes[idx]) || "linear";
@@ -8022,7 +8292,7 @@
           eleBaselineOffset = eleScan.baseline;
         }
 
-        if (!episodes.length && !eleRepairedCount) {
+        if (!episodes.length && !eleRepairedCount && !startFill) {
           log(t("log_no_episodes"), "log-warn");
           return { xml: xmlText, interpSegments: [] };
         }
@@ -8538,6 +8808,86 @@
             insertAfterIdx: afterIdx < n ? afterIdx : null,
             pushedSegment: afterIdx < n,
           };
+        }
+
+        // ─── Дорисовка незаписанного начала ──────────────────────────────────────
+        // Опорная точка — первая ОСТАВШАЯСЯ точка трека (если глушилка с
+        // самого начала вырезана, участок встанет перед первой честной).
+        if (startFill) {
+          let firstKept = 0;
+          while (firstKept < n && removeSet.has(firstKept)) firstKept++;
+          if (firstKept < n) {
+            const speedMps =
+              startFill.speedMps > 0
+                ? startFill.speedMps
+                : estimateStartSpeedMps(lats, lons, times, firstKept) ||
+                  START_FILL_DEFAULT_SPEED_MPS;
+            const fillMode = startFill.mode || "linear";
+            const headingRefAfter =
+              firstKept < n - 1 ? getHeadingRef(lats, lons, firstKept, 1) : null;
+            const fill = await buildStartFill(
+              { lat: startFill.lat, lon: startFill.lon },
+              lats[firstKept],
+              lons[firstKept],
+              eles[firstKept],
+              times[firstKept],
+              speedMps,
+              fillMode,
+              interval,
+              routedBudget,
+              headingRefAfter,
+            );
+            if (!fill) {
+              log(t("log_start_fill_too_close"), "log-warn");
+            } else {
+              if (fillMode !== "linear") {
+                log(
+                  fill.method === "routed"
+                    ? t("log_start_fill_routed", {
+                        modeLabel: interpModeLabel(fillMode),
+                        demStatus: fill.demOk ? t("dem_ok") : t("dem_fail"),
+                      })
+                    : t("log_start_fill_fallback", {
+                        reasonSuffix: fill.reason ? ` (${fill.reason})` : "",
+                      }),
+                  fill.method === "routed" ? "log-ok" : "log-warn",
+                );
+              }
+              log(
+                t("log_start_fill_done", {
+                  km: (fill.distanceM / 1000).toFixed(2),
+                  dur: formatDuration(Math.round(fill.durationS)),
+                  kmh: (speedMps * 3.6).toFixed(1),
+                  cnt: fill.points.length,
+                }),
+                "log-ok",
+              );
+              insertionBefore.set(firstKept, [
+                ...fill.points,
+                ...(insertionBefore.get(firstKept) || []),
+              ]);
+              totalInserted += fill.points.length;
+              interpSegments.push({
+                type: fill.method,
+                points: [
+                  ...fill.points.map((p) => ({
+                    lat: p.lat,
+                    lon: p.lon,
+                    ele: p.ele,
+                    time: p.time,
+                    hr: p.hr,
+                  })),
+                  {
+                    lat: lats[firstKept],
+                    lon: lons[firstKept],
+                    ele: eles[firstKept],
+                    time: times[firstKept],
+                    hr: hrs[firstKept],
+                  },
+                ],
+              });
+            }
+          }
         }
 
         // ─── Перестройка сегмента ─────────────────────────────────────────────────
@@ -9168,6 +9518,7 @@
       // процессе выбора — отмена без создания эпизода.
       function startManualEpisodePick() {
         if (!cachedTrackArrays || !cachedTrackArrays.lats.length) return;
+        if (startFillPicking) cancelStartFillPick();
         manualPickState = { firstIdx: null };
         clearEpisodeHighlightState();
         const mapEl = document.getElementById("map-before");
@@ -9247,6 +9598,178 @@
         updateEpisodeList(cachedTrackArrays || undefined);
         if (!btnFix.disabled) btnFix.classList.add("needs-refix");
       }
+
+      // ─── Дорисовка незаписанного начала трека ────────────────────────────────
+      // Пользователь забыл включить запись и вспомнил через несколько минут:
+      // он ставит на карте «до» точку, откуда реально начал путь, а fixGpx
+      // достраивает участок до первой записанной точки (по тропе или напрямую)
+      // с примерной скоростью — см. buildStartFill.
+      let startFillPoint = null; // {lat, lon} или null
+      let startFillPicking = false;
+      let startFillSpeedEdited = false;
+
+      const btnStartFill = document.getElementById("btn-start-fill");
+      const startFillDetailsEl = document.getElementById("start-fill-details");
+      const startFillModeEl = document.getElementById("start-fill-mode");
+      const startFillSpeedEl = document.getElementById("start-fill-speed");
+
+      // Кнопка "Исправить" доступна, если есть что исправлять: аномальные
+      // участки или дорисовка начала.
+      function syncFixButtonState() {
+        if (!gpxText) return;
+        const hasWork = episodePreview.length > 0 || !!startFillPoint;
+        btnFix.disabled = !hasWork;
+        noEpisodesMsg.style.display = hasWork ? "none" : "block";
+      }
+
+      function updateStartFillUi() {
+        if (!btnStartFill) return;
+        btnStartFill.classList.toggle("picking", startFillPicking);
+        if (startFillPicking) {
+          btnStartFill.textContent = t("btn_start_fill_picking");
+          btnStartFill.title = t("hint_start_fill_cancel");
+        } else {
+          btnStartFill.textContent = t(
+            startFillPoint ? "btn_start_fill_change" : "btn_start_fill",
+          );
+          btnStartFill.title = t("hint_start_fill");
+        }
+        startFillDetailsEl.style.display = startFillPoint ? "" : "none";
+        if (!startFillPoint) return;
+        document.getElementById("start-fill-coords").textContent =
+          `📍 ${startFillPoint.lat.toFixed(5)}, ${startFillPoint.lon.toFixed(5)}`;
+        const a = cachedTrackArrays;
+        const kmh = parseFloat(startFillSpeedEl.value);
+        let info = "";
+        if (a && a.lats.length) {
+          const d = haversine(
+            startFillPoint.lat,
+            startFillPoint.lon,
+            a.lats[0],
+            a.lons[0],
+          );
+          info = t("start_fill_info", { km: (d / 1000).toFixed(2) });
+          if (kmh > 0) {
+            info +=
+              " " +
+              t("start_fill_info_time", {
+                dur: formatDuration(d / (kmh / 3.6)),
+              });
+          }
+        }
+        document.getElementById("start-fill-info").textContent = info;
+      }
+
+      function redrawStartFillLayer() {
+        const inst = mapInstances["map-before"];
+        if (!inst) return;
+        if (inst.startFillLayer) {
+          inst.map.removeLayer(inst.startFillLayer);
+          inst.startFillLayer = null;
+        }
+        if (!startFillPoint) return;
+        const layers = [
+          L.marker([startFillPoint.lat, startFillPoint.lon], {
+            icon: L.divIcon({
+              className: "",
+              html: '<div class="start-fill-pin">🚩</div>',
+              iconSize: [22, 22],
+              iconAnchor: [4, 22],
+            }),
+            zIndexOffset: 1000,
+            interactive: false,
+          }),
+        ];
+        const a = cachedTrackArrays;
+        if (a && a.lats.length) {
+          layers.push(
+            L.polyline(
+              [
+                [startFillPoint.lat, startFillPoint.lon],
+                [a.lats[0], a.lons[0]],
+              ],
+              { color: "#f59e0b", weight: 3, dashArray: "6 8", interactive: false },
+            ),
+          );
+        }
+        inst.startFillLayer = L.layerGroup(layers).addTo(inst.map);
+      }
+
+      function startStartFillPick() {
+        if (!cachedTrackArrays || !cachedTrackArrays.lats.length) return;
+        cancelManualEpisodePick();
+        startFillPicking = true;
+        clearEpisodeHighlightState();
+        const mapEl = document.getElementById("map-before");
+        if (mapEl) mapEl.classList.add("map-picking-start-fill");
+        updateStartFillUi();
+        log(t("log_start_fill_pick"), "log-info");
+      }
+
+      function cancelStartFillPick() {
+        startFillPicking = false;
+        const mapEl = document.getElementById("map-before");
+        if (mapEl) mapEl.classList.remove("map-picking-start-fill");
+        updateStartFillUi();
+      }
+
+      // Клик по карте «до» в режиме выбора — это и есть начальная точка
+      // (в отличие от ручного эпизода, привязки к точкам трека нет).
+      function handleStartFillPickClick(latlng) {
+        if (!startFillPicking) return;
+        startFillPoint = { lat: latlng.lat, lon: latlng.lng };
+        if (!startFillSpeedEdited || !startFillSpeedEl.value) {
+          const a = cachedTrackArrays;
+          const mps =
+            (a && estimateStartSpeedMps(a.lats, a.lons, a.times, 0)) ||
+            START_FILL_DEFAULT_SPEED_MPS;
+          startFillSpeedEl.value = (mps * 3.6).toFixed(1);
+        }
+        const resolved = resolveInterpMode();
+        startFillModeEl.value = Array.from(startFillModeEl.options).some(
+          (o) => o.value === resolved,
+        )
+          ? resolved
+          : "foot";
+        cancelStartFillPick();
+        redrawStartFillLayer();
+        syncFixButtonState();
+        if (!btnFix.disabled) btnFix.classList.add("needs-refix");
+        log(
+          t("log_start_fill_set", {
+            lat: latlng.lat.toFixed(5),
+            lon: latlng.lng.toFixed(5),
+          }),
+          "log-info",
+        );
+      }
+
+      function clearStartFill(silent) {
+        startFillPoint = null;
+        startFillSpeedEdited = false;
+        startFillSpeedEl.value = "";
+        cancelStartFillPick();
+        redrawStartFillLayer();
+        if (silent) return;
+        syncFixButtonState();
+        if (!btnFix.disabled) btnFix.classList.add("needs-refix");
+      }
+
+      btnStartFill.addEventListener("click", () => {
+        if (startFillPicking) cancelStartFillPick();
+        else startStartFillPick();
+      });
+      document
+        .getElementById("btn-start-fill-clear")
+        .addEventListener("click", () => clearStartFill(false));
+      startFillSpeedEl.addEventListener("input", () => {
+        startFillSpeedEdited = true;
+        updateStartFillUi();
+        if (!btnFix.disabled) btnFix.classList.add("needs-refix");
+      });
+      startFillModeEl.addEventListener("change", () => {
+        if (!btnFix.disabled) btnFix.classList.add("needs-refix");
+      });
 
       // Домешивает ручные эпизоды в уже построенный автоматический список —
       // используется идентично в updateEpisodeList (превью) и fixGpx
@@ -9686,8 +10209,11 @@
         // "Добавить эпизод вручную" была бы недостижима, когда автодетектор
         // ничего не нашёл (а это ровно тот случай, когда она нужнее всего).
         episodeCard.style.display = "block";
-        noEpisodesMsg.style.display = hasEpisodes ? "none" : "block";
-        btnFix.disabled = !hasEpisodes;
+        noEpisodesMsg.style.display =
+          hasEpisodes || startFillPoint ? "none" : "block";
+        btnFix.disabled = !hasEpisodes && !startFillPoint;
+        redrawStartFillLayer();
+        updateStartFillUi();
       }
 
       function renderEpisodeList(episodes, times) {
@@ -9882,6 +10408,7 @@
         if (episodePreview.length) {
           renderEpisodeList(episodePreview, episodePreviewTimes);
         }
+        updateStartFillUi();
 
         for (const id of ["track-stats-before", "track-stats-after"]) {
           const stats = lastTrackStats[id];
@@ -10040,6 +10567,7 @@
                   btnFix.disabled = true;
                   gpxText = null;
                   manualEpisodeRanges = [];
+                  clearStartFill(true);
                   cancelManualEpisodePick();
                   trackLoadedForScrollBtn = false;
                   updateScrollToFixVisibility();
@@ -10060,6 +10588,7 @@
                 // Ручные эпизоды привязаны к индексам точек конкретного
                 // файла — при загрузке нового файла они теряют смысл.
                 manualEpisodeRanges = [];
+                clearStartFill(true);
                 cancelManualEpisodePick();
                 trackLoadedForScrollBtn = true;
                 updateScrollToFixVisibility();
@@ -10258,6 +10787,14 @@
           waypoints: episodePreview.map(
             (_, idx) => episodeWaypoints.get(idx) || null,
           ),
+          startFill: startFillPoint
+            ? {
+                lat: startFillPoint.lat,
+                lon: startFillPoint.lon,
+                mode: startFillModeEl.value,
+                speedMps: (parseFloat(startFillSpeedEl.value) || 0) / 3.6,
+              }
+            : null,
         };
 
         // Запускаем в следующем тике, чтобы успел отрисоваться UI
