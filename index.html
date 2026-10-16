@@ -655,6 +655,61 @@
         line-height: 22px;
         text-align: center;
       }
+      .start-fill-row input[type="datetime-local"] {
+        width: auto;
+      }
+      .episode-result {
+        font-size: 0.8rem;
+        color: #4ade80;
+        white-space: nowrap;
+      }
+      .episode-result--warn {
+        color: #f59e0b;
+      }
+      .stat-delta {
+        font-size: 0.7em;
+        opacity: 0.7;
+        white-space: nowrap;
+      }
+      .map-poi-label {
+        background: rgba(13, 27, 53, 0.85);
+        border: 1px solid #0f3460;
+        color: #e0e0e0;
+        font-size: 0.75rem;
+      }
+      .undo-row {
+        display: flex;
+        gap: 8px;
+        margin-bottom: 12px;
+      }
+      .undo-row button {
+        padding: 6px 12px;
+        border: 1px solid #0f3460;
+        border-radius: 8px;
+        background: #0d1b35;
+        color: #e0e0e0;
+        font-size: 0.85rem;
+        cursor: pointer;
+      }
+      .undo-row button:disabled {
+        opacity: 0.4;
+        cursor: default;
+      }
+      /* Крупные цели нажатия на сенсорных экранах */
+      @media (pointer: coarse) {
+        #btn-add-manual-episode,
+        #btn-start-fill,
+        #btn-reststops-linear,
+        #btn-start-fill-clear,
+        .undo-row button,
+        .episode-waypoint-btn {
+          min-height: 44px;
+        }
+        .start-fill-row select,
+        .start-fill-row input {
+          min-height: 40px;
+        }
+      }
 
       /* Log */
       #log {
@@ -1417,6 +1472,19 @@
           api.open-meteo.com</span
         >
       </div>
+      <div class="param-row profile-row">
+        <label class="param-toggle">
+          <input type="checkbox" id="p-mark-inserted" checked />
+          <span data-i18n="label_mark_inserted"
+            >Помечать достроенные точки в GPX</span
+          >
+        </label>
+        <span class="hint" data-i18n="hint_mark_inserted"
+          >Добавленные точки получают тег &lt;src&gt;gpx-repair&lt;/src&gt;, чтобы
+          потом было видно, какие точки записаны, а какие достроены. Не влияет
+          на отображение в большинстве приложений</span
+        >
+      </div>
       <div class="params-grid" id="params-grid">
         <div class="param-row">
           <label data-i18n="label_maxspeed"
@@ -1508,6 +1576,26 @@
         Для каждого найденного участка можно выбрать свой способ заполнения —
         включая полное удаление без замены или отказ от изменений.
       </p>
+      <div class="undo-row">
+        <button
+          type="button"
+          id="btn-undo"
+          disabled
+          data-i18n="btn_undo"
+          data-i18n-title="hint_undo"
+        >
+          ↶ Отменить
+        </button>
+        <button
+          type="button"
+          id="btn-redo"
+          disabled
+          data-i18n="btn_redo"
+          data-i18n-title="hint_redo"
+        >
+          ↷ Повторить
+        </button>
+      </div>
       <button
         type="button"
         id="btn-reststops-linear"
@@ -1554,6 +1642,17 @@
             </select>
           </label>
           <label>
+            <span data-i18n="start_fill_basis_label">Задать</span>
+            <select id="start-fill-basis">
+              <option value="speed" data-i18n="start_fill_basis_speed">
+                скорость
+              </option>
+              <option value="time" data-i18n="start_fill_basis_time">
+                время старта
+              </option>
+            </select>
+          </label>
+          <label id="start-fill-speed-wrap">
             <span data-i18n="start_fill_speed_label">Скорость, км/ч</span>
             <input
               type="number"
@@ -1562,6 +1661,18 @@
               max="200"
               step="0.1"
             />
+          </label>
+          <label id="start-fill-time-wrap" style="display: none">
+            <span data-i18n="start_fill_time_label">Начало записи</span>
+            <input type="datetime-local" id="start-fill-time" step="1" />
+          </label>
+          <label class="param-toggle">
+            <input type="checkbox" id="start-fill-slope" checked />
+            <span
+              data-i18n="start_fill_slope_label"
+              data-i18n-title="hint_start_fill_slope"
+              >Учитывать уклон</span
+            >
           </label>
           <button
             type="button"
@@ -1790,6 +1901,37 @@
           start_fill_speed_label: "Скорость, км/ч",
           start_fill_info: "До первой записанной точки по прямой {km} км.",
           start_fill_info_time: "При этой скорости — около {dur}.",
+          start_fill_basis_label: "Задать",
+          start_fill_basis_speed: "скорость",
+          start_fill_basis_time: "время старта",
+          start_fill_time_label: "Начало записи",
+          start_fill_slope_label: "Учитывать уклон",
+          hint_start_fill_slope:
+            "На подъёмах и крутых спусках темп падает (формула Тоблера): быстрее всего идут по лёгкому спуску, по крутому — медленно, как и в гору. Скорость в поле слева — на ровном месте",
+          start_fill_info_gap:
+            "До первой точки {dur}, средняя скорость не ниже {kmh} км/ч.",
+          start_fill_time_after_first:
+            "Время старта должно быть раньше первой записанной точки.",
+          log_start_fill_bad_time:
+            "Дорисовка начала пропущена: время старта не раньше первой записанной точки",
+          log_start_fill_speed_fast:
+            "Дорисованное начало: средняя скорость {kmh} км/ч выглядит нереально высокой — проверьте время старта или способ пути",
+          log_start_fill_speed_slow:
+            "Дорисованное начало: средняя скорость {kmh} км/ч слишком низкая — проверьте время старта",
+          log_episode_speed_warn:
+            "Участок {i}: достроенный путь требует скорости около {kmh} км/ч — это выше порога; проверьте участок или выберите другой способ",
+          episode_result_routed: "✓ по маршруту",
+          episode_result_linear: "〰 без маршрута",
+          episode_result_fast: "⚠ скорость {kmh} км/ч",
+          log_draft_restored:
+            "Восстановлены ваши правки для этого трека (ручные эпизоды, режимы, точки, начало)",
+          btn_undo: "↶ Отменить",
+          hint_undo: "Отменить последнее изменение (Ctrl+Z)",
+          btn_redo: "↷ Повторить",
+          hint_redo: "Вернуть отменённое изменение (Ctrl+Y)",
+          label_mark_inserted: "Помечать достроенные точки в GPX",
+          hint_mark_inserted:
+            "Добавленные точки получают тег &lt;src&gt;gpx-repair&lt;/src&gt;, чтобы потом было видно, какие точки записаны, а какие достроены. В большинстве приложений на отображение не влияет",
           log_start_fill_pick:
             "Дорисовка начала: кликните по карте «до» в точке, где вы начали движение",
           log_start_fill_set:
@@ -2072,6 +2214,37 @@
           start_fill_speed_label: "Speed, km/h",
           start_fill_info: "Straight line to the first recorded point: {km} km.",
           start_fill_info_time: "At this speed — about {dur}.",
+          start_fill_basis_label: "Set by",
+          start_fill_basis_speed: "speed",
+          start_fill_basis_time: "start time",
+          start_fill_time_label: "Recording start",
+          start_fill_slope_label: "Account for slope",
+          hint_start_fill_slope:
+            "Pace drops on climbs and steep descents (Tobler's function): the fastest walking is on a gentle downhill, a steep descent is as slow as a climb. The speed field is for flat ground",
+          start_fill_info_gap:
+            "{dur} until the first point, average speed at least {kmh} km/h.",
+          start_fill_time_after_first:
+            "The start time must be earlier than the first recorded point.",
+          log_start_fill_bad_time:
+            "Track start skipped: the start time is not earlier than the first recorded point",
+          log_start_fill_speed_fast:
+            "Drawn track start: an average speed of {kmh} km/h looks unrealistically high — check the start time or the path mode",
+          log_start_fill_speed_slow:
+            "Drawn track start: an average speed of {kmh} km/h is too low — check the start time",
+          log_episode_speed_warn:
+            "Section {i}: the built path needs about {kmh} km/h — above the threshold; check the section or pick another fill mode",
+          episode_result_routed: "✓ along a route",
+          episode_result_linear: "〰 no route",
+          episode_result_fast: "⚠ speed {kmh} km/h",
+          log_draft_restored:
+            "Your edits for this track were restored (manual episodes, modes, points, track start)",
+          btn_undo: "↶ Undo",
+          hint_undo: "Undo the last change (Ctrl+Z)",
+          btn_redo: "↷ Redo",
+          hint_redo: "Redo the undone change (Ctrl+Y)",
+          label_mark_inserted: "Mark inserted points in GPX",
+          hint_mark_inserted:
+            "Added points get a &lt;src&gt;gpx-repair&lt;/src&gt; tag so you can later tell recorded points from built ones. Doesn't affect display in most apps",
           log_start_fill_pick:
             'Track start: click the "before" map where you started moving',
           log_start_fill_set:
@@ -2431,7 +2604,32 @@
           hrs[i] = hr;
           hdops[i] = hdopEl ? parseFloat(hdopEl.textContent) : NaN;
         });
-        return { lats, lons, eles, times, hrs, hdops };
+        return { lats, lons, eles, times, hrs, hdops, pois: extractPois(doc) };
+      }
+
+      // Путевые точки (wpt) и маршруты (rte) из GPX — только для показа на
+      // картах; сами они при обработке не изменяются и целиком сохраняются в
+      // выходном файле.
+      function extractPois(doc) {
+        const wpts = [];
+        for (const w of Array.from(doc.querySelectorAll("wpt")).slice(0, 500)) {
+          const lat = parseFloat(w.getAttribute("lat"));
+          const lon = parseFloat(w.getAttribute("lon"));
+          if (!Number.isFinite(lat) || !Number.isFinite(lon)) continue;
+          const nameEl = w.querySelector("name");
+          wpts.push({ lat, lon, name: nameEl ? nameEl.textContent.trim() : "" });
+        }
+        const routes = [];
+        for (const r of Array.from(doc.querySelectorAll("rte")).slice(0, 50)) {
+          const pts = [];
+          for (const p of Array.from(r.querySelectorAll("rtept"))) {
+            const lat = parseFloat(p.getAttribute("lat"));
+            const lon = parseFloat(p.getAttribute("lon"));
+            if (Number.isFinite(lat) && Number.isFinite(lon)) pts.push([lat, lon]);
+          }
+          if (pts.length > 1) routes.push(pts);
+        }
+        return { wpts, routes };
       }
 
       function fillMissingEle(eles) {
@@ -2621,6 +2819,25 @@
 
       function renderTrackStats(containerEl, stats) {
         lastTrackStats[containerEl.id] = stats;
+        // Для статистики "после" рядом со значениями показываем, на сколько
+        // они изменились относительно исходного трека.
+        const base =
+          containerEl.id === "track-stats-after"
+            ? lastTrackStats["track-stats-before"]
+            : null;
+        const delta = (cur, prev, digits, unit, minAbs) => {
+          if (!base || !Number.isFinite(cur) || !Number.isFinite(prev)) return "";
+          const diff = cur - prev;
+          if (Math.abs(diff) < minAbs) return "";
+          const sign = diff > 0 ? "+" : "−";
+          return ` <span class="stat-delta">${sign}${Math.abs(diff).toFixed(digits)} ${unit}</span>`;
+        };
+        const deltaDur = (cur, prev) => {
+          if (!base || !Number.isFinite(cur) || !Number.isFinite(prev)) return "";
+          const diff = cur - prev;
+          if (Math.abs(diff) < 30) return "";
+          return ` <span class="stat-delta">${diff > 0 ? "+" : "−"}${formatDuration(Math.abs(diff))}</span>`;
+        };
 
         // Группа 1 — время (длина трека переехала в группу скорости — там она
         // логически ближе к средней скорости/темпу, которые из неё же и
@@ -2630,7 +2847,9 @@
           distTimeItems.push(
             {
               label: t("stat_duration"),
-              value: formatDuration(stats.duration),
+              value:
+                formatDuration(stats.duration) +
+                (base ? deltaDur(stats.duration, base.duration) : ""),
             },
             {
               label: t("stat_moving_time"),
@@ -2657,7 +2876,11 @@
         const speedItems = [
           {
             label: t("stat_length"),
-            value: `${(stats.length / 1000).toFixed(2)} ${t("unit_km")}`,
+            value:
+              `${(stats.length / 1000).toFixed(2)} ${t("unit_km")}` +
+              (base
+                ? delta(stats.length / 1000, base.length / 1000, 2, t("unit_km"), 0.005)
+                : ""),
           },
         ];
         if (stats.hasMoving && stats.avgMovingSpeed > 0) {
@@ -2686,11 +2909,19 @@
           elevationItems.push(
             {
               label: t("stat_gain"),
-              value: `${stats.gain.toFixed(0)} ${t("unit_m")}`,
+              value:
+                `${stats.gain.toFixed(0)} ${t("unit_m")}` +
+                (base && base.hasEle
+                  ? delta(stats.gain, base.gain, 0, t("unit_m"), 1)
+                  : ""),
             },
             {
               label: t("stat_loss"),
-              value: `${stats.loss.toFixed(0)} ${t("unit_m")}`,
+              value:
+                `${stats.loss.toFixed(0)} ${t("unit_m")}` +
+                (base && base.hasEle
+                  ? delta(stats.loss, base.loss, 0, t("unit_m"), 1)
+                  : ""),
             },
             {
               label: t("stat_maxele"),
@@ -6566,7 +6797,7 @@
       // pt: {lat, lon, ele, time, speed?, hr?, cad?, atemp?} — сенсорные поля
       // необязательны: пишем только те, что реально удалось интерполировать
       // (оба граничных значения были доступны), никаких нулей-заглушек.
-      function makeTrkptXml(pt, nsExt) {
+      function makeTrkptXml(pt, nsExt, markInserted) {
         const fields = [];
         if (Number.isFinite(pt.atemp))
           fields.push(
@@ -6587,7 +6818,7 @@
 
         return `\t\t\t<trkpt lat="${fmtN(pt.lat)}" lon="${fmtN(pt.lon)}">
       \t\t\t\t<ele>${pt.ele.toFixed(2)}</ele>
-      \t\t\t\t<time>${formatTime(pt.time)}</time>${extensions}
+      \t\t\t\t<time>${formatTime(pt.time)}</time>${markInserted ? "<src>gpx-repair</src>" : ""}${extensions}
       \t\t\t</trkpt>`;
       }
 
@@ -8072,11 +8303,43 @@
       const START_FILL_DEFAULT_SPEED_MPS = 1.4;
       const START_FILL_MIN_DIST_M = 5;
 
-      // Оценка темпа по началу записанного трека: расстояние/время движения
-      // за первые ~5 минут от idx (стоянки <0.3 м/с в знаменатель не идут).
-      // Неоценимо (трек короткий/стоит) — возвращает null.
-      function estimateStartSpeedMps(lats, lons, times, idx = 0) {
-        let dist = 0,
+      // Множитель скорости относительно ровного места в зависимости от уклона
+      // (grade = подъём/расстояние, подъём > 0). Формула Тоблера: максимум на
+      // лёгком спуске (около −5%), а на крутом спуске скорость падает так же,
+      // как на подъёме — быстро спускаться по крутому склону не получается.
+      // strength: 1 — пешком, 0.5 — велосипед, 0 — уклон не влияет.
+      function slopeSpeedFactor(grade, strength = 1) {
+        if (!(strength > 0)) return 1;
+        const g = Math.max(-0.6, Math.min(0.6, Number.isFinite(grade) ? grade : 0));
+        return Math.exp(-3.5 * strength * (Math.abs(g + 0.05) - 0.05));
+      }
+
+      function slopeStrengthForMode(mode) {
+        if (mode === "car") return 0;
+        if (mode === "bike") return 0.5;
+        return 1;
+      }
+
+      // Локальный уклон в точке i: перепад высоты на ближайших ~25 м пути вперёд.
+      function localGrade(lats, lons, eles, i) {
+        let d = 0;
+        const end = Math.min(lats.length, i + 31);
+        for (let j = i + 1; j < end; j++) {
+          d += haversine(lats[j - 1], lons[j - 1], lats[j], lons[j]);
+          if (d >= 25) {
+            const dh = eles[j] - eles[i];
+            return Number.isFinite(dh) ? dh / d : 0;
+          }
+        }
+        return 0;
+      }
+
+      // Оценка темпа по началу записанного трека: за первые ~5 минут от idx
+      // (стоянки <0.3 м/с не считаются). С useSlope возвращает скорость на
+      // ровном месте — наблюдаемый темп очищается от влияния уклона на этом
+      // участке. Неоценимо (трек короткий/стоит) — возвращает null.
+      function estimateStartSpeedMps(lats, lons, times, idx, eles, useSlope) {
+        let flatDist = 0,
           moving = 0;
         for (let i = idx; i < lats.length - 1; i++) {
           if (times[i + 1] - times[idx] > 300) break;
@@ -8084,30 +8347,39 @@
           if (!(dt > 0)) continue;
           const d = haversine(lats[i], lons[i], lats[i + 1], lons[i + 1]);
           if (d / dt < 0.3) continue;
-          dist += d;
+          const f =
+            useSlope && eles
+              ? slopeSpeedFactor(localGrade(lats, lons, eles, i))
+              : 1;
+          flatDist += d / f;
           moving += dt;
         }
-        return moving >= 30 ? dist / moving : null;
+        return moving >= 30 ? flatDist / moving : null;
       }
 
-      // Строит участок от точки start до первой записанной точки (lat1/lon1/t1)
-      // с постоянной скоростью. Длительность зависит от длины пути, которая
-      // для маршрута известна только после его построения — поэтому сначала
-      // строим с оценочной длительностью, а затем равномерно пересчитываем
-      // времена под фактическую длину. Возвращает точки, включая саму начальную
-      // (первая записанная точка в результат не входит).
+      // Строит участок от точки start до первой записанной точки (lat1/lon1/t1).
+      // Скорость задаётся одним из двух способов: opts.speedMps (на ровном
+      // месте) либо opts.startTime (момент выхода, unix-секунды) — тогда
+      // скорость подбирается так, чтобы успеть к первой точке вовремя. С
+      // opts.slopeStrength > 0 темп зависит от уклона (см. slopeSpeedFactor):
+      // на подъёмах и крутых спусках медленнее. Длина пути для маршрута
+      // известна только после его построения, поэтому геометрию строим с
+      // оценочной длительностью, а времена точек считаем уже по готовому пути.
+      // Возвращает точки, включая саму начальную (первая записанная точка в
+      // результат не входит).
       async function buildStartFill(
         start,
         lat1,
         lon1,
         ele1,
         t1,
-        speedMps,
+        opts,
         mode,
         intervalS,
         routedBudget,
         headingRefAfter,
       ) {
+        const { speedMps, startTime, slopeStrength } = opts;
         const D = haversine(start.lat, start.lon, lat1, lon1);
         if (D < START_FILL_MIN_DIST_M) return null;
 
@@ -8125,7 +8397,9 @@
           // сервис высот недоступен — начало берём на высоте первой точки
         }
 
-        const guessDur = Math.max((D * (routed ? 1.3 : 1)) / speedMps, 1);
+        const guessDur = startTime
+          ? Math.max(t1 - startTime, 1)
+          : Math.max((D * (routed ? 1.3 : 1)) / speedMps, 1);
         const t0 = t1 - guessDur;
         const leg = await buildEpisodeLeg(
           routed,
@@ -8147,31 +8421,40 @@
           headingRefAfter,
         );
 
-        const pathM =
-          leg.method === "routed" && leg.distanceKm ? leg.distanceKm * 1000 : D;
-        const dur = Math.max(pathM / speedMps, 1);
-        const k = guessDur / dur;
-        const retime = (time) => t1 - dur + ((time - t0) / guessDur) * dur;
         const chain = [
-          {
-            lat: start.lat,
-            lon: start.lon,
-            ele: ele0,
-            time: t1 - dur,
-            speed: leg.points.length ? leg.points[0].speed * k : speedMps,
-          },
-          ...leg.points.map((p) => ({
-            ...p,
-            time: retime(p.time),
-            speed: p.speed * k,
-          })),
-          { lat: lat1, lon: lon1, ele: ele1, time: t1, speed: speedMps },
+          { lat: start.lat, lon: start.lon, ele: ele0 },
+          ...leg.points.map((p) => ({ lat: p.lat, lon: p.lon, ele: p.ele })),
+          { lat: lat1, lon: lon1, ele: ele1 },
         ];
+        const cLats = chain.map((p) => p.lat);
+        const cLons = chain.map((p) => p.lon);
+        const cEles = chain.map((p) => p.ele);
+        // cumW[k] — "время" до точки k при скорости 1 м/с на ровном месте.
+        const cumW = [0];
+        const segFactor = [];
+        let pathM = 0;
+        for (let k = 0; k < chain.length - 1; k++) {
+          const d = haversine(cLats[k], cLons[k], cLats[k + 1], cLons[k + 1]);
+          const f = slopeSpeedFactor(
+            localGrade(cLats, cLons, cEles, k),
+            slopeStrength,
+          );
+          segFactor.push(f);
+          cumW.push(cumW[k] + d / f);
+          pathM += d;
+        }
+        const totalW = Math.max(cumW[cumW.length - 1], 1e-6);
+        const dur = startTime ? Math.max(t1 - startTime, 1) : totalW / speedMps;
+        const v0 = totalW / dur; // скорость на ровном месте в итоге
+        chain.forEach((p, k) => {
+          p.time = t1 - dur + cumW[k] / v0;
+          p.speed = v0 * segFactor[Math.min(k, segFactor.length - 1)];
+        });
+        chain[chain.length - 1].time = t1;
 
-        // После пересчёта времён шаг точек перестал совпадать с заданным
-        // интервалом — снова раскладываем точки по времени ровно с шагом
-        // intervalS (первая точка — сама начальная, последняя записанная
-        // точка трека в результат не входит).
+        // Раскладываем точки по времени ровно с шагом intervalS (первая
+        // точка — сама начальная, последняя записанная точка трека в
+        // результат не входит).
         const points = [];
         let seg = 0;
         for (let time = t1 - dur; time < t1 - 1e-6; time += intervalS) {
@@ -8194,6 +8477,8 @@
           demOk: leg.demOk,
           distanceM: pathM,
           durationS: dur,
+          avgSpeedMps: pathM / dur,
+          startTime: t1 - dur,
         };
       }
 
@@ -8225,6 +8510,7 @@
           episodeModes,
           waypoints,
           startFill,
+          markInserted,
         } = params;
         const modeFor = (idx) =>
           (episodeModes && episodeModes[idx]) || "linear";
@@ -8406,6 +8692,7 @@
         // insertionBefore[afterIdx] = [{lat,lon,ele,time}, ...]
         const insertionBefore = new Map();
         const interpSegments = [];
+        const episodeResults = [];
         const routedBudget = { used: 0, max: MAX_ROUTED_EPISODES };
 
         // Итоговая (после всех расширений) правая граница предыдущего
@@ -8860,6 +9147,32 @@
 
             insertionBefore.set(afterIdx, interpResult.points);
             totalInserted += interpResult.points.length;
+            // Итог по эпизоду — для пометки в списке и предупреждения, если
+            // достроенный участок требует нереальной скорости (например,
+            // маршрут не нашёлся, а время пробела слишком мало для прямой).
+            const fillSpeeds = interpResult.points
+              .map((p) => p.speed)
+              .filter(Number.isFinite);
+            const fillAvgSpeed = fillSpeeds.length
+              ? fillSpeeds.reduce((s, v) => s + v, 0) / fillSpeeds.length
+              : 0;
+            const fillWarn = fillAvgSpeed > maxSpeed * 1.15;
+            if (fillWarn) {
+              log(
+                t("log_episode_speed_warn", {
+                  i: epIdx + 1,
+                  kmh: (fillAvgSpeed * 3.6).toFixed(0),
+                }),
+                "log-warn",
+              );
+            }
+            episodeResults[epIdx] = {
+              method: interpResult.method,
+              routedRequested: routed,
+              reason: interpResult.reason,
+              avgSpeedMps: fillAvgSpeed,
+              warn: fillWarn,
+            };
             // Точки вставки хранятся с ele/time/hr (не только lat/lon) — это
             // нужно, чтобы вставленный участок можно было раскрасить той же
             // метрикой (скорость/уклон/высота/пульс), что и весь трек.
@@ -8902,16 +9215,29 @@
         // ─── Дорисовка незаписанного начала ──────────────────────────────────────
         // Опорная точка — первая ОСТАВШАЯСЯ точка трека (если глушилка с
         // самого начала вырезана, участок встанет перед первой честной).
+        let startFillResult = null;
         if (startFill) {
           let firstKept = 0;
           while (firstKept < n && removeSet.has(firstKept)) firstKept++;
-          if (firstKept < n) {
+          const tFirst = times[firstKept];
+          if (firstKept < n && startFill.startTime && startFill.startTime >= tFirst - 1) {
+            log(t("log_start_fill_bad_time"), "log-warn");
+          } else if (firstKept < n) {
+            const fillMode = startFill.mode || "linear";
+            const slopeStrength = startFill.slope
+              ? slopeStrengthForMode(fillMode)
+              : 0;
             const speedMps =
               startFill.speedMps > 0
                 ? startFill.speedMps
-                : estimateStartSpeedMps(lats, lons, times, firstKept) ||
-                  START_FILL_DEFAULT_SPEED_MPS;
-            const fillMode = startFill.mode || "linear";
+                : estimateStartSpeedMps(
+                    lats,
+                    lons,
+                    times,
+                    firstKept,
+                    eles,
+                    slopeStrength > 0,
+                  ) || START_FILL_DEFAULT_SPEED_MPS;
             const headingRefAfter =
               firstKept < n - 1 ? getHeadingRef(lats, lons, firstKept, 1) : null;
             const fill = await buildStartFill(
@@ -8919,8 +9245,12 @@
               lats[firstKept],
               lons[firstKept],
               eles[firstKept],
-              times[firstKept],
-              speedMps,
+              tFirst,
+              {
+                speedMps,
+                startTime: startFill.startTime || null,
+                slopeStrength,
+              },
               fillMode,
               interval,
               routedBudget,
@@ -8946,11 +9276,34 @@
                 t("log_start_fill_done", {
                   km: (fill.distanceM / 1000).toFixed(2),
                   dur: formatDuration(Math.round(fill.durationS)),
-                  kmh: (speedMps * 3.6).toFixed(1),
+                  kmh: (fill.avgSpeedMps * 3.6).toFixed(1),
                   cnt: fill.points.length,
                 }),
                 "log-ok",
               );
+              // Скорость, которой не бывает: время старта задано слишком
+              // близко/далеко от первой точки.
+              const startWarn =
+                fill.avgSpeedMps > maxSpeed
+                  ? "fast"
+                  : fill.avgSpeedMps < 0.15
+                    ? "slow"
+                    : null;
+              if (startWarn) {
+                log(
+                  t("log_start_fill_speed_" + startWarn, {
+                    kmh: (fill.avgSpeedMps * 3.6).toFixed(1),
+                  }),
+                  "log-warn",
+                );
+              }
+              startFillResult = {
+                method: fill.method,
+                routedRequested: fillMode !== "linear",
+                reason: fill.reason,
+                avgSpeedMps: fill.avgSpeedMps,
+                warn: startWarn,
+              };
               insertionBefore.set(firstKept, [
                 ...fill.points,
                 ...(insertionBefore.get(firstKept) || []),
@@ -9034,7 +9387,7 @@
           curSeg = segIdOfPoint[i];
           if (insertionBefore.has(i)) {
             for (const pt of insertionBefore.get(i)) {
-              pushLine(makeTrkptXml(pt, nsExtPrefix));
+              pushLine(makeTrkptXml(pt, nsExtPrefix, markInserted));
               addLeg(pt.lat, pt.lon);
               afterLats.push(pt.lat);
               afterLons.push(pt.lon);
@@ -9110,6 +9463,8 @@
         return {
           xml: outXml,
           interpSegments,
+          episodeResults,
+          startFillResult,
           afterLats,
           afterLons,
           afterEles,
@@ -9543,12 +9898,21 @@
         episodePreview.forEach((ep, idx) => {
           if (ep.isRestStop && episodeChoices[idx] !== "linear") {
             episodeChoices[idx] = "linear";
+            userChoices.set(episodeSig(ep), "linear");
             changed = true;
           }
         });
-        if (changed) renderEpisodeList(episodePreview, episodePreviewTimes);
+        if (changed) {
+          renderEpisodeList(episodePreview, episodePreviewTimes);
+          commitUserState();
+        }
       });
       let episodeChoices = []; // режим на каждый обнаруженный эпизод, по индексу
+      // Итоги последней обработки по каждому эпизоду (индекс -> {method,
+      // reason, warn}) — для пометок в списке; сбрасывается при пересчёте
+      // списка эпизодов.
+      let lastEpisodeResults = [];
+      let lastStartFillResult = null;
       let episodePreview = []; // последний обнаруженный список эпизодов
       let episodePreviewTimes = []; // times[] трека, для которого построен episodePreview
       // Обязательные точки (клик по карте "после"), через которые должен
@@ -9686,6 +10050,7 @@
           "log-info",
         );
         updateEpisodeList(cachedTrackArrays || undefined);
+        commitUserState();
         if (!btnFix.disabled) btnFix.classList.add("needs-refix");
       }
 
@@ -9699,7 +10064,10 @@
             mr.afterIdx === ep.afterIdx,
         );
         if (i !== -1) manualEpisodeRanges.splice(i, 1);
+        userChoices.delete(episodeSig(ep));
+        userWaypoints.delete(episodeSig(ep));
         updateEpisodeList(cachedTrackArrays || undefined);
+        commitUserState();
         if (!btnFix.disabled) btnFix.classList.add("needs-refix");
       }
 
@@ -9707,15 +10075,90 @@
       // Пользователь забыл включить запись и вспомнил через несколько минут:
       // он ставит на карте «до» точку, откуда реально начал путь, а fixGpx
       // достраивает участок до первой записанной точки (по тропе или напрямую)
-      // с примерной скоростью — см. buildStartFill.
+      // с примерной скоростью — см. buildStartFill. Скорость задаётся либо
+      // напрямую (км/ч на ровном месте), либо временем начала записи — тогда
+      // скорость подбирается сама; опционально темп зависит от уклона.
       let startFillPoint = null; // {lat, lon} или null
       let startFillPicking = false;
       let startFillSpeedEdited = false;
+      let startFillTimeEdited = false;
 
       const btnStartFill = document.getElementById("btn-start-fill");
       const startFillDetailsEl = document.getElementById("start-fill-details");
       const startFillModeEl = document.getElementById("start-fill-mode");
+      const startFillBasisEl = document.getElementById("start-fill-basis");
       const startFillSpeedEl = document.getElementById("start-fill-speed");
+      const startFillTimeEl = document.getElementById("start-fill-time");
+      const startFillSlopeEl = document.getElementById("start-fill-slope");
+
+      // unix-секунды <-> значение <input type="datetime-local"> (местное время)
+      function unixToLocalInput(unixS) {
+        const d = new Date(unixS * 1000);
+        const p = (v) => String(v).padStart(2, "0");
+        return (
+          `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}` +
+          `T${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`
+        );
+      }
+      function localInputToUnix(v) {
+        const ms = v ? new Date(v).getTime() : NaN;
+        return Number.isFinite(ms) ? ms / 1000 : null;
+      }
+
+      // Ориентировочная длительность по прямой (с поправкой 1.3 на извилистость
+      // маршрута) — для подсказок и значения времени старта по умолчанию.
+      function estimateStartFillDuration(speedMps) {
+        const a = cachedTrackArrays;
+        if (!startFillPoint || !a || !a.lats.length || !(speedMps > 0))
+          return null;
+        const d = haversine(
+          startFillPoint.lat,
+          startFillPoint.lon,
+          a.lats[0],
+          a.lons[0],
+        );
+        return {
+          d,
+          dur: (d * (startFillModeEl.value === "linear" ? 1 : 1.3)) / speedMps,
+        };
+      }
+
+      // Скорость по умолчанию (км/ч) — по началу записанного трека.
+      function defaultStartFillSpeedKmh() {
+        const a = cachedTrackArrays;
+        const mps =
+          (a &&
+            estimateStartSpeedMps(
+              a.lats,
+              a.lons,
+              a.times,
+              0,
+              a.eles,
+              startFillSlopeEl.checked,
+            )) ||
+          START_FILL_DEFAULT_SPEED_MPS;
+        return mps * 3.6;
+      }
+
+      // Время старта по умолчанию — первая точка минус ожидаемая длительность.
+      function defaultStartFillTimeValue() {
+        const a = cachedTrackArrays;
+        const kmh = parseFloat(startFillSpeedEl.value) || defaultStartFillSpeedKmh();
+        const est = estimateStartFillDuration(kmh / 3.6);
+        if (!a || !est) return "";
+        return unixToLocalInput(a.times[0] - est.dur);
+      }
+
+      // Поля скорости/времени показываем по выбранному способу задания.
+      function syncStartFillBasisUi() {
+        const byTime = startFillBasisEl.value === "time";
+        document.getElementById("start-fill-speed-wrap").style.display = byTime
+          ? "none"
+          : "";
+        document.getElementById("start-fill-time-wrap").style.display = byTime
+          ? ""
+          : "none";
+      }
 
       // Кнопка "Исправить" доступна, если есть что исправлять: аномальные
       // участки или дорисовка начала.
@@ -9740,10 +10183,10 @@
         }
         startFillDetailsEl.style.display = startFillPoint ? "" : "none";
         if (!startFillPoint) return;
+        syncStartFillBasisUi();
         document.getElementById("start-fill-coords").textContent =
           `📍 ${startFillPoint.lat.toFixed(5)}, ${startFillPoint.lon.toFixed(5)}`;
         const a = cachedTrackArrays;
-        const kmh = parseFloat(startFillSpeedEl.value);
         let info = "";
         if (a && a.lats.length) {
           const d = haversine(
@@ -9753,13 +10196,38 @@
             a.lons[0],
           );
           info = t("start_fill_info", { km: (d / 1000).toFixed(2) });
-          if (kmh > 0) {
-            info +=
-              " " +
-              t("start_fill_info_time", {
-                dur: formatDuration(d / (kmh / 3.6)),
-              });
+          if (startFillBasisEl.value === "time") {
+            const tStart = localInputToUnix(startFillTimeEl.value);
+            const gap = tStart != null ? a.times[0] - tStart : NaN;
+            if (gap > 0) {
+              info +=
+                " " +
+                t("start_fill_info_gap", {
+                  dur: formatDuration(gap),
+                  kmh: ((d / gap) * 3.6).toFixed(1),
+                });
+            } else if (tStart != null) {
+              info += " " + t("start_fill_time_after_first");
+            }
+          } else {
+            const est = estimateStartFillDuration(
+              (parseFloat(startFillSpeedEl.value) || 0) / 3.6,
+            );
+            if (est) {
+              info +=
+                " " + t("start_fill_info_time", { dur: formatDuration(est.dur) });
+            }
           }
+        }
+        if (lastStartFillResult && lastStartFillResult.routedRequested) {
+          info +=
+            " · " +
+            t(
+              lastStartFillResult.method === "routed"
+                ? "episode_result_routed"
+                : "episode_result_linear",
+            ) +
+            (lastStartFillResult.warn ? " ⚠" : "");
         }
         document.getElementById("start-fill-info").textContent = info;
       }
@@ -9799,6 +10267,43 @@
         inst.startFillLayer = L.layerGroup(layers).addTo(inst.map);
       }
 
+      // Путевые точки и маршруты из исходного GPX (только отображение).
+      let currentPois = { wpts: [], routes: [] };
+      function drawPois(containerId) {
+        const inst = mapInstances[containerId];
+        if (!inst) return;
+        if (inst.poiLayer) {
+          inst.map.removeLayer(inst.poiLayer);
+          inst.poiLayer = null;
+        }
+        const layers = [];
+        for (const pts of currentPois.routes) {
+          layers.push(
+            L.polyline(pts, {
+              color: "#a78bfa",
+              weight: 2,
+              dashArray: "2 6",
+              interactive: false,
+            }),
+          );
+        }
+        for (const w of currentPois.wpts) {
+          const m = L.circleMarker([w.lat, w.lon], {
+            radius: 5,
+            color: "#7c3aed",
+            weight: 2,
+            fillColor: "#c4b5fd",
+            fillOpacity: 0.9,
+            bubblingMouseEvents: false,
+          });
+          if (w.name) m.bindTooltip(w.name, { className: "map-poi-label" });
+          // Клик по маркеру не должен "съедать" выбор точки на карте.
+          m.on("click", (e) => inst.map.fire("click", { latlng: e.latlng }));
+          layers.push(m);
+        }
+        if (layers.length) inst.poiLayer = L.layerGroup(layers).addTo(inst.map);
+      }
+
       function startStartFillPick() {
         if (!cachedTrackArrays || !cachedTrackArrays.lats.length) return;
         cancelManualEpisodePick();
@@ -9822,23 +10327,23 @@
       function handleStartFillPickClick(latlng) {
         if (!startFillPicking) return;
         startFillPoint = { lat: latlng.lat, lon: latlng.lng };
-        if (!startFillSpeedEdited || !startFillSpeedEl.value) {
-          const a = cachedTrackArrays;
-          const mps =
-            (a && estimateStartSpeedMps(a.lats, a.lons, a.times, 0)) ||
-            START_FILL_DEFAULT_SPEED_MPS;
-          startFillSpeedEl.value = (mps * 3.6).toFixed(1);
-        }
         const resolved = resolveInterpMode();
         startFillModeEl.value = Array.from(startFillModeEl.options).some(
           (o) => o.value === resolved,
         )
           ? resolved
           : "foot";
+        if (!startFillSpeedEdited || !startFillSpeedEl.value) {
+          startFillSpeedEl.value = defaultStartFillSpeedKmh().toFixed(1);
+        }
+        if (!startFillTimeEdited || !startFillTimeEl.value) {
+          startFillTimeEl.value = defaultStartFillTimeValue();
+        }
         cancelStartFillPick();
         redrawStartFillLayer();
         syncFixButtonState();
         if (!btnFix.disabled) btnFix.classList.add("needs-refix");
+        commitUserState();
         log(
           t("log_start_fill_set", {
             lat: latlng.lat.toFixed(5),
@@ -9851,12 +10356,48 @@
       function clearStartFill(silent) {
         startFillPoint = null;
         startFillSpeedEdited = false;
+        startFillTimeEdited = false;
         startFillSpeedEl.value = "";
+        startFillTimeEl.value = "";
         cancelStartFillPick();
         redrawStartFillLayer();
         if (silent) return;
         syncFixButtonState();
         if (!btnFix.disabled) btnFix.classList.add("needs-refix");
+        commitUserState();
+      }
+
+      // Состояние дорисовки начала для черновика/отмены (null — не задана).
+      function captureStartFillState() {
+        if (!startFillPoint) return null;
+        return {
+          lat: startFillPoint.lat,
+          lon: startFillPoint.lon,
+          mode: startFillModeEl.value,
+          basis: startFillBasisEl.value,
+          speed: startFillSpeedEl.value,
+          time: startFillTimeEl.value,
+          slope: startFillSlopeEl.checked,
+          speedEdited: startFillSpeedEdited,
+          timeEdited: startFillTimeEdited,
+        };
+      }
+
+      function applyStartFillState(sf) {
+        if (!sf) {
+          clearStartFill(true);
+          return;
+        }
+        startFillPoint = { lat: sf.lat, lon: sf.lon };
+        startFillModeEl.value = sf.mode || "foot";
+        startFillBasisEl.value = sf.basis || "speed";
+        startFillSpeedEl.value = sf.speed || "";
+        startFillTimeEl.value = sf.time || "";
+        startFillSlopeEl.checked = sf.slope !== false;
+        startFillSpeedEdited = !!sf.speedEdited;
+        startFillTimeEdited = !!sf.timeEdited;
+        cancelStartFillPick();
+        redrawStartFillLayer();
       }
 
       btnStartFill.addEventListener("click", () => {
@@ -9866,13 +10407,257 @@
       document
         .getElementById("btn-start-fill-clear")
         .addEventListener("click", () => clearStartFill(false));
-      startFillSpeedEl.addEventListener("input", () => {
-        startFillSpeedEdited = true;
+
+      // Любое изменение полей: пересчитываем подсказку и помечаем кнопку
+      // "Исправить" как требующую повторного нажатия.
+      function onStartFillFieldChanged(commit) {
+        lastStartFillResult = null;
         updateStartFillUi();
         if (!btnFix.disabled) btnFix.classList.add("needs-refix");
+        if (commit) commitUserState();
+      }
+      startFillSpeedEl.addEventListener("input", () => {
+        startFillSpeedEdited = true;
+        onStartFillFieldChanged(false);
       });
+      startFillSpeedEl.addEventListener("change", () => onStartFillFieldChanged(true));
+      startFillTimeEl.addEventListener("input", () => {
+        startFillTimeEdited = true;
+        onStartFillFieldChanged(false);
+      });
+      startFillTimeEl.addEventListener("change", () => onStartFillFieldChanged(true));
       startFillModeEl.addEventListener("change", () => {
+        // Режим влияет на оценку длительности и множитель уклона.
+        if (!startFillTimeEdited) startFillTimeEl.value = defaultStartFillTimeValue();
+        onStartFillFieldChanged(true);
+      });
+      startFillBasisEl.addEventListener("change", () => {
+        // При переходе на время старта подставляем значение, согласованное с
+        // текущей скоростью, а при возврате на скорость — оставляем как есть.
+        if (startFillBasisEl.value === "time" && !startFillTimeEdited)
+          startFillTimeEl.value = defaultStartFillTimeValue();
+        onStartFillFieldChanged(true);
+      });
+      startFillSlopeEl.addEventListener("change", () => {
+        // Скорость по умолчанию — на ровном месте, при смене режима уклона
+        // пересчитываем её, пока пользователь не правил вручную.
+        if (!startFillSpeedEdited && startFillPoint)
+          startFillSpeedEl.value = defaultStartFillSpeedKmh().toFixed(1);
+        onStartFillFieldChanged(true);
+      });
+
+      // ─── Пользовательские правки: черновик и отмена/повтор ──────────────────
+      // Всё, что пользователь настроил руками (ручные эпизоды, режимы и
+      // обязательные точки отдельных эпизодов, дорисовка начала), хранится по
+      // подписи эпизода (границы), а не по номеру в списке — поэтому правки
+      // переживают пересчёт списка при смене параметров детекции. Состояние
+      // сохраняется в localStorage по "отпечатку" файла и восстанавливается
+      // при повторной загрузке того же трека.
+      const DRAFT_PREFIX = "gpxrepair.draft.";
+      const DRAFT_INDEX_KEY = "gpxrepair.drafts";
+      const DRAFT_MAX = 20;
+      const UNDO_MAX = 50;
+      let userChoices = new Map(); // подпись эпизода -> выбранный режим
+      let userWaypoints = new Map(); // подпись эпизода -> {lat, lon}
+      let draftKey = null;
+      let undoStack = [];
+      let redoStack = [];
+      let lastCommitted = null; // JSON последнего зафиксированного состояния
+      const btnUndo = document.getElementById("btn-undo");
+      const btnRedo = document.getElementById("btn-redo");
+
+      function episodeSig(ep) {
+        return `${ep.firstBad}:${ep.lastBad}:${ep.afterIdx}`;
+      }
+
+      function captureUserState() {
+        return {
+          manual: manualEpisodeRanges.map((r) => ({ ...r })),
+          choices: Array.from(userChoices),
+          waypoints: Array.from(userWaypoints),
+          startFill: captureStartFillState(),
+        };
+      }
+
+      function setUserState(st) {
+        manualEpisodeRanges = (st && st.manual) || [];
+        userChoices = new Map((st && st.choices) || []);
+        userWaypoints = new Map((st && st.waypoints) || []);
+        applyStartFillState(st && st.startFill);
+      }
+
+      function isUserStateEmpty(st) {
+        return (
+          !st.manual.length &&
+          !st.choices.length &&
+          !st.waypoints.length &&
+          !st.startFill
+        );
+      }
+
+      function updateUndoUi() {
+        if (btnUndo) btnUndo.disabled = !undoStack.length;
+        if (btnRedo) btnRedo.disabled = !redoStack.length;
+      }
+
+      function saveDraft(json) {
+        if (!draftKey) return;
+        try {
+          const key = DRAFT_PREFIX + draftKey;
+          let index = JSON.parse(localStorage.getItem(DRAFT_INDEX_KEY) || "[]");
+          index = index.filter((k) => k !== draftKey);
+          if (isUserStateEmpty(JSON.parse(json))) {
+            localStorage.removeItem(key);
+          } else {
+            localStorage.setItem(key, json);
+            index.unshift(draftKey);
+            for (const old of index.splice(DRAFT_MAX)) {
+              localStorage.removeItem(DRAFT_PREFIX + old);
+            }
+          }
+          localStorage.setItem(DRAFT_INDEX_KEY, JSON.stringify(index));
+        } catch (e) {
+          // localStorage недоступен/переполнен — черновик просто не сохраняется
+        }
+      }
+
+      // Фиксирует текущее состояние после пользовательского действия: старое
+      // уходит в стек отмены, черновик обновляется.
+      function commitUserState() {
+        const cur = JSON.stringify(captureUserState());
+        if (cur === lastCommitted) return;
+        if (lastCommitted !== null) {
+          undoStack.push(lastCommitted);
+          if (undoStack.length > UNDO_MAX) undoStack.shift();
+        }
+        redoStack = [];
+        lastCommitted = cur;
+        saveDraft(cur);
+        updateUndoUi();
+      }
+
+      function applyCommittedState() {
+        setUserState(JSON.parse(lastCommitted));
+        if (cachedTrackArrays) updateEpisodeList(cachedTrackArrays);
+        else updateEpisodeList();
+        redrawWaypointMarkers("map-after");
+        updateStartFillUi();
+        syncFixButtonState();
+        saveDraft(lastCommitted);
+        updateUndoUi();
         if (!btnFix.disabled) btnFix.classList.add("needs-refix");
+      }
+
+      function undoUserChange() {
+        if (!undoStack.length) return;
+        redoStack.push(lastCommitted);
+        lastCommitted = undoStack.pop();
+        applyCommittedState();
+      }
+
+      function redoUserChange() {
+        if (!redoStack.length) return;
+        undoStack.push(lastCommitted);
+        lastCommitted = redoStack.pop();
+        applyCommittedState();
+      }
+
+      // Полный сброс при загрузке нового файла.
+      function resetUserState() {
+        manualEpisodeRanges = [];
+        userChoices = new Map();
+        userWaypoints = new Map();
+        clearStartFill(true);
+        undoStack = [];
+        redoStack = [];
+        lastCommitted = null;
+        draftKey = null;
+        updateUndoUi();
+      }
+
+      // "Отпечаток" трека: число точек + первая/последняя точка.
+      function computeDraftKey(a) {
+        const n = a.lats.length;
+        return [
+          n,
+          a.lats[0],
+          a.lons[0],
+          a.times[0],
+          a.lats[n - 1],
+          a.lons[n - 1],
+          a.times[n - 1],
+        ].join("|");
+      }
+
+      // Подхватывает сохранённый черновик для только что загруженного трека
+      // (вызывается ДО первого updateEpisodeList). Возвращает true, если есть
+      // что восстанавливать.
+      function restoreDraftFor(arrays) {
+        draftKey = arrays && arrays.lats.length ? computeDraftKey(arrays) : null;
+        if (!draftKey) return false;
+        try {
+          const raw = localStorage.getItem(DRAFT_PREFIX + draftKey);
+          if (!raw) return false;
+          setUserState(JSON.parse(raw));
+          return true;
+        } catch (e) {
+          return false;
+        }
+      }
+
+      // Вызывается ПОСЛЕ первого updateEpisodeList: текущее состояние —
+      // точка отсчёта для отмены.
+      function startUserStateTracking(restored) {
+        lastCommitted = JSON.stringify(captureUserState());
+        undoStack = [];
+        redoStack = [];
+        updateUndoUi();
+        if (restored) {
+          redrawWaypointMarkers("map-after");
+          if (!btnFix.disabled) btnFix.classList.add("needs-refix");
+          log(t("log_draft_restored"), "log-info");
+        }
+      }
+
+      btnUndo.addEventListener("click", undoUserChange);
+      btnRedo.addEventListener("click", redoUserChange);
+
+      // Выключает любой активный режим выбора точки на карте; true, если
+      // что-то было активно.
+      function cancelAnyPicking() {
+        let was = false;
+        if (startFillPicking) {
+          cancelStartFillPick();
+          was = true;
+        }
+        if (manualPickState) {
+          cancelManualEpisodePick();
+          was = true;
+        }
+        if (waypointPickModeIdx !== null) {
+          toggleWaypointPickMode(waypointPickModeIdx);
+          was = true;
+        }
+        return was;
+      }
+
+      document.addEventListener("keydown", (e) => {
+        if (e.key === "Escape") {
+          if (cancelAnyPicking()) e.stopImmediatePropagation();
+          return;
+        }
+        if (!(e.ctrlKey || e.metaKey) || e.altKey) return;
+        // В полях ввода работает обычная отмена ввода браузера.
+        const tag = e.target && e.target.tagName;
+        if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+        const k = e.key.toLowerCase();
+        if (k === "z" && !e.shiftKey) {
+          e.preventDefault();
+          undoUserChange();
+        } else if (k === "y" || (k === "z" && e.shiftKey)) {
+          e.preventDefault();
+          redoUserChange();
+        }
       });
 
       // Домешивает ручные эпизоды в уже построенный автоматический список —
@@ -9962,12 +10747,18 @@
       // "голый" map.on("click") в showTrackMap) — фиксирует обязательную
       // точку для эпизода idx и выключает режим выбора.
       function setEpisodeWaypoint(idx, latlng) {
-        episodeWaypoints.set(idx, { lat: latlng.lat, lon: latlng.lng });
+        const pt = { lat: latlng.lat, lon: latlng.lng };
+        episodeWaypoints.set(idx, pt);
+        lastEpisodeResults[idx] = undefined;
+        if (episodePreview[idx]) {
+          userWaypoints.set(episodeSig(episodePreview[idx]), pt);
+        }
         waypointPickModeIdx = null;
         redrawWaypointMarkers("map-after");
         const mapEl = document.getElementById("map-after");
         if (mapEl) mapEl.classList.remove("map-picking-waypoint");
         renderEpisodeList(episodePreview, episodePreviewTimes);
+        commitUserState();
         // Точка выбрана, но маршрут через неё ещё не пересчитан — само по
         // себе изменение ничего не перестраивает, нужно снова нажать
         // "Исправить трек". Пульсация кнопки делает это заметным (см.
@@ -10005,11 +10796,16 @@
       // Убирает ранее выбранную обязательную точку эпизода idx.
       function clearEpisodeWaypoint(idx) {
         episodeWaypoints.delete(idx);
+        lastEpisodeResults[idx] = undefined;
+        if (episodePreview[idx]) {
+          userWaypoints.delete(episodeSig(episodePreview[idx]));
+        }
         if (waypointPickModeIdx === idx) waypointPickModeIdx = null;
         redrawWaypointMarkers("map-after");
         const mapEl = document.getElementById("map-after");
         if (mapEl) mapEl.classList.remove("map-picking-waypoint");
         renderEpisodeList(episodePreview, episodePreviewTimes);
+        commitUserState();
         // Как и при установке точки — снятие тоже требует повторного
         // "Исправить трек", чтобы результат обновился.
         if (!btnFix.disabled) btnFix.classList.add("needs-refix");
@@ -10308,17 +11104,24 @@
         );
         episodePreview = finalEpisodes;
         episodePreviewTimes = times;
-        // Список эпизодов может измениться (другие параметры детекции) —
-        // старые индексы обязательных точек больше не соответствуют новым
-        // эпизодам, поэтому сбрасываем их вместе с активным режимом выбора.
+        // Режимы и обязательные точки, выбранные пользователем, привязаны к
+        // подписи эпизода (границам) — переживают пересчёт списка, пока
+        // эпизод остался тем же.
         episodeWaypoints.clear();
         waypointPickModeIdx = null;
         clearWaypointMarkers("map-after");
         clearEpisodeHighlightState();
         const defaultMode = resolveInterpMode({ lats, lons, times });
-        episodeChoices = finalEpisodes.map((ep) =>
-          ep.isPause || ep.isRestStop ? "keep" : defaultMode,
-        );
+        episodeChoices = finalEpisodes.map((ep) => {
+          const saved = userChoices.get(episodeSig(ep));
+          if (saved) return saved;
+          return ep.isPause || ep.isRestStop ? "keep" : defaultMode;
+        });
+        finalEpisodes.forEach((ep, idx) => {
+          const wp = userWaypoints.get(episodeSig(ep));
+          if (wp) episodeWaypoints.set(idx, wp);
+        });
+        lastEpisodeResults = [];
         renderEpisodeList(finalEpisodes, times);
         const hasEpisodes = finalEpisodes.length > 0;
         // Карта аномалий видна всегда, пока трек загружен — иначе кнопка
@@ -10329,6 +11132,7 @@
           hasEpisodes || startFillPoint ? "none" : "block";
         btnFix.disabled = !hasEpisodes && !startFillPoint;
         redrawStartFillLayer();
+        redrawWaypointMarkers("map-after");
         updateStartFillUi();
       }
 
@@ -10440,6 +11244,9 @@
           select.value = episodeChoices[idx];
           select.addEventListener("change", () => {
             episodeChoices[idx] = select.value;
+            lastEpisodeResults[idx] = undefined;
+            userChoices.set(episodeSig(ep), select.value);
+            commitUserState();
             // "Удалить"/"Оставить как было" не строят маршрут через
             // эпизод — обязательная точка тогда бессмысленна, поэтому
             // перерисовываем список, чтобы актуализировать состояние кнопки.
@@ -10511,6 +11318,31 @@
             removeBtn.title = t("hint_manual_episode_remove");
             removeBtn.addEventListener("click", () => removeManualEpisode(ep));
             actions.appendChild(removeBtn);
+          }
+
+          // Итог последней обработки: маршрут/прямая и предупреждение о
+          // нереальной скорости достроенного участка.
+          const fillRes = lastEpisodeResults[idx];
+          if (fillRes && (fillRes.routedRequested || fillRes.warn)) {
+            const badge = document.createElement("span");
+            badge.className =
+              "episode-result" + (fillRes.warn ? " episode-result--warn" : "");
+            const parts = [];
+            if (fillRes.routedRequested)
+              parts.push(
+                fillRes.method === "routed"
+                  ? t("episode_result_routed")
+                  : t("episode_result_linear"),
+              );
+            if (fillRes.warn)
+              parts.push(
+                t("episode_result_fast", {
+                  kmh: (fillRes.avgSpeedMps * 3.6).toFixed(0),
+                }),
+              );
+            badge.textContent = parts.join(" · ");
+            if (fillRes.reason) badge.title = fillRes.reason;
+            actions.appendChild(badge);
           }
 
           row.appendChild(info);
@@ -10615,6 +11447,55 @@
         applyProfile(DEFAULT_PROFILE);
         applyInterpModeForProfile(DEFAULT_PROFILE);
         updateParamsVisibility();
+
+        // ─── Запоминание настроек между визитами ──────────────────────────
+        const SETTINGS_KEY = "gpxrepair.settings";
+        const TOGGLE_IDS = ["p-force-trails", "p-fix-elevation", "p-mark-inserted"];
+        const interpSelect = document.getElementById("p-interp-mode");
+        function saveSettings() {
+          try {
+            const s = {
+              profile: select.value,
+              interp: interpSelect.value,
+              toggles: {},
+              params: {},
+            };
+            for (const id of TOGGLE_IDS)
+              s.toggles[id] = document.getElementById(id).checked;
+            for (const id of PROFILE_PARAM_IDS)
+              s.params[id] = document.getElementById(id).value;
+            localStorage.setItem(SETTINGS_KEY, JSON.stringify(s));
+          } catch (e) {
+            // localStorage недоступен — настройки просто не запоминаются
+          }
+        }
+        (function restoreSettings() {
+          let s = null;
+          try {
+            s = JSON.parse(localStorage.getItem(SETTINGS_KEY) || "null");
+          } catch (e) {}
+          if (!s) return;
+          const hasOption = (el, v) =>
+            Array.from(el.options).some((o) => o.value === v);
+          if (s.profile && hasOption(select, s.profile)) {
+            select.value = s.profile;
+            if (s.profile === CUSTOM_PROFILE_KEY) {
+              for (const id of PROFILE_PARAM_IDS) {
+                if (s.params && s.params[id] != null && s.params[id] !== "")
+                  document.getElementById(id).value = s.params[id];
+              }
+            } else {
+              applyProfile(s.profile);
+            }
+          }
+          if (s.interp && hasOption(interpSelect, s.interp))
+            interpSelect.value = s.interp;
+          for (const id of TOGGLE_IDS) {
+            if (s.toggles && typeof s.toggles[id] === "boolean")
+              document.getElementById(id).checked = s.toggles[id];
+          }
+          updateParamsVisibility();
+        })();
         select.addEventListener("change", () => {
           applyProfile(select.value);
           applyInterpModeForProfile(select.value);
@@ -10640,13 +11521,24 @@
             if (episodePreview.length) {
               // Паузы записи и привалы по-прежнему по умолчанию "оставить
               // как было" — смена общего режима заполнения не должна их
-              // сдвигать.
-              episodeChoices = episodePreview.map((ep) =>
-                ep.isPause || ep.isRestStop ? "keep" : mode,
-              );
+              // сдвигать. Явно выбранные пользователем режимы не трогаем.
+              episodeChoices = episodePreview.map((ep) => {
+                const saved = userChoices.get(episodeSig(ep));
+                if (saved) return saved;
+                return ep.isPause || ep.isRestStop ? "keep" : mode;
+              });
               renderEpisodeList(episodePreview, episodePreviewTimes);
             }
           });
+
+        // Сохраняем настройки после всех остальных обработчиков этих же
+        // элементов (они могут менять связанные поля, например профиль).
+        select.addEventListener("change", saveSettings);
+        interpSelect.addEventListener("change", saveSettings);
+        for (const id of [...TOGGLE_IDS, ...PROFILE_PARAM_IDS]) {
+          document.getElementById(id).addEventListener("input", saveSettings);
+          document.getElementById(id).addEventListener("change", saveSettings);
+        }
       })();
 
       function loadFile(file) {
@@ -10693,8 +11585,7 @@
                   log(t("alert_parse_fail", { msg: err.message }), "log-err");
                   btnFix.disabled = true;
                   gpxText = null;
-                  manualEpisodeRanges = [];
-                  clearStartFill(true);
+                  resetUserState();
                   cancelManualEpisodePick();
                   trackLoadedForScrollBtn = false;
                   updateScrollToFixVisibility();
@@ -10714,8 +11605,10 @@
                 cachedTrackArrays = null;
                 // Ручные эпизоды привязаны к индексам точек конкретного
                 // файла — при загрузке нового файла они теряют смысл.
-                manualEpisodeRanges = [];
-                clearStartFill(true);
+                resetUserState();
+                lastEpisodeResults = [];
+                lastStartFillResult = null;
+                currentPois = { wpts: [], routes: [] };
                 cancelManualEpisodePick();
                 trackLoadedForScrollBtn = true;
                 updateScrollToFixVisibility();
@@ -10763,6 +11656,8 @@
                     times,
                     hrs,
                   );
+                  currentPois = extracted.pois || { wpts: [], routes: [] };
+                  drawPois("map-before");
                   const shown =
                     document.getElementById("map-before").style.display ===
                     "block";
@@ -10780,7 +11675,11 @@
                 } catch (err) {
                   // превью необязательно, ошибку покажем при нажатии "Исправить"
                 }
+                // Черновик правок этого же трека (если уже работали с ним
+                // раньше) подхватываем до первого построения списка.
+                const draftRestored = restoreDraftFor(extracted);
                 updateEpisodeList(extracted || undefined);
+                startUserStateTracking(draftRestored);
               } finally {
                 hideBusyOverlay();
               }
@@ -10920,8 +11819,14 @@
                 lon: startFillPoint.lon,
                 mode: startFillModeEl.value,
                 speedMps: (parseFloat(startFillSpeedEl.value) || 0) / 3.6,
+                startTime:
+                  startFillBasisEl.value === "time"
+                    ? localInputToUnix(startFillTimeEl.value)
+                    : null,
+                slope: startFillSlopeEl.checked,
               }
             : null,
+          markInserted: document.getElementById("p-mark-inserted")?.checked !== false,
         };
 
         // Запускаем в следующем тике, чтобы успел отрисоваться UI
@@ -10930,6 +11835,8 @@
             const {
               xml: result,
               interpSegments,
+              episodeResults,
+              startFillResult,
               afterLats,
               afterLons,
               afterEles,
@@ -10971,6 +11878,7 @@
               false,
               interpSegments,
             );
+            drawPois("map-after");
             const shownAfter =
               document.getElementById("map-after").style.display === "block";
             document.getElementById("track-label-after").style.display =
@@ -10995,6 +11903,9 @@
             // перерисовываем список эпизодов, чтобы обновить её состояние,
             // и восстанавливаем маркеры уже выбранных точек поверх новой
             // карты.
+            lastEpisodeResults = episodeResults || [];
+            lastStartFillResult = startFillResult || null;
+            updateStartFillUi();
             if (episodePreview.length) {
               renderEpisodeList(episodePreview, episodePreviewTimes);
             }
