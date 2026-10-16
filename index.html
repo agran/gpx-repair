@@ -1385,7 +1385,7 @@
           >Режимы "Маршрут" прокладывают пропущенный участок по реальной тропе
           или дороге (а не прямой линией) — для этого координаты границ пробела
           отправляются на routing.openstreetmap.de (построение маршрута) и
-          api.open-meteo.com (высоты)</span
+          api.open-meteo.com (высоты; если прямой запрос не проходит — через прокси server50.erudit23.ru)</span
         >
         <label class="param-toggle">
           <input type="checkbox" id="p-force-trails" />
@@ -1720,20 +1720,26 @@
             "Пороги подбираются автоматически по распределению скоростей самого трека — тип активности знать не нужно",
           label_interp_mode: "Заполнение пробелов",
           hint_interp_mode:
-            'Режимы "Маршрут" прокладывают пропущенный участок по реальной тропе или дороге (а не прямой линией) — для этого координаты границ пробела отправляются на routing.openstreetmap.de (построение маршрута) и api.open-meteo.com (высоты)',
+            'Режимы "Маршрут" прокладывают пропущенный участок по реальной тропе или дороге (а не прямой линией) — для этого координаты границ пробела отправляются на routing.openstreetmap.de (построение маршрута) и api.open-meteo.com (высоты; если прямой запрос не проходит — через прокси server50.erudit23.ru)',
           gapfill_auto: "Авто (по скорости трека)",
           gapfill_linear: "Простое соединение",
           gapfill_foot: "Маршрут: пешком",
           gapfill_bike: "Маршрут: велосипед",
           gapfill_car: "Маршрут: авто",
           gapfill_remove: "Удалить без замены",
+          gapfill_remove_pause: "Обрезать край трека ({cnt} точек)",
+          err_no_time:
+            "В треке есть точки без меток времени — исправление невозможно (скорости и длительность не определены)",
+          err_fix_busy: "Обработка уже выполняется",
+          log_elevation_proxy_used:
+            "Сервис высот недоступен напрямую — запросы высот шли через прокси server50.erudit23.ru",
           gapfill_keep: "Оставить как было",
           label_force_trails: "Усиленно стремиться к тропам",
           hint_force_trails:
             'Для режимов "Маршрут": не отказываться от маршрута, даже если границы участка далеко от ближайшей тропы/дороги — к ней добавляются прямые подходы. Полезно, когда глушилка увела трек в сторону, а вы на самом деле шли по тропе. Сначала пробуется тропный движок brouter.de (видит горные тропы, которых нет в OSRM) — координаты границ отправляются и туда',
           label_fix_elevation: "Чинить высоту по рельефу при сильном расхождении",
           hint_fix_elevation:
-            "Если записанная высота участка расходится с рельефом (DEM) больше чем на 250 м (барометр/GPS-высота сломались при глушении), она пересчитывается по рельефу с плавными швами. Координаты и время не меняются. Для проверки опорные точки трека отправляются на api.open-meteo.com",
+            "Если записанная высота участка расходится с рельефом (DEM) больше чем на 250 м (барометр/GPS-высота сломались при глушении), она пересчитывается по рельефу с плавными швами. Координаты и время не меняются. Для проверки опорные точки трека отправляются на api.open-meteo.com (при недоступности — через прокси server50.erudit23.ru)",
           label_maxspeed: "Макс. горизонт. скорость (м/с)",
           hint_maxspeed:
             "Пеший поход: 10–15 &nbsp;|&nbsp; Велосипед: 25–40 &nbsp;|&nbsp; Авто: 80–120",
@@ -1994,20 +2000,26 @@
             "Thresholds are derived automatically from the track's own speed distribution — no need to know the activity type",
           label_interp_mode: "Gap fill mode",
           hint_interp_mode:
-            '"Route" modes fill the gap along the actual trail or road (not a straight line) — this sends the gap-boundary coordinates to routing.openstreetmap.de (routing) and api.open-meteo.com (elevation)',
+            '"Route" modes fill the gap along the actual trail or road (not a straight line) — this sends the gap-boundary coordinates to routing.openstreetmap.de (routing) and api.open-meteo.com (elevation; if the direct request fails, via the server50.erudit23.ru proxy)',
           gapfill_auto: "Auto (from track speed)",
           gapfill_linear: "Simple join (offline)",
           gapfill_foot: "Route: on foot",
           gapfill_bike: "Route: bicycle",
           gapfill_car: "Route: car",
           gapfill_remove: "Delete without replacement",
+          gapfill_remove_pause: "Trim the track edge ({cnt} points)",
+          err_no_time:
+            "Some track points have no timestamps — the track can't be repaired (speeds and durations are undefined)",
+          err_fix_busy: "Processing is already running",
+          log_elevation_proxy_used:
+            "Elevation service unreachable directly — elevation requests went through the server50.erudit23.ru proxy",
           gapfill_keep: "Leave unchanged",
           label_force_trails: "Strongly prefer trails",
           hint_force_trails:
             'For "Route" modes: don\'t give up on routing even if the section boundaries are far from the nearest trail/road — straight approach legs are added to reach it. Useful when the jammer dragged the track aside while you actually stayed on the trail. The trail engine brouter.de is tried first (it sees mountain trails missing from OSRM) — boundary coordinates are sent there as well',
           label_fix_elevation: "Fix elevation from terrain on large mismatch",
           hint_fix_elevation:
-            "If a section's recorded elevation diverges from terrain (DEM) by more than 250 m (baro/GPS altitude broke during jamming), it is recomputed from terrain with smooth seams. Coordinates and timestamps are left unchanged. Sample track points are sent to api.open-meteo.com for the check",
+            "If a section's recorded elevation diverges from terrain (DEM) by more than 250 m (baro/GPS altitude broke during jamming), it is recomputed from terrain with smooth seams. Coordinates and timestamps are left unchanged. Sample track points are sent to api.open-meteo.com for the check (via the server50.erudit23.ru proxy if it is unreachable)",
           label_maxspeed: "Max. horizontal speed (m/s)",
           hint_maxspeed:
             "Hiking: 10–15 &nbsp;|&nbsp; Bike: 25–40 &nbsp;|&nbsp; Car: 80–120",
@@ -4908,15 +4920,25 @@
 
       const logEl = document.getElementById("log");
       let logLines = [];
+      let logRendered = 0; // сколько строк лога уже выведено в logEl
       function log(msg, cls = "") {
-        logLines.push(
-          cls ? `<span class="${cls}">${esc(msg)}</span>` : esc(msg),
-        );
-        logEl.innerHTML = logLines.join("\n");
+        const line = cls ? `<span class="${cls}">${esc(msg)}</span>` : esc(msg);
+        logLines.push(line);
+        // Обычно просто дописываем строку; полная перерисовка — только если
+        // лог был сброшен снаружи (logLines = []).
+        if (logRendered === logLines.length - 1) {
+          logEl.insertAdjacentHTML(
+            "beforeend",
+            (logRendered ? "\n" : "") + line,
+          );
+        } else {
+          logEl.innerHTML = logLines.join("\n");
+        }
+        logRendered = logLines.length;
         logEl.scrollTop = logEl.scrollHeight;
       }
       function esc(s) {
-        return s.replace(/&/g, "&amp;").replace(/</g, "&lt;");
+        return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
       }
 
       // ─── Обнаружение эпизодов глушения ──────────────────────────────────────────
@@ -6596,11 +6618,23 @@
           const timeTag = Number.isFinite(p.time)
             ? `<time>${formatTime(p.time)}</time>`
             : "";
-          return `\t\t\t<trkpt lat="${fmtN(p.lat)}" lon="${fmtN(p.lon)}">${eleTag}${timeTag}</trkpt>`;
+          // Пульс/каденс/температуру переносим в то же расширение Garmin,
+          // что читает extractTrkptFields и пишет fixGpx.
+          const sensors = [];
+          if (Number.isFinite(p.atemp))
+            sensors.push(`<gpxtpx:atemp>${p.atemp}</gpxtpx:atemp>`);
+          if (Number.isFinite(p.hr))
+            sensors.push(`<gpxtpx:hr>${Math.round(p.hr)}</gpxtpx:hr>`);
+          if (Number.isFinite(p.cad))
+            sensors.push(`<gpxtpx:cad>${Math.round(p.cad)}</gpxtpx:cad>`);
+          const extTag = sensors.length
+            ? `<extensions><gpxtpx:TrackPointExtension>${sensors.join("")}</gpxtpx:TrackPointExtension></extensions>`
+            : "";
+          return `\t\t\t<trkpt lat="${fmtN(p.lat)}" lon="${fmtN(p.lon)}">${eleTag}${timeTag}${extTag}</trkpt>`;
         });
         return (
           `<?xml version="1.0" encoding="UTF-8"?>\n` +
-          `<gpx version="1.1" creator="gpx-repair" xmlns="http://www.topografix.com/GPX/1/1">\n` +
+          `<gpx version="1.1" creator="gpx-repair" xmlns="http://www.topografix.com/GPX/1/1" xmlns:gpxtpx="http://www.garmin.com/xmlschemas/TrackPointExtension/v1">\n` +
           `\t<trk>\n\t\t<name>${escapeXml(trackName || "Track")}</name>\n\t\t<trkseg>\n` +
           lines.join("\n") +
           `\n\t\t</trkseg>\n\t</trk>\n</gpx>`
@@ -6633,7 +6667,12 @@
           const time = timeEl ? parseTime(timeEl.textContent) : NaN;
           const eleEl = tp.querySelector("AltitudeMeters");
           const ele = eleEl ? parseFloat(eleEl.textContent) : NaN;
-          points.push({ lat, lon, ele, time });
+          const hrEl = tp.querySelector("HeartRateBpm > Value");
+          const cadEl = tp.querySelector("Cadence");
+          const pt = { lat, lon, ele, time };
+          if (hrEl) pt.hr = parseFloat(hrEl.textContent);
+          if (cadEl) pt.cad = parseFloat(cadEl.textContent);
+          points.push(pt);
         }
         if (!points.length) throw new Error(t("err_tcx_no_coords"));
 
@@ -6676,7 +6715,10 @@
             lon = null,
             altitude = null,
             enhAltitude = null,
-            timestamp = null;
+            timestamp = null,
+            hr = null,
+            cad = null,
+            temp = null;
           for (const f of def.fields) {
             if (def.globalMsgNum === 20) {
               if (f.defNum === 253 && f.size === 4) {
@@ -6689,11 +6731,21 @@
                 altitude = view.getUint16(offset, def.littleEndian);
               } else if (f.defNum === 78 && f.size === 4) {
                 enhAltitude = view.getUint32(offset, def.littleEndian);
+              } else if (f.defNum === 3 && f.size === 1) {
+                hr = view.getUint8(offset);
+              } else if (f.defNum === 4 && f.size === 1) {
+                cad = view.getUint8(offset);
+              } else if (f.defNum === 13 && f.size === 1) {
+                temp = view.getInt8(offset);
               }
             }
             offset += f.size;
           }
-          return { offset, lat, lon, altitude, enhAltitude, timestamp };
+          // Developer-поля (Connect IQ, датчики мощности и т.п.) идут в конце
+          // каждого сообщения — их нужно пропустить, иначе все следующие
+          // записи читаются со сдвигом.
+          offset += def.devSize || 0;
+          return { offset, lat, lon, altitude, enhAltitude, timestamp, hr, cad, temp };
         }
 
         function addPoint(def, res, ts) {
@@ -6707,12 +6759,16 @@
           } else if (res.altitude != null && res.altitude !== 0xffff) {
             ele = res.altitude / 5 - 500;
           }
-          points.push({
+          const pt = {
             lat: fitSemicirclesToDeg(res.lat),
             lon: fitSemicirclesToDeg(res.lon),
             ele,
             time: ts + FIT_EPOCH_OFFSET,
-          });
+          };
+          if (res.hr != null && res.hr !== 0xff && res.hr > 0) pt.hr = res.hr;
+          if (res.cad != null && res.cad !== 0xff) pt.cad = res.cad;
+          if (res.temp != null && res.temp !== 0x7f) pt.atemp = res.temp;
+          points.push(pt);
         }
 
         let offset = headerSize;
@@ -6759,12 +6815,21 @@
                 offset += 1; // base type байт нам не нужен — размер поля уже известен
                 fields.push({ defNum, size });
               }
+              let devSize = 0;
               if (headerByte & 0x20) {
                 const numDev = view.getUint8(offset);
                 offset += 1;
-                offset += numDev * 3;
+                for (let i = 0; i < numDev; i++) {
+                  devSize += view.getUint8(offset + 1); // [номер, размер, индекс]
+                  offset += 3;
+                }
               }
-              localDefs[localType] = { globalMsgNum, littleEndian, fields };
+              localDefs[localType] = {
+                globalMsgNum,
+                littleEndian,
+                fields,
+                devSize,
+              };
             } else {
               const def = localDefs[localType];
               if (!def) break;
@@ -7094,13 +7159,16 @@
       // Сначала пробуем прямой запрос к сервису высот. Если не получилось
       // (таймаут/сетевая ошибка/HTTP-ошибка), только тогда повторяем тот же
       // URL через ELEVATION_PROXY. Маршрутизация OSRM не проксируется.
+      let elevationProxyUsed = false;
       async function fetchJsonDirectOrProxied(url) {
         try {
           return await fetchJsonTimeout(url);
         } catch (e) {}
         try {
           const proxied = `${ELEVATION_PROXY}?url=${encodeURIComponent(url)}`;
-          return await fetchJsonTimeout(proxied);
+          const data = await fetchJsonTimeout(proxied);
+          elevationProxyUsed = true;
+          return data;
         } catch (e) {}
         return null;
       }
@@ -8131,7 +8199,23 @@
 
       // ─── Основная функция обработки ──────────────────────────────────────────────
 
+      // Состояние высотной калибровки (eleBaselineOffset и др.) — глобальное,
+      // поэтому два запуска обработки одновременно запрещены.
+      let fixInProgress = false;
       async function fixGpx(xmlText, params) {
+        if (fixInProgress) throw new Error(t("err_fix_busy"));
+        fixInProgress = true;
+        elevationProxyUsed = false;
+        try {
+          const res = await fixGpxImpl(xmlText, params);
+          if (elevationProxyUsed) log(t("log_elevation_proxy_used"), "log-warn");
+          return res;
+        } finally {
+          fixInProgress = false;
+        }
+      }
+
+      async function fixGpxImpl(xmlText, params) {
         const {
           maxSpeed,
           minDist,
@@ -8197,12 +8281,17 @@
           eles[i] = eleEl ? parseFloat(eleEl.textContent) : 0;
           eleEls[i] = eleEl;
           timeEls[i] = timeEl;
-          times[i] = timeEl ? parseTime(timeEl.textContent) : 0;
+          times[i] = timeEl ? parseTime(timeEl.textContent) : NaN;
           hrs[i] = hr;
           cads[i] = cad;
           atemps[i] = atemp;
           hdops[i] = hdopEl ? parseFloat(hdopEl.textContent) : NaN;
         }
+
+        // Без меток времени скорости и длительности не определены — детектор
+        // глушилки и заполнение пробелов работать не могут.
+        if (times.some((v) => !Number.isFinite(v)))
+          throw new Error(t("err_no_time"));
 
         log(t("log_loaded_points", { n }), "log-info");
 
@@ -8901,12 +8990,23 @@
 
         // Собираем оставшиеся trkpt и вставляем интерполированные
         const segs = Array.from(doc.querySelectorAll("trkseg"));
-        const seg = segs[0];
-        if (!seg) throw new Error(t("err_no_trkseg"));
+        if (!segs.length) throw new Error(t("err_no_trkseg"));
+        // Каждая исходная точка остаётся в своём сегменте — границы сегментов
+        // (паузы записи, отдельные треки) не склеиваются. Вставленные точки
+        // попадают в сегмент точки, перед которой они вставлены.
+        const segIdOfPoint = allPts.map((p) => {
+          const k = segs.indexOf(p.parentNode);
+          return k >= 0 ? k : 0;
+        });
+        const segLines = new Map(); // индекс сегмента -> строки trkpt
+        let curSeg = 0;
+        const pushLine = (line) => {
+          if (!segLines.has(curSeg)) segLines.set(curSeg, []);
+          segLines.get(curSeg).push(line);
+        };
 
         // Сериализуем оставшиеся точки в строки (быстрее DOM-манипуляций на 60k точках)
         const serializer = new XMLSerializer();
-        const newPtLines = [];
 
         let lengthAfter = 0;
         let prevLat = null,
@@ -8931,9 +9031,10 @@
         const afterHrs = [];
 
         for (let i = 0; i < n; i++) {
+          curSeg = segIdOfPoint[i];
           if (insertionBefore.has(i)) {
             for (const pt of insertionBefore.get(i)) {
-              newPtLines.push(makeTrkptXml(pt, nsExtPrefix));
+              pushLine(makeTrkptXml(pt, nsExtPrefix));
               addLeg(pt.lat, pt.lon);
               afterLats.push(pt.lat);
               afterLons.push(pt.lon);
@@ -8943,7 +9044,7 @@
             }
           }
           if (!removeSet.has(i)) {
-            newPtLines.push(
+            pushLine(
               "\t\t\t" +
                 serializer
                   .serializeToString(allPts[i])
@@ -8966,25 +9067,28 @@
         // все десятки тысяч исходных <trkpt>, которые тут же будут выброшены
         // регэкспом ниже. Чтобы не платить за это дважды, сначала отвязываем
         // их от <trkseg> (дёшево — просто отсоединение узлов, без кодирования
-        // текста), и сериализуем уже пустой сегмент.
-        while (seg.firstChild) seg.removeChild(seg.firstChild);
-        // allPts собран по ВСЕМ сегментам документа; итоговый блок trkpt
-        // вставляем в первый сегмент, а остальные исходные сегменты удаляем,
-        // иначе они останутся в XML хвостом и продублируют старые точки.
-        for (let i = 1; i < segs.length; i++) {
-          segs[i].parentNode?.removeChild(segs[i]);
-        }
+        // текста), и сериализуем уже пустые сегменты.
+        const keptSegs = [];
+        segs.forEach((seg, k) => {
+          while (seg.firstChild) seg.removeChild(seg.firstChild);
+          // Сегмент, в котором не осталось точек, выбрасываем — но хотя бы
+          // один сегмент в документе оставляем.
+          if (segLines.has(k) || (!segLines.size && k === 0)) keptSegs.push(k);
+          else seg.parentNode?.removeChild(seg);
+        });
         let outXml = serializer.serializeToString(doc);
 
         // Более надёжный способ: строковая замена между <trkseg> и </trkseg>
-        // (сегмент теперь пуст, поэтому regex ищет короткую пустую/self-closing
+        // (сегменты теперь пусты, поэтому regex ищет короткую пустую/self-closing
         // форму, а не сканирует потенциально гигабайтный блок текста).
-        const trkptBlock = newPtLines.join("\n");
+        // Сегменты в документе идут в том же порядке, что и в keptSegs.
+        let segCounter = 0;
         outXml = outXml.replace(
-          /<trkseg([^>]*)\/>|<trkseg([^>]*)>\s*<\/trkseg>/,
+          /<trkseg([^>]*)\/>|<trkseg([^>]*)>\s*<\/trkseg>/g,
           (_, attrsSelf, attrsOpen) => {
             const attrs = attrsSelf !== undefined ? attrsSelf : attrsOpen;
-            return `<trkseg${attrs}>\n${trkptBlock}\n\t\t</trkseg>`;
+            const lines = segLines.get(keptSegs[segCounter++]) || [];
+            return `<trkseg${attrs}>\n${lines.join("\n")}\n\t\t</trkseg>`;
           },
         );
 
@@ -10131,6 +10235,18 @@
           btnFix.disabled = true;
           return;
         }
+        if (times.some((v) => !Number.isFinite(v))) {
+          episodeCard.style.display = "none";
+          noEpisodesMsg.style.display = "none";
+          btnFix.disabled = true;
+          logLines = [];
+          logEl.style.display = "block";
+          log(t("err_no_time"), "log-err");
+          return;
+        }
+        // fixGpx считает отсутствующую высоту нулём — детектор в предпросмотре
+        // должен видеть ровно те же данные, иначе индексы эпизодов разойдутся.
+        eles = eles.map((v) => (Number.isFinite(v) ? v : 0));
         if (document.getElementById("p-profile").value === AUTO_PROFILE_KEY) {
           applyAutoParams({ lats, lons, eles, times });
         }
@@ -10289,8 +10405,10 @@
           // середине трека не может: обе стороны от неё честные, удалять
           // нечего, и "Удалить" ничем не отличалось бы от "Оставить как
           // было".
+          // Единственная пауза в списке — край сразу с обеих сторон: "удалить"
+          // стёрло бы весь трек, поэтому такой вариант не предлагаем.
           const pauseRemovableEdge =
-            ep.isPause && (idx === 0 || idx === episodes.length - 1);
+            ep.isPause && (idx === 0) !== (idx === episodes.length - 1);
           const select = document.createElement("select");
           select.className = "episode-mode-select";
           for (const opt of GAP_FILL_OPTIONS) {
@@ -10307,7 +10425,16 @@
               continue;
             const o = document.createElement("option");
             o.value = opt.value;
-            o.textContent = t("gapfill_" + opt.value);
+            if (ep.isPause && opt.value === "remove") {
+              // "Удалить" для паузы на краю вырезает целый край трека — явно
+              // показываем, сколько точек пропадёт.
+              let cnt = 0;
+              if (idx === 0) cnt += ep.lastBad + 1;
+              if (idx === episodes.length - 1) cnt += n - ep.afterIdx;
+              o.textContent = t("gapfill_remove_pause", { cnt });
+            } else {
+              o.textContent = t("gapfill_" + opt.value);
+            }
             select.appendChild(o);
           }
           select.value = episodeChoices[idx];

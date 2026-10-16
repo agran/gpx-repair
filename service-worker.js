@@ -10,7 +10,7 @@
 // загрузиться напрямую с сайта, а если сети/доступа нет — просто не
 // показываются (см. onerror в index.html), без подстановки кэша-заглушки.
 
-const CACHE_NAME = "gpx-repair-v36";
+const CACHE_NAME = "gpx-repair-v37";
 
 const PRECACHE_URLS = [
   "./",
@@ -18,6 +18,8 @@ const PRECACHE_URLS = [
   "./manifest.webmanifest",
   "./assets/logo.svg",
   "./assets/done.svg",
+  "./assets/icon-192.png",
+  "./assets/icon-512.png",
   "./vendor/leaflet/leaflet.css",
   "./vendor/leaflet/leaflet.js",
   "./vendor/leaflet/images/marker-icon.png",
@@ -55,21 +57,12 @@ self.addEventListener("activate", (event) => {
 self.addEventListener("fetch", (event) => {
   const url = new URL(event.request.url);
 
-  // Декоративные картинки erudit23.ru не перехватываем: пусть грузятся
-  // напрямую с сайта или проваливаются "как обычно" (без кэша-заглушки).
-  if (url.hostname === "www.erudit23.ru" || url.hostname === "erudit23.ru") {
-    return;
-  }
-
-  // PHP-прокси для сервисов высот (server50.erudit23.ru) — тоже не кэшируем:
-  // ответы динамические (зависят от координат в query-строке), а сама высота
-  // уже кэшируется в памяти приложения (elevationCache в index.html).
-  // Долгосрочный офлайн-кэш service worker для них не нужен.
-  if (url.hostname === "server50.erudit23.ru") {
-    return;
-  }
-
-  if (event.request.method !== "GET") {
+  // Перехватываем только GET-запросы к файлам самого приложения. Всё
+  // внешнее (тайлы карт, маршрутизация, высоты, прокси, картинки
+  // erudit23.ru) идёт напрямую в сеть: ответы динамические, их не нужно
+  // кэшировать — иначе кэш бесконтрольно растёт, а маршруты/высоты
+  // отдаются устаревшими (высоты и так кэшируются в памяти приложения).
+  if (event.request.method !== "GET" || url.origin !== self.location.origin) {
     return;
   }
 
@@ -85,7 +78,7 @@ self.addEventListener("fetch", (event) => {
           }
           return response;
         })
-        .catch(() => cached);
+        .catch(() => cached || Response.error());
       return cached || network;
     }),
   );

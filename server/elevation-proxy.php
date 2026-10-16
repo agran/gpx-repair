@@ -28,7 +28,12 @@
 
 // Outbound HTTP proxy that upstream requests are routed through.
 // Set to '' (empty string) to disable proxying and call upstream directly.
-const OUTBOUND_PROXY = '77.73.71.234:48484';
+// Can be overridden with the GPX_REPAIR_OUTBOUND_PROXY environment variable.
+const OUTBOUND_PROXY = '80.242.56.174:48484';
+
+// Max requests per client IP per minute (a single track repair needs a few
+// dozen at most). Excess requests get 429.
+const RATE_LIMIT_PER_MIN = 240;
 
 // Origins allowed to call this proxy (CORS). Add more if you serve the app
 // from another domain, or '*' to allow everyone (fine for read-only, public,
@@ -104,13 +109,42 @@ if (!$isAllowed) {
     exit;
 }
 
+// ─── Rate limit (per client IP, fixed one-minute window) ────────────────────
+
+function rateLimited(string $ip): bool
+{
+    $file = sys_get_temp_dir() . '/gpx-repair-proxy-' . md5($ip) . '.cnt';
+    $fh = @fopen($file, 'c+');
+    if (!$fh) {
+        return false; // fail open: don't break the app if tmp is unwritable
+    }
+    flock($fh, LOCK_EX);
+    $minute = (int) floor(time() / 60);
+    $raw = trim((string) stream_get_contents($fh));
+    [$m, $count] = array_pad(array_map('intval', explode(':', $raw)), 2, 0);
+    $count = ($m === $minute) ? $count + 1 : 1;
+    ftruncate($fh, 0);
+    rewind($fh);
+    fwrite($fh, $minute . ':' . $count);
+    flock($fh, LOCK_UN);
+    fclose($fh);
+    return $count > RATE_LIMIT_PER_MIN;
+}
+
+if (rateLimited($_SERVER['REMOTE_ADDR'] ?? '')) {
+    http_response_code(429);
+    header('Content-Type: application/json');
+    echo json_encode(['error' => 'Too many requests']);
+    exit;
+}
+
 // ─── Fetch upstream through the outbound proxy ─────────────────────────────
 
 $ch = curl_init($target);
 curl_setopt_array($ch, [
     CURLOPT_RETURNTRANSFER => true,
-    CURLOPT_FOLLOWLOCATION => true,
-    CURLOPT_MAXREDIRS      => 3,
+    CURLOPT_FOLLOWLOCATION => false, // the allowlist is checked on the initial URL only
+    CURLOPT_PROTOCOLS      => CURLPROTO_HTTPS,
     CURLOPT_TIMEOUT        => REQUEST_TIMEOUT_S,
     CURLOPT_CONNECTTIMEOUT => 5,
     CURLOPT_HTTPHEADER     => [
@@ -118,24 +152,27 @@ curl_setopt_array($ch, [
         'User-Agent: gpx-repair-elevation-proxy/1.0',
     ],
 ]);
-if (OUTBOUND_PROXY !== '') {
-    curl_setopt($ch, CURLOPT_PROXY, OUTBOUND_PROXY);
+$outboundProxy = getenv('GPX_REPAIR_OUTBOUND_PROXY');
+if ($outboundProxy === false) {
+    $outboundProxy = OUTBOUND_PROXY;
+}
+if ($outboundProxy !== '') {
+    curl_setopt($ch, CURLOPT_PROXY, $outboundProxy);
     curl_setopt($ch, CURLOPT_PROXYTYPE, CURLPROXY_HTTP);
 }
 
 $body = curl_exec($ch);
 $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-$contentType = curl_getinfo($ch, CURLINFO_CONTENT_TYPE) ?: 'application/json';
-$curlError = curl_error($ch);
 curl_close($ch);
+
+header('X-Content-Type-Options: nosniff');
+header('Content-Type: application/json');
 
 if ($body === false) {
     http_response_code(502);
-    header('Content-Type: application/json');
-    echo json_encode(['error' => 'Upstream request failed', 'detail' => $curlError]);
+    echo json_encode(['error' => 'Upstream request failed']);
     exit;
 }
 
 http_response_code($httpCode ?: 502);
-header('Content-Type: ' . $contentType);
 echo $body;
